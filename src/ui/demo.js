@@ -19,6 +19,7 @@ import { ui } from '../core/session.js';
 import { showCompanyDetail } from '../views/companyDetail.js';
 import { switchRole } from '../core/auth.js';
 import { getGpsAlerts } from '../core/gpsAlerts.js';
+import { notificationsFor, relativeTime, pendingByTech, markReadFor, unreadFor } from '../core/notify.js';
 
 // Session-lifetime demo events (e.g. an emailed report). Deliberately not
 // persisted — a reset should wipe them, and it does.
@@ -31,6 +32,34 @@ window.__DEMO_NOTIFS__ = window.__DEMO_NOTIFS__ || [];
 // keeps working via the shared window.__ACTIVE_NOTIFS__ list.
 function operationalNotifs() {
   const list = [];
+
+  // A technician's feed is their own dispatched assignments — what to do, when,
+  // and where — and nothing else. Office alerts below would be noise on a
+  // field phone, and the roadmap (§1) keeps commercial detail off it entirely.
+  const user = state.currentUser;
+  if (user && user.role === 'tech') {
+    for (const n of notificationsFor(user.name)) {
+      list.push({
+        title: n.title,
+        desc: `${n.desc}${(n.tasks || []).length ? ` · Yapılacaklar: ${n.tasks.join(', ')}` : ''}`,
+        time: relativeTime(n.sentAt),
+        type: n.read ? 'info' : 'alert',
+        action: () => setView('work')
+      });
+    }
+    return list;
+  }
+
+  // Office view: how many assignments are still unacknowledged in the field.
+  for (const [tech, count] of pendingByTech()) {
+    list.push({
+      title: `Görev bildirimi bekliyor: ${tech}`,
+      desc: `${count} atanmış ziyaret teknisyen tarafından henüz görüntülenmedi.`,
+      time: 'Bugün', type: 'warning',
+      action: () => setView('team')
+    });
+  }
+
   // Location-mismatch alerts come first: a technician reporting an arrival they
   // are not actually at is the most actionable thing the office can see. These
   // are real device fixes from the mobile app, not simulation.
@@ -83,7 +112,13 @@ const ICON = { alert: '!', warning: '⚠', info: '✓', success: '📧' };
 export function updateNotifBadge() {
   const bell = $('.topbar .notification');
   if (!bell) return;
-  const n = allNotifs().length;
+  // A technician's feed keeps every assignment, but the badge must mean "new" —
+  // otherwise it never clears after they read them. Office roles have no
+  // read-state, so there the badge is the count of live alerts.
+  const user = state.currentUser;
+  const n = user && user.role === 'tech'
+    ? unreadFor(user.name)
+    : allNotifs().length;
   let badge = bell.querySelector('.notif-badge');
   if (n > 0) {
     if (!badge) { badge = document.createElement('span'); badge.className = 'notif-badge'; bell.appendChild(badge); }
@@ -124,6 +159,13 @@ export function openNotificationCenter() {
     </div>
   `;
   modalEl.classList.remove('hidden');
+
+  // Opening the feed is the acknowledgement. Marked after rendering so the
+  // technician still sees which rows were new, then the badge clears.
+  const user = state.currentUser;
+  if (user && user.role === 'tech' && markReadFor(user.name)) {
+    updateNotifBadge();
+  }
 }
 
 // The simulated Stage-2 "report emailed to customer" event (task 4-4).

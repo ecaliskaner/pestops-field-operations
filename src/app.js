@@ -34,6 +34,8 @@ import { invoiceActionClicks, invoiceFilterClicks, billingClicks } from './views
 import { stockRefillSubmit } from './views/inventory.js';
 import { createSiteSubmit } from './views/sites.js';
 import { demoClicks, openNotificationCenter, updateNotifBadge, mountPresenterBar } from './ui/demo.js';
+import { visitReportClicks, bindVisitReportFilters } from './views/visitReports.js';
+import { calendarClicks } from './ui/calendar.js';
 
 // Clean stale data from previous versions
 localStorage.removeItem("ladybug-product-demo"); localStorage.removeItem("insectram-product-demo"); localStorage.removeItem("insectram-ops");
@@ -231,6 +233,8 @@ const CLICK_CHAIN = [
   completeWorkClicks,
   backNavClicks,
   calendarToggleClicks,
+  calendarClicks,
+  visitReportClicks,
   planToolbarClicks,
   reportModalClicks,
   reportCardClicks,
@@ -280,6 +284,8 @@ function bind() {
   }));
 
   $('#trendFilter')?.addEventListener('change', renderInsights);
+
+  bindVisitReportFilters();
 
   document.addEventListener('submit', e => {
     for (const handle of SUBMIT_CHAIN) if (handle(e)) return;

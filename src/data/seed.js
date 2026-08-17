@@ -3,6 +3,9 @@
 
 export const initial = {
   view: "dashboard", selectedWork: "WO-2048", selectedTech: "Ayşe Demir", completed: 27,
+  // Assignments dispatched to technicians' phones (core/notify.js). Empty at
+  // seed: the demo shows them arriving when the planner publishes a day.
+  techNotifications: [],
   inventory: [
     { id: 'stock1', chemicalId: 'ch1', name: 'K-Othrine SC 25', lotNo: 'LOT-2026-A1', qty: 25.5, unit: 'lt', minQty: 5.0, unitCost: 350 },
     { id: 'stock2', chemicalId: 'ch2', name: 'Goliath Gel', lotNo: 'LOT-2026-G9', qty: 120, unit: 'tüp', minQty: 20, unitCost: 450 },

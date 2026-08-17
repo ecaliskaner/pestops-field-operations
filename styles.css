@@ -3436,3 +3436,141 @@ button:focus-visible, a:focus-visible, .nav-item:focus-visible, input:focus-visi
   color: var(--accent-hover);
 }
 .filter-btn.active b { color: var(--accent-hover); }
+
+/* ============================================================
+   Service calendar (task 7-2) — real month grid, planner chips
+   ============================================================ */
+.cal-toolbar { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+.cal-nav-btn { width:32px; padding:0; font-size:16px; line-height:1; font-weight:700; }
+
+.cal-legend { margin-left:10px; display:inline-flex; align-items:center; gap:4px; font-size:10px; }
+.cal-legend i { width:9px; height:9px; border-radius:2px; display:inline-block; }
+.cal-legend i.cal-done { background:var(--green); }
+.cal-legend i.cal-planned { background:var(--blue); }
+.cal-legend i.cal-tentative { background:var(--amber); }
+
+#calendarGrid .calendar-cell {
+  border:1px solid var(--line);
+  border-radius:8px;
+  padding:6px;
+  background:#fff;
+  display:flex;
+  flex-direction:column;
+  gap:3px;
+  min-height:92px;
+  cursor:pointer;
+  overflow:hidden;
+}
+#calendarGrid .calendar-cell.empty-cell {
+  background:#fafbfc;
+  border-style:dashed;
+}
+#calendarGrid .calendar-cell.cal-empty-day { background:#fcfcfd; }
+#calendarGrid .calendar-cell.cal-today {
+  border:2px solid var(--blue);
+  background:var(--blue-soft);
+}
+.cal-daynum {
+  font-weight:700; font-size:12px; color:var(--ink);
+  display:flex; align-items:baseline; gap:5px;
+}
+.cal-daynum em {
+  font-style:normal; font-size:9px; font-weight:700;
+  color:var(--blue); text-transform:uppercase; letter-spacing:.03em;
+}
+.cal-chip {
+  font-size:9px; font-weight:600; border-radius:3px;
+  padding:2px 4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  border-left:3px solid transparent;
+}
+.cal-chip b { font-weight:800; }
+.cal-chip.cal-done { background:rgba(34,197,94,.12); border-left-color:var(--green); color:#15803d; }
+.cal-chip.cal-planned { background:rgba(37,99,235,.12); border-left-color:var(--blue); color:#1d4ed8; }
+.cal-chip.cal-tentative { background:rgba(245,158,11,.14); border-left-color:var(--amber); color:#b45309; }
+.cal-more { font-size:9px; color:var(--muted); font-weight:700; }
+
+/* Day-detail modal */
+.cal-day-list { display:grid; gap:10px; max-height:390px; overflow:auto; }
+.cal-day-row {
+  border:1px solid var(--line); border-radius:8px;
+  padding:10px; background:var(--soft);
+}
+.cal-row-head { display:flex; justify-content:space-between; align-items:start; gap:8px; }
+.cal-row-head b { font-size:12px; display:block; }
+.cal-row-head small { font-size:10px; color:var(--muted); }
+.cal-row-desc { font-size:11px; color:var(--muted); margin:6px 0 0; }
+.cal-task-list { margin:6px 0 0; padding-left:16px; }
+.cal-task-list li { font-size:11px; color:var(--ink); line-height:1.5; }
+.cal-row-team {
+  display:flex; justify-content:space-between; align-items:center; gap:8px;
+  margin-top:8px; padding-top:8px; border-top:1px solid var(--line);
+  font-size:10px; color:var(--muted); font-weight:600;
+}
+.cal-day-actions {
+  margin-top:14px; padding-top:12px; border-top:1px solid var(--line);
+  display:flex; justify-content:flex-end;
+}
+
+/* ============================================================
+   Visit-report board (task 7-1)
+   ============================================================ */
+.vr-head-tools { display:flex; gap:8px; align-items:center; }
+.vr-search {
+  height:34px; min-width:230px; padding:0 10px;
+  border:1px solid var(--line); border-radius:8px;
+  font-size:12px; font-family:inherit; background:#fff; color:var(--ink);
+}
+.vr-search:focus, .vr-limit:focus { outline:none; border-color:var(--blue); }
+.vr-limit {
+  height:34px; padding:0 8px; border:1px solid var(--line);
+  border-radius:8px; font-size:12px; font-family:inherit; background:#fff; color:var(--ink);
+}
+
+.vr-filter-panel { margin-bottom:14px; background:var(--soft); }
+.vr-filter-head {
+  display:flex; justify-content:space-between; align-items:center;
+  gap:10px; margin-bottom:12px; flex-wrap:wrap;
+}
+.vr-filter-badge {
+  background:var(--ink); color:#fff; font-size:10px; font-weight:700;
+  padding:5px 11px; border-radius:20px; letter-spacing:.03em;
+}
+.vr-filter-actions { display:flex; gap:6px; }
+.vr-filter-grid {
+  display:grid; gap:10px;
+  grid-template-columns:repeat(auto-fit, minmax(170px, 1fr));
+}
+.vr-field { display:flex; flex-direction:column; gap:4px; min-width:0; }
+.vr-field > span {
+  font-size:10px; font-weight:700; color:var(--muted);
+  text-transform:uppercase; letter-spacing:.03em;
+}
+.vr-field select, .vr-field input {
+  height:34px; padding:0 8px; border:1px solid var(--line); border-radius:8px;
+  font-size:12px; font-family:inherit; background:#fff; color:var(--ink);
+  width:100%; min-width:0;
+}
+.vr-field select:focus, .vr-field input:focus { outline:none; border-color:var(--blue); }
+
+.vr-table-panel { padding-top:12px; }
+.vr-table-meta {
+  font-size:11px; color:var(--muted); font-weight:600;
+  margin-bottom:8px;
+}
+.vr-table-scroll { overflow-x:auto; }
+.vr-table { width:100%; border-collapse:collapse; min-width:940px; }
+.vr-table th {
+  text-align:left; font-size:10px; font-weight:700; color:var(--muted);
+  text-transform:uppercase; letter-spacing:.03em;
+  padding:10px 10px; border-bottom:1px solid var(--line); white-space:nowrap;
+  background:var(--soft);
+}
+.vr-table td {
+  padding:10px; border-bottom:1px solid var(--line);
+  font-size:11.5px; vertical-align:top; line-height:1.45;
+}
+.vr-table tbody tr:hover { background:var(--soft); }
+.vr-no { padding:0; font-size:11.5px; font-weight:700; color:var(--blue); }
+.vr-desc { color:var(--muted); max-width:230px; }
+.vr-team { max-width:210px; }
+.vr-type { font-size:9px; font-weight:700; white-space:nowrap; }

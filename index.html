@@ -36,6 +36,7 @@
           <button class="nav-item" data-view="team"><span>◉</span> Ekip & rota</button>
           <button class="nav-item" data-view="mobileSim"><span>📱</span> Mobil Uygulama</button>
           <p class="nav-label">YÖNETİM</p>
+          <button class="nav-item" data-view="visitReports"><span>🗒</span> Ziyaret Raporları</button>
           <button class="nav-item" data-view="insights"><span>↗</span> Analizler</button>
           <button class="nav-item" data-view="reports"><span>▤</span> Raporlar</button>
           <button class="nav-item" data-view="inventory" id="navInventoryBtn"><span>📦</span> Stok & Envanter</button>
@@ -146,13 +147,26 @@
 
           <!-- Monthly Calendar Container -->
           <div id="workCalendarContainer" class="panel hidden" style="margin-top:0;">
-            <div class="panel-header" style="margin-bottom:20px;">
+            <div class="panel-header" style="margin-bottom:14px;">
               <div>
                 <p class="overline">PLANLAMA & TAKVİM</p>
-                <h2>Operasyonel Servis Takvimi - Temmuz 2026</h2>
+                <h2>Operasyonel Servis Takvimi — <span id="calendarMonthLabel">Temmuz 2026</span></h2>
               </div>
-              <span style="font-size:11px; color:var(--muted)">Tesis randevusu planlamak için takvimdeki bir güne dokunun.</span>
+              <div class="cal-toolbar">
+                <button class="secondary-btn cal-nav-btn" data-cal-nav="-1" aria-label="Önceki ay">‹</button>
+                <button class="secondary-btn" data-cal-nav="0">Bugün</button>
+                <button class="secondary-btn cal-nav-btn" data-cal-nav="1" aria-label="Sonraki ay">›</button>
+                <button class="primary-btn" data-cal-publish="1">🔔 Ayın planını ekibe gönder</button>
+              </div>
             </div>
+            <div class="rep-stats" id="calendarSummary" style="margin-bottom:14px;"></div>
+            <p style="font-size:11px; color:var(--muted); margin-bottom:10px;">
+              Sözleşme kapsamından türetilen plan. Yapılacak işleri görmek ve ekibi
+              bilgilendirmek için bir güne dokunun.
+              <span class="cal-legend"><i class="cal-done"></i> Tamamlandı</span>
+              <span class="cal-legend"><i class="cal-planned"></i> Planlı</span>
+              <span class="cal-legend"><i class="cal-tentative"></i> Teyit bekliyor</span>
+            </p>
             <div style="display:grid; grid-template-columns: repeat(7, 1fr); gap:6px; text-align:center; font-weight:700; font-size:11px; color:var(--muted); margin-bottom:8px; border-bottom:1px solid var(--line); padding-bottom:8px;">
               <div>Pzt</div><div>Sal</div><div>Çar</div><div>Per</div><div>Cum</div><div>Cmt</div><div>Paz</div>
             </div>
@@ -188,6 +202,78 @@
           </article>
 
           <article class="panel roster-panel"><div class="panel-header"><h2>Bugünkü ekip</h2><button class="text-btn">Ekip yönetimi →</button></div><div id="roster" class="roster"></div></article>
+        </section>
+
+        <section id="visitReports" class="view">
+          <div class="page-heading compact">
+            <div>
+              <p class="overline">SAHA KAYITLARI</p>
+              <h1>Ziyaret Raporları</h1>
+              <p>Tamamlanan tüm servis ziyaretleri — müşteri, şube, ekip ve ziyaret tipine göre filtrelenebilir.</p>
+            </div>
+            <div class="vr-head-tools">
+              <input type="search" id="vrSearch" class="vr-search" placeholder="Ziyaret raporlarında ara..." aria-label="Ziyaret raporlarında ara" />
+              <select id="vrLimit" class="vr-limit" aria-label="Sayfa boyutu">
+                <option value="50">50</option>
+                <option value="100" selected>100</option>
+                <option value="250">250</option>
+                <option value="1000">Tümü</option>
+              </select>
+            </div>
+          </div>
+
+          <article class="panel vr-filter-panel">
+            <div class="vr-filter-head">
+              <span class="vr-filter-badge">⛃ Filtreler</span>
+              <div class="vr-filter-actions">
+                <button class="secondary-btn" id="vrExportCsv">⭳ CSV indir</button>
+                <button class="secondary-btn" id="vrClearFilters">↺ Temizle</button>
+              </div>
+            </div>
+            <div class="vr-filter-grid">
+              <label class="vr-field">
+                <span>🏷 Ziyaret Tipi</span>
+                <select id="vrFilterType"></select>
+              </label>
+              <label class="vr-field">
+                <span>📅 Başlangıç Tarihi</span>
+                <input type="date" id="vrFilterStart" />
+              </label>
+              <label class="vr-field">
+                <span>📅 Bitiş Tarihi</span>
+                <input type="date" id="vrFilterFinish" />
+              </label>
+              <label class="vr-field">
+                <span>👤 Müşteri</span>
+                <select id="vrFilterClient"></select>
+              </label>
+              <label class="vr-field">
+                <span>🏢 Şube</span>
+                <select id="vrFilterBranch"></select>
+              </label>
+            </div>
+          </article>
+
+          <article class="panel table-panel vr-table-panel">
+            <div class="vr-table-meta"><span id="vrResultCount">0 kayıt</span></div>
+            <div class="vr-table-scroll">
+              <table class="vr-table">
+                <thead>
+                  <tr>
+                    <th>Ziyaret Raporu</th>
+                    <th>Tamamlanma Tarihi</th>
+                    <th>Müşteri</th>
+                    <th>Şube</th>
+                    <th>Açıklama</th>
+                    <th>Personel / Ekip</th>
+                    <th>Ziyaret Tipi</th>
+                    <th>Bulgu</th>
+                  </tr>
+                </thead>
+                <tbody id="vrTableBody"></tbody>
+              </table>
+            </div>
+          </article>
         </section>
 
         <section id="insights" class="view">

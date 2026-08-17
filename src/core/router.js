@@ -14,6 +14,7 @@ import { renderReports } from '../views/reports.js';
 import { renderMobileRoute } from '../views/mobile.js';
 import { renderInventory } from '../views/inventory.js';
 import { renderFinance } from '../views/finance.js';
+import { renderVisitReports } from '../views/visitReports.js';
 
 export function setView(view){
   state.view=view;
@@ -33,6 +34,8 @@ export function setView(view){
     renderInventory();
   } else if (view === 'finance') {
     renderFinance();
+  } else if (view === 'visitReports') {
+    renderVisitReports();
   } else if (view === 'insights') {
     // Re-render on entry so the charts mount into the now-visible container and
     // re-scope to the current user (a customer sees only their own locations).
@@ -56,6 +59,7 @@ export function render(){
   renderAiPredictions();
   renderInventory();
   renderFinance();
+  renderVisitReports();
   setView(state.view);
   applyRoleAccess();
 }

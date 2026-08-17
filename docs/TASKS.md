@@ -88,7 +88,18 @@ everything was covered; these were the real gaps.
 | 6-2 | Placement-list activity + activity-only reports | **done** | Session K (`main`) | `views/reportBodies.js`, `views/reports.js`, `data/catalog.js` | The last two `.docx` §10 reports. `REPORTS` now has seven entries. See the report-suite note below |
 | 6-3 | Customer usage analytics (§12) | **todo** | — | — | The one whole numbered stage with no implementation: which customer logged in, how long they stayed, what they viewed, most-pulled chart. Lowest demo visibility (nothing on a projector shows it), genuinely from scratch — scope out or build last |
 | 6-4 | Self-service password change (§11) | **todo** | — | — | Minor. `.docx` wants the customer able to change their own password |
-| 6-5 | Annual visit plan + customer confirmation (§1) | **todo** | — | — | Minor. Static text in `index.html` today; §1 wants time-slots the customer confirms |
+| 6-5 | Annual visit plan + customer confirmation (§1) | **done** | Session L (`main`) | `data/schedule.js` | Closed by 7-2: the planner derives dated visits with time slots from each contract, and carries a `confirmed` flag for the customer teyit step |
+
+## Phase 7 — Planning board & visit-report list
+
+Driven by a reference screenshot of the incumbent system plus "add a calendar
+that shows what to do and notifies the workers".
+
+| ID | Task | Status | Owner | Files | Notes |
+|---|---|---|---|---|---|
+| 7-1 | Visit-report board | **done** | Session L (`main`) | `views/visitReports.js`, `index.html`, `styles.css` | 226 seeded visits as numbered `VR_…` reports. Filters: visit type / date range / client / branch (branch narrows to client), plus search, page size and CSV. Report number opens the existing printable service report — no second renderer |
+| 7-2 | Real service calendar | **done** | Session L (`main`) | `ui/calendar.js`, `data/schedule.js` | Replaces the fixed 31-cell grid. Month navigation, correct weekday alignment, served days from history + future days from the contract-derived plan |
+| 7-3 | Dispatch assignments to technicians | **done** | Session L (`main`) | `core/notify.js`, `ui/demo.js` | Day- and month-level publish; per-technician queue persisted in `state`. Commercial fields are stripped on the way out (§1) |
 
 ---
 
@@ -282,6 +293,29 @@ from. Its `defaultSelection` deliberately anchors on the most recent visit with
 click. The zero-activity path is still handled (badge flips to "Aktivite yok",
 the species section and its donut are suppressed rather than rendered empty) —
 7 of the seeded visits are clean, so that path is reachable in the demo.
+
+**The planner is contract-derived, and the history stream must not move (7-1/7-2).**
+`data/schedule.js` reads each site's `serviceScope` to decide both how often a
+site is attended (the busiest scope sets the rate) and *what* each visit covers —
+a scope contracted at 2/month on a site attended 4 times lands on alternating
+visits rather than the first two. `monthEntries()` returns served days from the
+real history and only plans days after the dataset's `demoToday()`, so a month
+never shows a planned visit beside the real one that fulfilled it.
+
+Visits gained `team` / `teamLabel` / `description` / `reportNo`. These are
+assigned in a **post-pass keyed on the visit id** (`rng('crew|'+id)`), never from
+the main `r()` stream — drawing extra numbers inside the generation loop shifts
+every downstream value and silently invalidates `ACTIVITY_LIMIT` in
+`data/compliance.js` and the short-visit rule in `views/work.js`. Verified
+unchanged after the change: 226 visits, 4077 findings, s1 recentPests 799.
+
+**Technician notifications are state, not session (7-3).** `core/notify.js`
+persists to `state.techNotifications` so a dispatched job survives a reload —
+unlike the presenter's `window.__DEMO_NOTIFS__`. `notifyTechnicians()` strips
+pricing and tax fields before queueing, because §1 says the technician receives
+the schedule and the work, "ticari bilgiler hariç". The bell badge counts
+*unread* for a technician but *total live alerts* for office roles; using one
+rule for both meant a technician's badge never cleared.
 
 `getStationArea()` and `placementSummary()` moved from `views/companyDetail.js`
 to `data/catalog.js` as part of this, so the report bodies could resolve a

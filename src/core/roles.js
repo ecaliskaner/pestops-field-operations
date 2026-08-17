@@ -64,12 +64,13 @@ export function applyRoleAccess() {
     }
   } 
   else if (role === 'client') {
-    // The customer gets two entry points: "Tesisler" (scoped to their own
-    // company's locations — see visibleSites()) and "Analizler" (cross-location
-    // comparison, also company-scoped). Everything else stays hidden.
+    // The customer gets three entry points, all company-scoped via
+    // visibleSites(): "Tesisler" (their own locations), "Ziyaret Raporları"
+    // (§11 — which dates and time slots they were serviced on, by whom) and
+    // "Analizler" (cross-location comparison). Everything else stays hidden.
+    const CLIENT_VIEWS = new Set(['sites', 'visitReports', 'insights']);
     $$('.sidebar .nav button').forEach(b => {
-      const view = b.dataset.view;
-      b.classList.toggle('hidden', view !== 'sites' && view !== 'insights');
+      b.classList.toggle('hidden', !CLIENT_VIEWS.has(b.dataset.view));
     });
     $$('.sidebar .nav-label').forEach(l => l.classList.add('hidden'));
 
