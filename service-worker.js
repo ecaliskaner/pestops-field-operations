@@ -1,6 +1,6 @@
 // Bump on every asset-manifest change so old caches are evicted.
-// v3: Modern SaaS design refresh + self-hosted Inter.
-const CACHE_NAME = 'ladybug-operations-v3';
+// v4: Real Leaflet field map (live technician tracking).
+const CACHE_NAME = 'ladybug-operations-v4';
 
 const ASSETS = [
   './',
@@ -9,6 +9,8 @@ const ASSETS = [
   './manifest.webmanifest',
   './icon.svg',
   './vendor/html5-qrcode.min.js',
+  './vendor/leaflet.js',
+  './vendor/leaflet.css',
   './vendor/fonts/inter-400.woff2',
   './vendor/fonts/inter-600.woff2',
   './vendor/fonts/inter-ext-400.woff2',

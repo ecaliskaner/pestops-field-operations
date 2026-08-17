@@ -228,6 +228,31 @@ export function getPlacementSchema(type) {
   return placementSchemas[key] || placementSchemas._default;
 }
 
+// Which zone of the floor plan a station's percentage coordinates fall in. Pure
+// geometry over the demo plan, used as the fallback "Bölge Adı" when a point has
+// no placement record yet. Lives here rather than in a view so the placement
+// reports can resolve an area name too.
+export function getStationArea(x, y) {
+  const px = (x / 100) * 800;
+  const py = (y / 100) * 500;
+  if (px >= 20 && px < 300 && py >= 20 && py < 220) return "Hammadde Deposu";
+  if (px >= 300 && px < 550 && py >= 20 && py < 140) return "Ofisler & Laboratuvar";
+  if (px >= 550 && px <= 780 && py >= 20 && py < 220) return "Sosyal Tesisler";
+  if (px >= 20 && px < 470 && py >= 220 && py <= 480) return "Ana Üretim Hattı";
+  if (px >= 470 && px <= 780 && py >= 220 && py <= 480) return "Ambalaj & Sevkiyat";
+  return "Dış Çevre / Genel";
+}
+
+// One-line digest of the type-specific placement fields, for the tracking
+// table. Returns '' when nothing type-specific has been recorded yet.
+export function placementSummary(station) {
+  const p = station.placement;
+  if (!p) return '';
+  const parts = [p.unitPower, p.tubeLength, p.uvTubeType, p.trapType, p.pheromonePeriod && `Feromon: ${p.pheromonePeriod}`]
+    .filter(Boolean);
+  return parts.join(' · ');
+}
+
 // ===== EXPANDED EQUIPMENT STATUS CODES =====
 export const equipmentStatusCodes = {
   clean: { name: 'Temiz & Sağlam', code: 'OK', color: 'var(--green)' },

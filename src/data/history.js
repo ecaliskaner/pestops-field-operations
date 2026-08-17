@@ -16,7 +16,7 @@ const WINDOW_MONTHS = 12;
 const LAST_DAY = 12;
 
 const TECHS = ['Ayşe Demir', 'Mert Kaya', 'Ece Yılmaz', 'Can Öztürk'];
-const PRIMARY_TECH = { s1: 'Ayşe Demir', s2: 'Mert Kaya', s3: 'Ece Yılmaz', s4: 'Can Öztürk', s5: 'Mert Kaya', s6: 'Ece Yılmaz' };
+const PRIMARY_TECH = { s1: 'Ayşe Demir', s2: 'Mert Kaya', s3: 'Ece Yılmaz', s4: 'Can Öztürk', s5: 'Mert Kaya', s6: 'Ece Yılmaz', s7: 'Ece Yılmaz', s8: 'Can Öztürk' };
 
 // Relative pest pressure by calendar month (0 = January). Flying peaks Jun–Aug;
 // rodents move indoors as it cools, so they peak Oct–Dec.

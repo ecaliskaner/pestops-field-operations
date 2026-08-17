@@ -8,7 +8,7 @@ import { applyRoleAccess } from '../core/roles.js';
 import { renderDashboard } from '../views/dashboard.js';
 import { renderSites } from '../views/sites.js';
 import { renderWork } from '../views/work.js';
-import { renderTeam } from '../views/team.js';
+import { renderTeam, startFieldSimulation } from '../views/team.js';
 import { renderAiPredictions, renderInsights } from '../views/insights.js';
 import { renderReports } from '../views/reports.js';
 import { renderMobileRoute } from '../views/mobile.js';
@@ -33,6 +33,16 @@ export function setView(view){
     renderInventory();
   } else if (view === 'finance') {
     renderFinance();
+  } else if (view === 'insights') {
+    // Re-render on entry so the charts mount into the now-visible container and
+    // re-scope to the current user (a customer sees only their own locations).
+    renderInsights();
+    renderAiPredictions();
+  } else if (view === 'team') {
+    // The map is built once during the initial render() while #team is hidden
+    // (zero size). Re-entering the view must re-measure it, or the tiles render
+    // grey. startFieldSimulation() is idempotent and calls invalidateSize().
+    startFieldSimulation();
   }
 }
 

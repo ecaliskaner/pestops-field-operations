@@ -6,7 +6,7 @@
 // city comparison (2-1), and the recommendation funnel (2-3).
 
 import { $, $$, toast } from '../core/dom.js';
-import { state } from '../core/state.js';
+import { state, visibleSites } from '../core/state.js';
 import { ui } from '../core/session.js';
 import { lineChart, barChart, stackedBarChart, donutChart, mountChart } from '../ui/charts.js';
 import { downloadChartSVG, downloadChartPNG } from '../ui/export.js';
@@ -39,12 +39,21 @@ const sel = {
   sites: null             // lazily seeded with every site id
 };
 
-const allSiteIds = () => state.sites.map(s => s.id);
+const allSiteIds = () => visibleSites().map(s => s.id);
+
+// Ids we have already offered to the selection, so newly-visible sites default
+// to selected exactly once. Without this, switching into the client scope would
+// leave their locations deselected (they were never in the set), and toggling a
+// site off would not stick (it would be re-added every render).
+const offered = new Set();
 
 // Every entry point goes through this, so the selection is seeded no matter
 // which renderer or handler runs first.
 function siteSet() {
-  if (!sel.sites) sel.sites = new Set(allSiteIds());
+  if (!sel.sites) sel.sites = new Set();
+  for (const id of allSiteIds()) {
+    if (!offered.has(id)) { offered.add(id); sel.sites.add(id); }
+  }
   return sel.sites;
 }
 
@@ -144,7 +153,7 @@ function renderTrend() {
   const grand = active.reduce((sum, k) => sum + totals[k].reduce((a, b) => a + b, 0), 0);
   const caption = $('#trendCaption');
   if (caption) {
-    const scopeLabel = ids.length === state.sites.length ? 'tüm portföy' : `${ids.length} tesis`;
+    const scopeLabel = ids.length === allSiteIds().length ? 'tüm portföy' : `${ids.length} tesis`;
     caption.textContent = `Son 12 ay · ${scopeLabel} · ${grand.toLocaleString('tr-TR')} bulgu`;
   }
 }
@@ -152,7 +161,8 @@ function renderTrend() {
 function renderRanking() {
   const host = $('#ranking');
   if (!host) return;
-  host.innerHTML = siteRanking().slice(0, 5).map((s, i) => `
+  const visible = new Set(allSiteIds());
+  host.innerHTML = siteRanking().filter(s => visible.has(s.id)).slice(0, 5).map((s, i) => `
     <div class="rank-row" data-site-id="${s.id}" style="cursor:pointer;">
       <span>0${i + 1}</span>
       <div><b>${s.name}</b><small>${s.company} · son 3 ayda ${s.recentPests} bulgu · ${s.openRecommendations} açık öneri</small></div>
@@ -172,7 +182,7 @@ function renderComparison() {
 
   const siteChips = $('#compareSiteChips');
   if (siteChips) {
-    siteChips.innerHTML = chipRow(state.sites.map(s => ({
+    siteChips.innerHTML = chipRow(visibleSites().map(s => ({
       label: s.name, value: s.id, attr: 'data-compare-site', on: siteSet().has(s.id)
     })));
   }

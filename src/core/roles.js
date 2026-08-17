@@ -64,18 +64,26 @@ export function applyRoleAccess() {
     }
   } 
   else if (role === 'client') {
-    $$('.sidebar .nav button').forEach(b => b.classList.add('hidden'));
+    // The customer gets two entry points: "Tesisler" (scoped to their own
+    // company's locations — see visibleSites()) and "Analizler" (cross-location
+    // comparison, also company-scoped). Everything else stays hidden.
+    $$('.sidebar .nav button').forEach(b => {
+      const view = b.dataset.view;
+      b.classList.toggle('hidden', view !== 'sites' && view !== 'insights');
+    });
     $$('.sidebar .nav-label').forEach(l => l.classList.add('hidden'));
-    
+
     $('#addSite')?.classList.add('hidden');
     $('#newWorkOrder')?.classList.add('hidden');
     $('#newWorkOrderSecondary')?.classList.add('hidden');
-    
+
     // `setView` only toggles which section is visible — it does not populate
     // the facility page. The client role starts here, so it has to be rendered
-    // explicitly or the customer lands on an empty screen.
-    ui.activeSiteId = 's1';
-    showCompanyDetail('s1');
+    // explicitly or the customer lands on an empty screen. `showCompanyDetail`
+    // scopes to their own primary site.
+    const homeSite = state.currentUser.siteId || 's1';
+    ui.activeSiteId = homeSite;
+    showCompanyDetail(homeSite);
     
     $('#backToSitesFromCompBtn')?.classList.add('hidden');
     $('#companyFileUploadForm')?.classList.add('hidden');

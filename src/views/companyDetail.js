@@ -4,7 +4,7 @@
 import { $, $$ } from '../core/dom.js';
 import { recalculateSiteStats, state } from '../core/state.js';
 import { ui } from '../core/session.js';
-import { chemicalDatabase, equipmentStatusCodes, equipmentTypes, getChemicalDocuments, getPlacementSchema, pestDatabase, stateLabel } from '../data/catalog.js';
+import { chemicalDatabase, equipmentStatusCodes, equipmentTypes, getChemicalDocuments, getPlacementSchema, getStationArea, pestDatabase, placementSummary, stateLabel } from '../data/catalog.js';
 import { setView } from '../core/router.js';
 import { renderClientAnalytics } from '../views/insights.js';
 import { toast } from '../core/dom.js';
@@ -15,8 +15,10 @@ import { showMobileInspect } from '../views/mobile.js';
 import { renderSites } from '../views/sites.js';
 import {
   barcodeFor, deviceReplacements, pointDeviceSummary, readingsForPoint,
-  recommendationsForSite, replacementReasons
+  recommendationsForSite, replacementReasons, technicianStats
 } from '../data/history.js';
+import { credentialDocs, KVKK_NOTICE } from '../data/credentials.js';
+import { techData } from '../data/seed.js';
 
 export function showCompanyDetail(siteId) {
   ui.activeSiteId = siteId;
@@ -141,9 +143,10 @@ export function switchCompanyTab(tabId) {
     files: 'paneCompFiles',
     recommendations: 'paneCompRecommendations',
     chemicals: 'paneCompChemicals',
-    analytics: 'paneCompAnalytics'
+    analytics: 'paneCompAnalytics',
+    credentials: 'paneCompCredentials'
   };
-  
+
   Object.entries(tabPanes).forEach(([t, id]) => {
     const pane = $(`#${id}`);
     if (pane) pane.classList.toggle('hidden', t !== tabId);
@@ -151,7 +154,42 @@ export function switchCompanyTab(tabId) {
 
   if (tabId === 'analytics') {
     renderClientAnalytics();
+  } else if (tabId === 'credentials') {
+    const site = state.sites.find(s => s.id === ui.activeSiteId);
+    if (site) renderCompanyCredentials(site);
   }
+}
+
+// Roadmap §11: the customer can open the technicians who serviced their site
+// and see each one's compliance documents (SGK, iş güvenliği, uygulama izni,
+// portör sağlık raporu). Which technicians serviced this facility is derived
+// from the visit history, so the list is honest — no one who never attended
+// appears. Documents are KVKK-safe placeholders (see data/credentials.js).
+export function renderCompanyCredentials(site) {
+  const host = $('#compCredentialsList');
+  if (!host) return;
+
+  const stats = technicianStats(site.id);
+  const techs = stats.length ? stats.map(t => t.tech) : ['Ayşe Demir'];
+
+  host.innerHTML = techs.map(tech => {
+    const meta = techData[tech] || [];
+    const initials = meta[0] || tech.slice(0, 2).toUpperCase();
+    const stat = stats.find(s => s.tech === tech);
+    const visitNote = stat ? `Bu tesiste ${stat.visits} ziyaret` : 'Atanmış teknisyen';
+    return `
+      <div class="cred-card panel" style="box-shadow:none; border:1px solid var(--line);">
+        <div class="cred-head">
+          <span class="tech-avatar" style="background:${meta[5] || '#eee'}">${initials}</span>
+          <div><b>${tech}</b><span>${visitNote}</span></div>
+        </div>
+        <div class="cred-docs">
+          ${credentialDocs(tech)}
+        </div>
+      </div>`;
+  }).join('');
+
+  host.insertAdjacentHTML('beforeend', `<p class="cred-kvkk">${KVKK_NOTICE} Belgeler yalnızca hizmet süresince ve yalnızca ilgili tesise gösterilir.</p>`);
 }
 
 export function renderCompanyMethods(site) {
@@ -482,27 +520,6 @@ function renderRecActions(rec, role) {
   }
 
   return '';
-}
-
-export function getStationArea(x, y) {
-  const px = (x / 100) * 800;
-  const py = (y / 100) * 500;
-  if (px >= 20 && px < 300 && py >= 20 && py < 220) return "Hammadde Deposu";
-  if (px >= 300 && px < 550 && py >= 20 && py < 140) return "Ofisler & Laboratuvar";
-  if (px >= 550 && px <= 780 && py >= 20 && py < 220) return "Sosyal Tesisler";
-  if (px >= 20 && px < 470 && py >= 220 && py <= 480) return "Ana Üretim Hattı";
-  if (px >= 470 && px <= 780 && py >= 220 && py <= 480) return "Ambalaj & Sevkiyat";
-  return "Dış Çevre / Genel";
-}
-
-// One-line digest of the type-specific placement fields, for the tracking
-// table. Returns '' when nothing type-specific has been recorded yet.
-export function placementSummary(station) {
-  const p = station.placement;
-  if (!p) return '';
-  const parts = [p.unitPower, p.tubeLength, p.uvTubeType, p.trapType, p.pheromonePeriod && `Feromon: ${p.pheromonePeriod}`]
-    .filter(Boolean);
-  return parts.join(' · ');
 }
 
 export function renderCompanyStationsTable(site) {

@@ -29,11 +29,33 @@ export function load(){
         if (!w.visitType) w.visitType = 'RZ';
       });
     }
-    return {...structuredClone(initial),...saved};
+    const merged = {...structuredClone(initial), ...saved};
+    // Reconcile against the seed: it may have gained sites since this session
+    // was persisted (e.g. new customer locations). Append any seed site the
+    // saved portfolio is missing, so the demo picks them up without forcing a
+    // manual localStorage reset. Existing (possibly edited) sites are untouched.
+    const have = new Set((merged.sites || []).map((s) => s.id));
+    for (const seedSite of initial.sites) {
+      if (!have.has(seedSite.id)) merged.sites.push(structuredClone(seedSite));
+    }
+    return merged;
   } catch { return structuredClone(initial); }
 }
 
 export const state = load();
+
+// Sites the current user is allowed to see. A customer (client role) is scoped
+// to their own company's locations only — the roadmap (§11) is explicit that a
+// customer must never see another company's data. Admin and technician roles
+// see the whole portfolio. This is the single source of truth for site
+// visibility; insights and the sites list both defer to it.
+export function visibleSites() {
+  const u = state.currentUser;
+  if (u && u.role === 'client' && u.company) {
+    return state.sites.filter((s) => s.company === u.company);
+  }
+  return state.sites;
+}
 
 export function save(){
   localStorage.setItem("ladybug-ops",JSON.stringify(state));

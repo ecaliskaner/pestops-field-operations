@@ -2445,8 +2445,157 @@ tr.rec-row-selected > td { background: #eef4ff !important; }
 
 /* ===== Phase 3a (Session G): field realism — live GPS, geofence, route opt, credentials, offline, NFC, audit ===== */
 
-/* --- 3-1 live map: smooth drift on the existing .map-person elements --- */
-.map-person { transition: left 1.05s linear, top 1.05s linear; }
+/* --- Real Leaflet field map (replaces the old abstract %-canvas) --- */
+.map-panel { padding: 0; overflow: hidden; }
+.field-map {
+  height: 440px;
+  width: 100%;
+  background: #e8edf0;
+  z-index: 0; /* keep tiles/controls under app overlays and modals */
+}
+.field-map .leaflet-container { font: inherit; background: #e8edf0; }
+.field-map .leaflet-tooltip {
+  font: 600 11px/1.35 "DM Sans", sans-serif;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 6px 18px rgba(16, 34, 51, .14);
+  color: #24323d;
+  padding: 5px 9px;
+}
+.field-map .leaflet-bar a {
+  color: #37505f; border-color: var(--line);
+}
+
+/* Technician live marker: coloured disc + initials + pulsing accuracy ring. */
+.tech-marker {
+  position: relative;
+  width: 34px; height: 34px;
+  display: grid; place-items: center;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  background: var(--tc, #1769e0);
+  color: #fff;
+  font: 700 10px "DM Sans", sans-serif;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, .3);
+}
+.tech-marker::after {
+  content: "";
+  position: absolute; inset: -8px;
+  border: 2px solid var(--tc, #1769e0);
+  border-radius: 50%;
+  opacity: .5;
+  animation: pulse 1.9s ease-out infinite;
+}
+.tech-marker.active {
+  width: 38px; height: 38px;
+  box-shadow: 0 0 0 3px rgba(19, 139, 103, .35), 0 4px 14px rgba(0, 0, 0, .35);
+}
+
+/* A technician reporting real GPS from the mobile app, as opposed to the
+   simulated fleet: solid green halo instead of the ambient pulse. */
+.tech-marker.live {
+  box-shadow: 0 0 0 3px #138b67, 0 4px 16px rgba(19, 139, 103, .5);
+}
+.tech-marker.live::after {
+  border-color: #138b67;
+  opacity: .9;
+  animation-duration: 1.1s;
+}
+
+/* Caption under the field map naming who is on real GPS right now. */
+.live-gps-note {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 4px;
+  min-height: 0;
+}
+.live-gps-note:not(:empty) {
+  margin-top: 10px;
+}
+.live-gps-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 11px;
+  border: 1px solid rgba(19, 139, 103, .35);
+  border-radius: 999px;
+  background: rgba(19, 139, 103, .08);
+  color: #0f6b50;
+  font: 600 12px "DM Sans", sans-serif;
+  cursor: pointer;
+  transition: background .15s ease, border-color .15s ease;
+}
+.live-gps-chip:hover { background: rgba(19, 139, 103, .16); }
+.live-gps-chip i {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: #138b67;
+  animation: pulse 1.4s ease-out infinite;
+}
+
+/* GPS contradicts the arrival the technician reported — the alert case. */
+.live-gps-chip.mismatch {
+  border-color: rgba(224, 87, 74, .5);
+  background: rgba(224, 87, 74, .12);
+  color: #a5342a;
+}
+.live-gps-chip.mismatch:hover { background: rgba(224, 87, 74, .22); }
+.live-gps-chip.mismatch i { background: #e0574a; animation: pulse 1s ease-out infinite; }
+
+.tech-marker.live.mismatch {
+  box-shadow: 0 0 0 3px #e0574a, 0 4px 16px rgba(224, 87, 74, .55);
+}
+.tech-marker.live.mismatch::after { border-color: #e0574a; animation-duration: .8s; }
+
+/* A fix that landed outside the İstanbul operating area — usually a stale or
+   default device location. Called out rather than left to vanish off-map. */
+.live-gps-chip.off-area {
+  border-color: rgba(217, 146, 43, .45);
+  background: rgba(217, 146, 43, .10);
+  color: #8a5b12;
+}
+.live-gps-chip.off-area:hover { background: rgba(217, 146, 43, .2); }
+.live-gps-chip.off-area i { background: #d9922b; animation: none; }
+
+/* Site pins on the real map: teardrop dot + floating label. */
+.site-pin {
+  width: 18px; height: 18px;
+  border: 2.5px solid #fff;
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .3);
+  background: #138b67;
+}
+.site-pin i {
+  position: absolute; top: 5px; left: 5px;
+  width: 6px; height: 6px; border-radius: 50%;
+  background: #fff;
+}
+.site-pin.risk { background: #e0574a; }
+.site-pin.watch { background: #d9922b; }
+.site-pin.ok { background: #138b67; }
+.site-pin-label {
+  position: absolute; top: -14px; left: 14px;
+  white-space: nowrap;
+  font: 700 8.5px "DM Sans", sans-serif;
+  color: #37505f;
+  background: rgba(255, 255, 255, .9);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 1px 5px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .1);
+}
+.site-pin-label.depot { color: #6b4a2a; }
+.depot-pin {
+  width: 24px; height: 24px;
+  display: grid; place-items: center;
+  font-size: 15px;
+  background: #fff;
+  border: 2px solid #c98a4b;
+  border-radius: 7px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .25);
+}
 
 /* --- 3-2 geofence rings, site pins, route overlay on the map canvas --- */
 .geofence-layer { position: absolute; inset: 0; z-index: 1; pointer-events: none; }

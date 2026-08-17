@@ -1,7 +1,7 @@
 // Extracted from app.js (Phase 0a-3).
 
 import { $ } from '../core/dom.js';
-import { recalculateSiteStats, state } from '../core/state.js';
+import { recalculateSiteStats, state, visibleSites } from '../core/state.js';
 import { stateLabel } from '../data/catalog.js';
 import { toast } from '../core/dom.js';
 import { save } from '../core/state.js';
@@ -12,12 +12,17 @@ export function renderSites(){
   const filter=$('[data-site-filter].active')?.dataset.siteFilter||'all';
   
   state.sites.forEach(recalculateSiteStats);
-  
+
+  // Scope: a client sees only their own company's locations (the "my locations"
+  // list); admin/technician see the whole portfolio. Everything below — counts,
+  // search and filters — works off this scoped set.
+  const scope = visibleSites();
+
   // Calculate dynamic filter counts
-  const totalCount = state.sites.length;
-  const riskCount = state.sites.filter(s => s.state === 'risk').length;
-  const watchCount = state.sites.filter(s => s.state === 'watch').length;
-  const healthyCount = state.sites.filter(s => s.state === 'healthy').length;
+  const totalCount = scope.length;
+  const riskCount = scope.filter(s => s.state === 'risk').length;
+  const watchCount = scope.filter(s => s.state === 'watch').length;
+  const healthyCount = scope.filter(s => s.state === 'healthy').length;
   
   // Update button counters in DOM dynamically
   const allBtn = $('[data-site-filter="all"] b');
@@ -29,7 +34,7 @@ export function renderSites(){
   const healthyBtn = $('[data-site-filter="healthy"] b');
   if (healthyBtn) healthyBtn.textContent = healthyCount;
   
-  const sites=state.sites.filter(s=>(filter==='all'||s.state===filter)&&(`${s.company} ${s.name}`.toLocaleLowerCase('tr').includes(query)));
+  const sites=scope.filter(s=>(filter==='all'||s.state===filter)&&(`${s.company} ${s.name}`.toLocaleLowerCase('tr').includes(query)));
   
   $('#siteTable').innerHTML=sites.map(s=>`
     <tr>

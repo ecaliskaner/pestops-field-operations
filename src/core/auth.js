@@ -11,7 +11,7 @@ export const users = {
   'admin@insectram.com': { email: 'admin@ladybug.com', name: 'Seda Kaya', role: 'admin', title: 'Operasyon Yöneticisi (Boss)', avatar: 'SK' },
   'ayse@ladybug.com': { email: 'ayse@ladybug.com', name: 'Ayşe Demir', role: 'tech', title: 'Baş Teknisyen', avatar: 'AD' },
   'ayse@insectram.com': { email: 'ayse@ladybug.com', name: 'Ayşe Demir', role: 'tech', title: 'Baş Teknisyen', avatar: 'AD' },
-  'acme@client.com': { email: 'acme@client.com', name: 'Ahmet Çelik', role: 'client', title: 'Acme Gıda Yetkilisi', avatar: 'AC' }
+  'acme@client.com': { email: 'acme@client.com', name: 'Ahmet Çelik', role: 'client', title: 'Acme Gıda Yetkilisi', avatar: 'AC', company: 'Acme Foods', siteId: 's1' }
 };
 
 // Fast role switching for the demo (task 5-4): flip the presenter between

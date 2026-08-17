@@ -1,6 +1,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const { handleMobileApi } = require('./api/mobileApi');
 
 const rootDir = __dirname;
 const port = Number(process.env.PORT || 4173);
@@ -57,6 +58,14 @@ function readPersistedStateScript() {
 
 http.createServer((req, res) => {
   const requestPath = (req.url || '/').split('?')[0];
+
+  // Mobile technician app REST API. Owns everything under /api/mobile/*.
+  if (requestPath.startsWith('/api/mobile')) {
+    Promise.resolve(handleMobileApi(req, res)).catch(() => {
+      if (!res.headersSent) send(res, 500, 'Mobile API error');
+    });
+    return;
+  }
 
   if (req.method === 'GET' && requestPath === '/state.js') {
     send(res, 200, readPersistedStateScript(), { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'no-cache' });

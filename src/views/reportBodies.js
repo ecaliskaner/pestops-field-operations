@@ -12,10 +12,13 @@
 import { lineChart, barChart, stackedBarChart, donutChart } from '../ui/charts.js';
 import {
   getVisits, visitsForSite, monthlyPestTotals, recommendationStats,
-  chemicalStats, getRecommendations, siteRanking, technicianStats
+  chemicalStats, getRecommendations, siteRanking, technicianStats,
+  pointDeviceSummary, readingsForPoint, deviceReplacements, barcodeFor
 } from '../data/history.js';
 import { initial } from '../data/seed.js';
-import { visitTypes, equipmentTypes } from '../data/catalog.js';
+import {
+  visitTypes, equipmentTypes, getStationArea, placementSummary
+} from '../data/catalog.js';
 import { STANDARDS, siteReadiness, sitesInScope, STATUS_LABEL, STATUS_CHIP, openNonConformities } from '../data/compliance.js';
 
 const esc = (s) => String(s ?? '')
@@ -421,6 +424,251 @@ export function nonConformityReport(siteId) {
   + section('Son Kapatılan Maddeler', table(
       ['Kayıt', 'Tesis', 'Kategori', 'Tespit', 'Açılış', 'Kapanış'], closedRows,
       { empty: 'Kapatılmış madde bulunmuyor.' }));
+}
+
+/* ------------------------------- 6 · placement-list activity report (§3–4, §10) */
+
+// The roadmap's "yerleşim listesi": every monitoring point at a facility, laid
+// out per device family (bait boxes, detectors, fly units and trap types each
+// get their own sheet in §4), with the activity recorded against it after
+// service — "Bu oluşan listelerde daha sonra servis verildikten sonra girilecek
+// veriler ile oluşan listelerdir" (§3).
+//
+// The point number is the permanent identity, not the barcode (§8), so the
+// activity totals below span every device that has ever occupied the point and
+// the replacement log states where the hardware changed.
+// One row per monitoring point, enriched with its whole-window reading history.
+// Exported so the CSV export builds from exactly the same numbers the printed
+// sheet shows, rather than re-deriving them and drifting.
+export function placementPoints(siteId) {
+  const site = siteById(siteId);
+  const stations = (site && site.stations) || [];
+
+  return stations.map((st) => {
+    const summary = pointDeviceSummary(siteId, st.code);
+    const readings = readingsForPoint(siteId, st.code);
+    const placement = st.placement || {};
+
+    // Dominant species at this point over the window — what the point is
+    // actually catching, which is the reason the list carries activity at all.
+    const bySpecies = {};
+    for (const r of readings) {
+      if (r.pestCount > 0) bySpecies[r.pestName] = (bySpecies[r.pestName] || 0) + r.pestCount;
+    }
+    const dominant = Object.entries(bySpecies).sort((a, b) => b[1] - a[1])[0];
+    const last = readings[readings.length - 1];
+
+    return {
+      station: st,
+      code: st.code,
+      family: equipmentName(st.type),
+      area: placement.areaName || getStationArea(st.x, st.y),
+      pointNo: placement.pointNo || st.code.replace(/^\D+/, ''),
+      specs: placementSummary(st),
+      barcode: summary.generations.length
+        ? summary.generations[summary.generations.length - 1].barcode
+        : barcodeFor(siteId, st.code, 1),
+      generations: summary.generations.length || 1,
+      readings: summary.totalReadings,
+      totalPests: summary.totalPests,
+      dominant: dominant ? `${dominant[0]} (${dominant[1]})` : '—',
+      lastStatus: last ? last.status : st.status,
+      lastDate: last ? last.date : '—'
+    };
+  });
+}
+
+export function placementActivityReport(siteId) {
+  const site = siteById(siteId);
+  const points = placementPoints(siteId);
+
+  // Group into the per-family placement sheets the roadmap defines.
+  const families = new Map();
+  for (const p of points) {
+    if (!families.has(p.family)) families.set(p.family, []);
+    families.get(p.family).push(p);
+  }
+
+  const familySections = [...families.entries()].map(([family, rows]) => {
+    const pests = rows.reduce((s, r) => s + r.totalPests, 0);
+    return `
+      <div class="rep-audit-site">
+        <div class="rep-audit-head">
+          <b>${esc(family)}</b>
+          <span style="color:var(--muted); font-size:10px;">${rows.length} nokta · ${rows.reduce((s, r) => s + r.readings, 0)} okuma</span>
+          ${chip(pests ? `${pests} bulgu` : 'Bulgu yok', pests ? 'critical' : 'healthy')}
+        </div>
+        ${table(['Nokta', 'Bölge Adı', 'Güncel Barkod', 'Okuma', 'Toplam Bulgu', 'Baskın Tür', 'Son Durum'],
+          rows.map((r) => {
+            const [label, kind] = STATUS_TR[r.lastStatus] || ['—', 'secondary'];
+            return [
+              `<b>${esc(r.code)}</b>${r.specs ? `<br><span style="color:var(--muted); font-size:10px;">${esc(r.specs)}</span>` : ''}`,
+              esc(r.area),
+              `<span style="font-family:ui-monospace,monospace; font-size:10px;">${esc(r.barcode)}</span>${r.generations > 1 ? `<br><span style="color:var(--amber); font-size:10px;">${r.generations}. cihaz</span>` : ''}`,
+              r.readings,
+              r.totalPests > 0 ? `<b style="color:var(--red)">${r.totalPests}</b>` : '<span style="color:var(--muted)">0</span>',
+              esc(r.dominant),
+              `${chip(label, kind)}<br><span style="color:var(--muted); font-size:10px;">${esc(r.lastDate)}</span>`
+            ];
+          }))}
+      </div>`;
+  }).join('');
+
+  // Activity per point — the heat ranking a facility manager reads first.
+  const ranked = points.slice().sort((a, b) => b.totalPests - a.totalPests).slice(0, 10);
+  const bars = barChart({
+    title: 'Nokta bazında toplam bulgu · en yoğun 10 nokta',
+    labels: ranked.map((r) => r.code),
+    series: [{ name: 'Toplam bulgu', values: ranked.map((r) => r.totalPests) }],
+    height: 250
+  });
+
+  // §8: a swapped device keeps the point's number and its history.
+  const swaps = deviceReplacements(siteId);
+  const swapRows = swaps.map((s) => [
+    `<b>${esc(s.code)}</b>`,
+    esc(s.date),
+    chip(esc(s.reason), s.reasonCode === 'KA' ? 'critical' : 'warning'),
+    `<span style="font-family:ui-monospace,monospace; font-size:10px;">${esc(s.oldBarcode)}</span>`,
+    `<span style="font-family:ui-monospace,monospace; font-size:10px;">${esc(s.newBarcode)}</span>`,
+    esc(s.note)
+  ]);
+
+  const totalPests = points.reduce((s, p) => s + p.totalPests, 0);
+  const activePoints = points.filter((p) => p.totalPests > 0).length;
+
+  return docHeader({
+    title: 'Yerleşim Listesi ve Aktivite Raporu',
+    subtitle: `${site.company} · ${site.name} · ${points.length} kontrol noktası`,
+    cert: certNo('placement', siteId),
+    badge: chip(`${families.size} ekipman ailesi`, 'secondary')
+  })
+  + metaGrid([
+    ['Toplam nokta', `<b>${points.length}</b>`],
+    ['Ekipman ailesi', `<b>${families.size}</b>`],
+    ['Toplam okuma', `<b>${points.reduce((s, p) => s + p.readings, 0)}</b>`],
+    ['Toplam bulgu', `<b style="color:${totalPests ? 'var(--red)' : 'var(--green)'}">${totalPests}</b>`],
+    ['Aktivite görülen nokta', `<b>${activePoints}/${points.length}</b>`],
+    ['Cihaz değişimi', `<b>${swaps.length}</b>`]
+  ])
+  + section('Nokta Bazında Aktivite Yoğunluğu', `<div class="rep-chart">${bars}</div>`)
+  + section('Yerleşim Listeleri — Ekipman Ailesi Bazında', familySections)
+  + section('Cihaz Değişim Kayıtları', table(
+      ['Nokta', 'Tarih', 'Sebep', 'Eski Barkod', 'Yeni Barkod', 'Not'], swapRows,
+      { empty: 'Bu tesiste kayıtlı cihaz değişimi bulunmuyor.' })
+    + `<p class="rep-note">Kayıp, kırık veya yenilenen bir cihazın yerine aynı
+       nokta numarasına yeni barkod tanımlanır; noktaya ait eski okuma kayıtları
+       ölçüm ve kıyaslama için korunur.</p>`);
+}
+
+/* --------------------------------------- 7 · activity-only report (§7, §10) */
+
+// §10 lists a standalone activity report among the documents printable at the
+// end of a visit ("aktivite girildiği için sadece aktivite raporu"). Unlike the
+// service report it carries no clean stations at all — only what was found, at
+// which point, of which species and how many, the way §7 describes it: "10 nolu
+// yem istasyonunda 2 adet fare, 45 nolu sinek cihazında 23 adet karasinek".
+export function activityReport(visit) {
+  const site = siteById(visit.siteId);
+  const stationByCode = new Map((site.stations || []).map((s) => [s.code, s]));
+
+  const active = visit.readings.filter((r) => r.pestCount > 0);
+  const faults = visit.readings.filter((r) => r.status === 'damaged' || r.status === 'missing');
+
+  const areaOf = (code) => {
+    const st = stationByCode.get(code);
+    if (!st) return '—';
+    return (st.placement && st.placement.areaName) || getStationArea(st.x, st.y);
+  };
+
+  const activityRows = active
+    .slice()
+    .sort((a, b) => b.pestCount - a.pestCount)
+    .map((r) => [
+      `<b>${esc(r.code)}</b>`,
+      esc(equipmentName(r.type)),
+      esc(areaOf(r.code)),
+      `<b>${esc(r.pestName)}</b>`,
+      `<b style="color:var(--red)">${r.pestCount}</b>`,
+      chip((STATUS_TR[r.status] || ['—', 'secondary'])[0], (STATUS_TR[r.status] || ['', 'secondary'])[1])
+    ]);
+
+  // Species rollup, with the points each species was found at.
+  const bySpecies = {};
+  for (const r of active) {
+    const s = (bySpecies[r.pestName] ||= { name: r.pestName, count: 0, points: [] });
+    s.count += r.pestCount;
+    s.points.push(`${r.code} (${r.pestCount})`);
+  }
+  const speciesList = Object.values(bySpecies).sort((a, b) => b.count - a.count);
+
+  const speciesRows = speciesList.map((s) => [
+    `<b>${esc(s.name)}</b>`,
+    `<b style="color:var(--red)">${s.count}</b>`,
+    s.points.length,
+    `<span style="font-size:10px;">${esc(s.points.join(' · '))}</span>`
+  ]);
+
+  const donut = speciesList.length
+    ? donutChart({
+        title: 'Tür dağılımı',
+        centerLabel: 'bulgu',
+        centerValue: String(visit.totals.all),
+        data: speciesList.map((s) => ({ label: s.name, value: s.count })),
+        height: 240
+      })
+    : '';
+
+  const faultRows = faults.map((r) => [
+    `<b>${esc(r.code)}</b>`,
+    esc(equipmentName(r.type)),
+    esc(areaOf(r.code)),
+    chip((STATUS_TR[r.status] || ['—', 'secondary'])[0], 'warning')
+  ]);
+
+  const chemRows = visit.chemicals.map((c) => [
+    esc(c.name), `${c.quantity} ${esc(c.unit)}`, esc(c.area), esc(c.tech)
+  ]);
+
+  return docHeader({
+    title: 'Aktivite Raporu',
+    subtitle: `${site.company} · ${visit.siteName} · ${visit.date}`,
+    cert: certNo('activity', visit.id),
+    badge: chip(visit.totals.all ? `${visit.totals.all} bulgu` : 'Aktivite yok',
+      visit.totals.all ? 'critical' : 'healthy')
+  })
+  + metaGrid([
+    ['Ziyaret No', `<b>${esc(visit.id)}</b>`],
+    ['Tarih', `<b>${esc(visit.date)}</b>`],
+    ['Ziyaret Tipi', `<b>${esc(visitTypeName(visit.visitType))}</b>`],
+    ['Teknisyen', `<b>${esc(visit.tech)}</b>`],
+    ['Aktivite görülen nokta', `<b style="color:${active.length ? 'var(--red)' : 'var(--green)'}">${active.length}/${visit.readings.length}</b>`],
+    ['Toplam bulgu', `<b style="color:${visit.totals.all ? 'var(--red)' : 'var(--green)'}">${visit.totals.all}</b>`]
+  ])
+  + section('Aktivite Tespit Edilen Noktalar', table(
+      ['Nokta', 'Cihaz Tipi', 'Bölge', 'Gözlenen Tür', 'Adet', 'Durum'], activityRows,
+      { empty: 'Bu ziyarette hiçbir noktada zararlı aktivitesi tespit edilmemiştir.' }))
+  + section('Kategori Dağılımı', statRow([
+      { label: 'Kemirgen', value: visit.totals.rodent, tone: visit.totals.rodent ? 'red' : null },
+      { label: 'Uçan haşere', value: visit.totals.flying, tone: visit.totals.flying ? 'red' : null },
+      { label: 'Yürüyen haşere', value: visit.totals.crawler, tone: visit.totals.crawler ? 'red' : null },
+      { label: 'Farklı tür', value: speciesList.length },
+      { label: 'Arızalı / kayıp cihaz', value: faults.length, tone: faults.length ? 'amber' : null }
+    ]))
+  + (speciesList.length
+      ? section('Tür Bazında Döküm', table(
+          ['Gözlenen Tür', 'Toplam Adet', 'Nokta Sayısı', 'Tespit Edilen Noktalar'], speciesRows)
+        + `<div class="rep-chart rep-chart-narrow">${donut}</div>`)
+      : '')
+  + section('Ekipman Arıza ve Kayıp Kayıtları', table(
+      ['Nokta', 'Cihaz Tipi', 'Bölge', 'Durum'], faultRows,
+      { empty: 'Bu ziyarette arızalı veya kayıp cihaz kaydedilmemiştir.' }))
+  + section('Aktiviteye Karşı Uygulanan Ürünler', table(
+      ['Ürün', 'Miktar', 'Uygulama Alanı', 'Uygulayan'], chemRows,
+      { empty: 'Bu ziyarette kimyasal uygulama yapılmamıştır.' })
+    + `<p class="rep-note">Aktivite kayıtları tesiste okutulan QR kodları ile
+       noktaya bağlanmıştır; adet bilgileri saha formunda teknisyen tarafından
+       girilmiştir.</p>`);
 }
 
 /* --------------------------------------------------- 5 · audit package (2-4) */

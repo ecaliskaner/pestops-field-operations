@@ -172,6 +172,63 @@ export const initial = {
         { code:"C-02", type:"crawler", x:68, y:72, checked:true, status:"clean", baitStatus:"intact", pestType:"none", pestCount:0, notes:"" },
         { code:"ILT-01", type:"insect_light_trap", x:50, y:48, checked:true, status:"clean", baitStatus:"intact", pestType:"none", pestCount:0, notes:"" }
       ]
+    },
+    {
+      id:"s7", company:"Acme Foods", name:"İzmir Soğuk Hava Deposu", city:"İzmir", score:77, state:"watch", issues:1, last:"11 Tem · Ece Yılmaz", next:"16 Tem, 10:00", color:"#d7e9f4",
+      sector: "Gıda Üretimi & Depolama",
+      contact: { name: "Ahmet Yılmaz", phone: "+90 532 123 4567", email: "ahmet@acmefoods.com" },
+      methods: [
+        { name: "Kemirgen İstasyon Kontrolü", desc: "Soğuk hava deposu dış çevresinde kilitli yem istasyonları.", active: true },
+        { name: "Yürüyen Haşere İzleme", desc: "Yükleme koridorlarında yapışkan pheromone tuzakları.", active: true },
+        { name: "Uçan Haşere UV Işıklı Cihazlar", desc: "Sevkiyat kabul alanında UV cihaz denetimi.", active: true }
+      ],
+      files: [
+        { name: "Acme_Izmir_Servis_Sozlesmesi.pdf", type: "pdf", size: "1.1 MB", date: "04 Ocak 2026" }
+      ],
+      stations: [
+        { code:"R-01", type:"rodent", x:16, y:24, checked:true, status:"clean", baitStatus:"intact", pestType:"none", pestCount:0, notes:"" },
+        { code:"R-02", type:"rodent", x:52, y:26, checked:true, status:"clean", baitStatus:"replaced", pestType:"none", pestCount:0, notes:"" },
+        { code:"R-03", type:"rodent", x:82, y:22, checked:true, status:"activity", baitStatus:"consumed", pestType:"mouse", pestCount:1, notes:"Sevkiyat kapısı çevresinde kemirgen izi." },
+        { code:"C-01", type:"crawler", x:28, y:70, checked:true, status:"clean", baitStatus:"intact", pestType:"none", pestCount:0, notes:"" },
+        { code:"C-02", type:"crawler", x:68, y:74, checked:false, status:"unchecked", baitStatus:"intact", pestType:"none", pestCount:0, notes:"" },
+        { code:"F-01", type:"flying", x:50, y:50, checked:true, status:"clean", baitStatus:"intact", pestType:"none", pestCount:0, notes:"" }
+      ],
+      serviceScope: {
+        outdoorRodent: { frequency: 2, unit: 'ay', seasonNote: '' },
+        indoorRodent: { frequency: 4, unit: 'ay', seasonNote: '' },
+        crawlingPest: { frequency: 4, unit: 'ay', seasonNote: '' },
+        flyingPest: { frequency: 4, unit: 'ay', seasonNote: 'Nisan-Ekim: 4/ay, Kasım-Mart: 2/ay' },
+        storagePest: { frequency: 4, unit: 'ay', seasonNote: '' }
+      },
+      contract: { taxOffice: 'Gebze VD', taxNo: '1234567890', annualPrice: 39600, monthlyPrice: 3300, extraVisitPrice: 650, emergencyCallPrice: 1300, period: '01.01.2026 - 31.12.2026' }
+    },
+    {
+      id:"s8", company:"Acme Foods", name:"Ankara Dağıtım Merkezi", city:"Ankara", score:86, state:"healthy", issues:0, last:"10 Tem · Can Öztürk", next:"17 Tem, 09:30", color:"#d8e9e4",
+      sector: "Gıda Üretimi & Depolama",
+      contact: { name: "Ahmet Yılmaz", phone: "+90 532 123 4567", email: "ahmet@acmefoods.com" },
+      methods: [
+        { name: "Kemirgen İstasyon Kontrolü", desc: "Dağıtım merkezi dış çevresinde kilitli yem istasyonları.", active: true },
+        { name: "Yürüyen Haşere İzleme", desc: "Depo içlerinde yapışkan pheromone tuzakları.", active: true }
+      ],
+      files: [
+        { name: "Acme_Ankara_Servis_Sozlesmesi.pdf", type: "pdf", size: "980 KB", date: "04 Ocak 2026" }
+      ],
+      stations: [
+        { code:"R-01", type:"rodent", x:20, y:24, checked:true, status:"clean", baitStatus:"intact", pestType:"none", pestCount:0, notes:"" },
+        { code:"R-02", type:"rodent", x:50, y:22, checked:true, status:"clean", baitStatus:"replaced", pestType:"none", pestCount:0, notes:"" },
+        { code:"R-03", type:"rodent", x:80, y:26, checked:true, status:"clean", baitStatus:"intact", pestType:"none", pestCount:0, notes:"" },
+        { code:"C-01", type:"crawler", x:30, y:72, checked:true, status:"clean", baitStatus:"intact", pestType:"none", pestCount:0, notes:"" },
+        { code:"C-02", type:"crawler", x:70, y:74, checked:true, status:"clean", baitStatus:"intact", pestType:"none", pestCount:0, notes:"" },
+        { code:"ILT-01", type:"insect_light_trap", x:50, y:48, checked:true, status:"clean", baitStatus:"intact", pestType:"none", pestCount:0, notes:"" }
+      ],
+      serviceScope: {
+        outdoorRodent: { frequency: 2, unit: 'ay', seasonNote: '' },
+        indoorRodent: { frequency: 4, unit: 'ay', seasonNote: '' },
+        crawlingPest: { frequency: 4, unit: 'ay', seasonNote: '' },
+        flyingPest: { frequency: 4, unit: 'ay', seasonNote: 'Nisan-Ekim: 4/ay, Kasım-Mart: 2/ay' },
+        storagePest: { frequency: 4, unit: 'ay', seasonNote: '' }
+      },
+      contract: { taxOffice: 'Gebze VD', taxNo: '1234567890', annualPrice: 42000, monthlyPrice: 3500, extraVisitPrice: 680, emergencyCallPrice: 1400, period: '01.01.2026 - 31.12.2026' }
     }
   ],
   work: [

@@ -18,6 +18,7 @@ import { setView } from '../core/router.js';
 import { ui } from '../core/session.js';
 import { showCompanyDetail } from '../views/companyDetail.js';
 import { switchRole } from '../core/auth.js';
+import { getGpsAlerts } from '../core/gpsAlerts.js';
 
 // Session-lifetime demo events (e.g. an emailed report). Deliberately not
 // persisted — a reset should wipe them, and it does.
@@ -30,6 +31,21 @@ window.__DEMO_NOTIFS__ = window.__DEMO_NOTIFS__ || [];
 // keeps working via the shared window.__ACTIVE_NOTIFS__ list.
 function operationalNotifs() {
   const list = [];
+  // Location-mismatch alerts come first: a technician reporting an arrival they
+  // are not actually at is the most actionable thing the office can see. These
+  // are real device fixes from the mobile app, not simulation.
+  getGpsAlerts().forEach(a => {
+    const dist = a.distanceM >= 1000
+      ? `${(a.distanceM / 1000).toFixed(a.distanceM >= 100000 ? 0 : 1)} km`
+      : `${a.distanceM} m`;
+    list.push({
+      title: `Konum uyuşmazlığı: ${a.techName}`,
+      desc: `${a.siteCompany || 'Tesis'} için "tesise varıldı" bildirildi, ancak cihaz konumu ${dist} uzakta (geofence ${a.radiusM} m). İlk QR okutulmadan iş gerçek olarak başlamaz.`,
+      time: new Date(a.at).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
+      type: 'alert',
+      action: () => setView('team')
+    });
+  });
   state.sites.forEach(s => {
     if (s.state === 'risk') list.push({
       title: `Kritik Risk: ${s.company}`,

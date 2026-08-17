@@ -11,6 +11,7 @@
     <link rel="preload" href="./vendor/fonts/inter-600.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="./vendor/fonts/inter-ext-400.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="./vendor/fonts/inter-ext-600.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="./vendor/leaflet.css" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
@@ -163,7 +164,7 @@
 
         <section id="team" class="view">
           <div class="page-heading compact"><div><p class="overline">EKİP & ROTA</p><h1>Saha görünürlüğü</h1><p>Teknisyenlerin rota, zaman ve doğrulama durumları.</p></div><span class="live-pill" style="font-size:11px;"><i></i> Canlı GPS simülasyonu</span></div>
-          <div class="team-layout"><article class="panel map-panel"><div class="map-toolbar"><b>İstanbul saha bölgesi</b><span class="live-pill"><i></i> 4 teknisyen sahada</span></div><div class="map-canvas"><div class="map-label label-one">AVRUPA YAKASI</div><div class="map-label label-two">ANADOLU YAKASI</div><button class="map-person active" data-tech="Ayşe Demir" style="left:24%;top:58%">AD</button><button class="map-person" data-tech="Mert Kaya" style="left:24%;top:58%">MK</button><button class="map-person" data-tech="Ece Yılmaz" style="left:24%;top:58%">EY</button><button class="map-person" data-tech="Can Öztürk" style="left:24%;top:58%">CÖ</button></div></article><aside class="panel tech-panel"><p class="overline">CANLI DURUM</p><div id="techDetail"></div><div class="verification-note"><span>✓</span><p><b>İlk QR doğrulaması</b><br />Gerçek servis başlangıcı, tesiste ilk QR okutulduğunda kayda alınır.</p></div></aside></div>
+          <div class="team-layout"><article class="panel map-panel"><div class="map-toolbar"><b>İstanbul saha bölgesi · canlı konum</b><span class="live-pill"><i></i> 4 teknisyen sahada</span></div><div id="fieldMap" class="field-map"></div><div id="liveGpsNote" class="live-gps-note"></div></article><aside class="panel tech-panel"><p class="overline">CANLI DURUM</p><div id="techDetail"></div><div class="verification-note"><span>✓</span><p><b>İlk QR doğrulaması</b><br />Gerçek servis başlangıcı, tesiste ilk QR okutulduğunda kayda alınır.</p></div></aside></div>
 
           <div class="field-realism-grid">
             <article class="panel geofence-panel">
@@ -585,6 +586,7 @@
                 <button class="comp-nav-tab" data-comp-tab="recommendations">✓ Öneriler & Aksiyonlar (<span id="compRecsCount">0</span>)</button>
                 <button class="comp-nav-tab" data-comp-tab="chemicals">💊 Kimyasal Kullanım (<span id="compChemicalsCount">0</span>)</button>
                 <button class="comp-nav-tab" data-comp-tab="analytics">📊 Tesis Analizleri</button>
+                <button class="comp-nav-tab" data-comp-tab="credentials">🛡 Hizmet Personeli & Belgeler</button>
               </nav>
             </aside>
 
@@ -1173,6 +1175,20 @@
                 </div>
               </div>
 
+              <!-- TAB Pane: Service technician credentials (roadmap §11) -->
+              <div class="tab-pane hidden" id="paneCompCredentials">
+                <article class="panel">
+                  <div class="panel-header" style="margin-bottom:14px;">
+                    <div>
+                      <p class="overline">HİZMET PERSONELİ</p>
+                      <h2>Tesisinize Hizmet Veren Teknisyenler & Belgeleri</h2>
+                    </div>
+                  </div>
+                  <p style="font-size:12px; color:var(--muted); margin-bottom:16px;">Tesisinizde görev yapan teknisyenlerin SGK, iş güvenliği, uygulama izin ve sağlık (portör) belgelerinin güncellik durumu.</p>
+                  <div id="compCredentialsList" style="display:grid; gap:16px;"></div>
+                </article>
+              </div>
+
             </div>
           </div>
         </section>
@@ -1563,6 +1579,10 @@
     <!-- Vendored (html5-qrcode 2.3.8): a CDN fetch would kill the QR scanner
          on venue wifi, and the demo cannot depend on the network. -->
     <script src="./vendor/html5-qrcode.min.js"></script>
+    <!-- Vendored Leaflet 1.9.4: real map for live field tracking. Tiles load
+         from the network; the library itself is local so it never fails on
+         venue wifi during a demo. -->
+    <script src="./vendor/leaflet.js"></script>
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
