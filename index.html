@@ -782,8 +782,15 @@
 
                   <article class="panel plan-map-panel">
                     <div class="map-toolbar" style="display:flex; justify-content:space-between; align-items:center; padding:10px 18px;">
-                      <b>İnteraktif Kat Planı</b>
-                      <div style="display:flex; align-items:center; gap:16px;">
+                      <div>
+                        <b>İnteraktif Kat Planı</b>
+                        <div id="planSourceNote" style="font-size:10px; color:var(--muted); margin-top:2px;">Örnek şablon plan — kendi kat planınızı yükleyebilirsiniz.</div>
+                      </div>
+                      <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                        <button class="secondary-btn plan-tool-btn" id="btnAddStation">＋ İstasyon Ekle</button>
+                        <label class="secondary-btn plan-tool-btn" id="planUploadLabel" for="floorPlanInput" style="margin:0;">🖼 Plan Yükle</label>
+                        <input type="file" id="floorPlanInput" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden />
+                        <button class="secondary-btn plan-tool-btn hidden" id="btnRemovePlan">Planı Kaldır</button>
                         <label style="display:inline-flex; align-items:center; gap:6px; font-size:11px; font-weight:700; cursor:pointer; background:var(--soft); padding:4px 8px; border:1px solid var(--line); border-radius:6px; margin:0; color:var(--ink);">
                           <input type="checkbox" id="heatmapToggleBtn" style="cursor:pointer; margin:0;"> 🔥 Isı Haritası
                         </label>
@@ -797,6 +804,7 @@
                     </div>
                     <div class="plan-canvas-container" style="min-height:360px;">
                       <div class="blueprint-svg-wrap" id="blueprintWrapper">
+                        <img id="floorPlanImage" class="floor-plan-image hidden" alt="Tesis kat planı" />
                         <svg class="blueprint-svg" viewBox="0 0 800 500" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
                           <defs>
                             <pattern id="blueprint-grid2" width="20" height="20" patternUnits="userSpaceOnUse">
@@ -836,6 +844,7 @@
                         <span class="status-chip" id="detStationStatus">Temiz</span>
                         <h3 id="detStationCode" style="margin:0;">R-01</h3>
                         <button class="secondary-btn" id="printStationQrBtn" style="height:26px; padding:0 8px; font-size:10px; margin-left:auto; font-weight:700;">🖨 QR Barkod</button>
+                        <button class="secondary-btn" id="btnDeleteStation" style="height:26px; padding:0 8px; font-size:10px; font-weight:700; color:var(--red); border-color:var(--red);">🗑 Sil</button>
                       </div>
                       <p class="overline">İSTASYON TÜRÜ</p>
                       <b id="detStationType">Kemirgen Yem İstasyonu</b>

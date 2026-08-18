@@ -17,7 +17,7 @@ import {
 } from '../data/history.js';
 import { allSites } from '../core/state.js';
 import {
-  visitTypes, equipmentTypes, getStationArea, placementSummary
+  visitTypes, equipmentTypes, stationAreaName, placementSummary
 } from '../data/catalog.js';
 import { STANDARDS, siteReadiness, sitesInScope, STATUS_LABEL, STATUS_CHIP, openNonConformities } from '../data/compliance.js';
 
@@ -46,7 +46,10 @@ const STATUS_TR = {
   activity: ['Aktivite', 'critical'],
   damaged: ['Hasarlı', 'warning'],
   missing: ['Kayıp', 'warning'],
-  bait_changed: ['Yem Değişti', 'secondary']
+  bait_changed: ['Yem Değişti', 'secondary'],
+  // A point placed but not yet serviced — reachable since stations can be added
+  // in-app. Without this the placement sheet renders a bare "—".
+  unchecked: ['Kontrol Bekliyor', 'secondary']
 };
 
 const chip = (label, kind) =>
@@ -464,7 +467,7 @@ export function placementPoints(siteId) {
       station: st,
       code: st.code,
       family: equipmentName(st.type),
-      area: placement.areaName || getStationArea(st.x, st.y),
+      area: stationAreaName(site, st),
       pointNo: placement.pointNo || st.code.replace(/^\D+/, ''),
       specs: placementSummary(st),
       barcode: summary.generations.length
@@ -580,7 +583,7 @@ export function activityReport(visit) {
   const areaOf = (code) => {
     const st = stationByCode.get(code);
     if (!st) return '—';
-    return (st.placement && st.placement.areaName) || getStationArea(st.x, st.y);
+    return stationAreaName(site, st);
   };
 
   const activityRows = active

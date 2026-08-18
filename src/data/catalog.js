@@ -243,6 +243,22 @@ export function getStationArea(x, y) {
   return "Dış Çevre / Genel";
 }
 
+/**
+ * Display name for the zone a point sits in.
+ *
+ * The zone lookup above only describes the built-in template plan. Once a
+ * facility has its own uploaded floor plan those five room names are fiction,
+ * so we fall back to whatever the placement record says and otherwise admit we
+ * do not know, rather than labelling a point "Hammadde Deposu" because of where
+ * it happens to sit on someone else's layout.
+ */
+export function stationAreaName(site, station) {
+  const recorded = station && station.placement && station.placement.areaName;
+  if (recorded) return recorded;
+  if (site && site.floorPlan) return 'Belirtilmedi';
+  return getStationArea(station.x, station.y);
+}
+
 // One-line digest of the type-specific placement fields, for the tracking
 // table. Returns '' when nothing type-specific has been recorded yet.
 export function placementSummary(station) {

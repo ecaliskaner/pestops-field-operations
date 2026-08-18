@@ -112,8 +112,8 @@ swaps, file uploads and contract edits — and nothing else.
 | 8-1 | Single source of truth for sites | **done** | Session M (`main`) | `core/state.js`, `data/history.js`, `data/schedule.js`, `data/compliance.js`, `views/reportBodies.js`, `views/reports.js` | `allSites()` added; planning, reports, ranking and compliance now read the live portfolio. See note below |
 | 8-2 | Fix s7/s8 geo drift | **done** | Session M (`main`) | `views/team.js`, `api/mobileData.js` | İzmir/Ankara existed only in `seed.js` — no map pin, no geofence, invisible to the mobile API |
 | 8-3 | Visit-report client filter went stale | **done** | Session M (`main`) | `views/visitReports.js` | Cached on a one-shot `dataset.built`, so an admin who had viewed as a customer was stuck filtering by that one company |
-| 8-4 | Station / monitoring-point CRUD | **todo** | — | — | **Biggest remaining gap.** `.docx` §3–4 calls placing points *"sistem kurulumu"*, the founding workflow — and there is no way to add or remove one. `createSite` injects 4 fixed points |
-| 8-5 | Floor-plan upload + point placement | **todo** | — | — | The plan is one hardcoded SVG in `index.html` with 5 fixed rooms; every facility renders the same building. `getStationArea()` maps coordinates onto those 5 rooms |
+| 8-4 | Station / monitoring-point CRUD | **done** | Session N (`main`) | `views/floorPlan.js`, `index.html`, `styles.css` | Place by clicking the plan, drag to reposition, delete from the sidebar. Auto code + barcode per equipment family |
+| 8-5 | Floor-plan upload + point placement | **done** | Session N (`main`) | `views/floorPlan.js`, `data/catalog.js` | Per-facility upload, downscaled before storage; falls back to the built-in template. See note below |
 | 8-6 | Chemical catalog admin | **todo** | — | — | §9 requires add/edit/remove by Repellent admins. The 12 products in `catalog.js` are fixed; "Kimyasal Ekle" only records *usage* |
 | 8-7 | Staff & user management | **todo** | — | — | `techData`/`techRates`/`CREDENTIALS` and the 3 accounts in `core/auth.js` are all fixed. §11 also wants customer self-service password change |
 | 8-8 | Replace hardcoded display rows | **todo** | — | — | `renderAiPredictions()` is 4 fixed cards under an "AI AKTİF" badge; `dashboard.js` prepends a fixed `curated[]` feed and a 3-row schedule above the derived rows |
@@ -310,6 +310,37 @@ from. Its `defaultSelection` deliberately anchors on the most recent visit with
 click. The zero-activity path is still handled (badge flips to "Aktivite yok",
 the species section and its donut are suppressed rather than rendered empty) —
 7 of the seeded visits are clean, so that path is reachable in the demo.
+
+**Facility setup is now performable in-app (8-4 / 8-5).** `views/floorPlan.js`
+owns the whole §3 "sistem kurulumu" loop: upload the facility's own plan, click
+to place a monitoring point, drag it to the right spot, delete it. Points get an
+auto code per equipment family (`nextStationCode` → R-01, R-02 … DZG-01) and a
+barcode from the existing `barcodeFor()`, so a placed point is immediately real
+to the plan, the placement list, the QR sheet and the reports.
+
+Three things worth keeping in mind:
+
+- **Uploaded plans are downscaled to 1400 px / JPEG 0.72 before storage.** State
+  goes to localStorage *and* is PUT to the server on every `save()`, so an
+  unprocessed phone photo would blow the quota and stall every write. A 2400×1600
+  test plan lands at 1400×933 / ~29 KB. SVGs are stored as-is — they have no
+  useful raster size and stay crisp.
+- **`stationAreaName(site, station)` replaced bare `getStationArea(x, y)`.** The
+  zone lookup only describes the built-in template; once a facility has its own
+  plan those five room names are fiction, so it falls back to the placement
+  record and otherwise says "Belirtilmedi" rather than inventing a room. Uploading
+  or removing a plan therefore has to re-render the station tables, not just the
+  image — the zone column depends on it.
+- **`refreshPlanViews()` deliberately avoids `showCompanyDetail()`**, which would
+  reset the facility page to the "Genel Bakış" tab and throw the user off the
+  plan they are working on. It updates the counters inline and dynamic-imports
+  companyDetail for the two renderers, which also keeps the two modules out of a
+  static import cycle.
+
+Drag uses pointer events on `document` with a 4 px threshold, so markers
+re-rendered after a save keep working without rebinding, and a plain click still
+selects. `floorPlanClicks` sits before `planCanvasClicks` in the chain and
+swallows the click that ends a drag.
 
 **`initial.sites` is the frozen seed; `allSites()` is the live portfolio (8-1).**
 The app had two site lists that quietly disagreed: the UI read `state.sites`,

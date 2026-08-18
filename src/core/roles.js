@@ -41,7 +41,12 @@ export function applyRoleAccess() {
     $('#adminInspectionForm')?.classList.remove('hidden');
     $('#printStationQrBtn')?.classList.remove('hidden');
     $('#btnEditSiteContract')?.classList.remove('hidden');
-  } 
+    // Facility setup (§3) is an admin action: upload the plan, place and remove
+    // the monitoring points.
+    $('#btnAddStation')?.classList.remove('hidden');
+    $('#planUploadLabel')?.classList.remove('hidden');
+    $('#btnDeleteStation')?.classList.remove('hidden');
+  }
   else if (role === 'tech') {
     $$('.sidebar .nav button').forEach(b => {
       const view = b.dataset.view;
@@ -58,6 +63,9 @@ export function applyRoleAccess() {
     $('#adminInspectionForm')?.classList.remove('hidden');
     $('#printStationQrBtn')?.classList.add('hidden');
     $('#btnEditSiteContract')?.classList.add('hidden');
+    $('#btnAddStation')?.classList.add('hidden');
+    $('#planUploadLabel')?.classList.add('hidden');
+    $('#btnDeleteStation')?.classList.add('hidden');
     
     if (state.view !== 'work' && state.view !== 'mobileSim') {
       setView('work');
@@ -92,6 +100,9 @@ export function applyRoleAccess() {
     $('#adminInspectionForm')?.classList.add('hidden');
     $('#printStationQrBtn')?.classList.add('hidden');
     $('#btnEditSiteContract')?.classList.add('hidden');
+    $('#btnAddStation')?.classList.add('hidden');
+    $('#planUploadLabel')?.classList.add('hidden');
+    $('#btnDeleteStation')?.classList.add('hidden');
   }
 }
 

@@ -4,7 +4,7 @@
 import { $, $$ } from '../core/dom.js';
 import { recalculateSiteStats, state } from '../core/state.js';
 import { ui } from '../core/session.js';
-import { chemicalDatabase, equipmentStatusCodes, equipmentTypes, getChemicalDocuments, getPlacementSchema, getStationArea, pestDatabase, placementSummary, stateLabel } from '../data/catalog.js';
+import { chemicalDatabase, equipmentStatusCodes, equipmentTypes, getChemicalDocuments, getPlacementSchema, getStationArea, pestDatabase, placementSummary, stationAreaName, stateLabel } from '../data/catalog.js';
 import { setView } from '../core/router.js';
 import { renderClientAnalytics } from '../views/insights.js';
 import { toast } from '../core/dom.js';
@@ -18,6 +18,7 @@ import {
   recommendationsForSite, replacementReasons, technicianStats
 } from '../data/history.js';
 import { credentialDocs, KVKK_NOTICE } from '../data/credentials.js';
+import { renderFloorPlan } from './floorPlan.js';
 import { techData } from '../data/seed.js';
 
 export function showCompanyDetail(siteId) {
@@ -99,6 +100,7 @@ export function showCompanyDetail(siteId) {
   if (unLabel) unLabel.textContent = unchecked;
   
   // Render nodes
+  renderFloorPlan(site);
   renderStationMarkers(site.stations);
   
   // Render applied methods
@@ -560,7 +562,7 @@ export function renderCompanyStationsTable(site) {
     const lastCheck = s.checked ? (s.lastControl || "12 Tem 2026") : "—";
     const inspector = s.checked ? (s.controlledBy || "Ayşe Demir") : "—";
     const placement = s.placement || {};
-    const area = placement.areaName || getStationArea(s.x, s.y);
+    const area = stationAreaName(site, s);
     const typeLabel = typeLabels[s.type] || s.type;
     const specs = placementSummary(s);
     const statusText = statusLabels[s.status] || s.status;
@@ -862,7 +864,7 @@ export function renderPlacementForm(station) {
     // that number stable even when the physical device is replaced.
     let value = saved[f.key] ?? '';
     if (!value && f.key === 'pointNo') value = (station.code.match(/\d+/) || [''])[0];
-    if (!value && f.key === 'areaName') value = getStationArea(station.x, station.y);
+    if (!value && f.key === 'areaName') value = stationAreaName(site, station);
 
     const label = `<span class="placement-label">${f.label}<small>${f.en}</small></span>`;
 
