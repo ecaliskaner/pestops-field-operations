@@ -116,6 +116,34 @@ const sites = [
       { code: 'ILT-01', type: 'insect_light_trap', pestType: 'flying' },
     ],
   },
+  {
+    id: 's7', company: 'Acme Foods', name: 'İzmir Soğuk Hava Deposu', city: 'İzmir',
+    sector: 'Gıda Üretimi & Depolama', address: 'Kemalpaşa OSB, 35730 Kemalpaşa/İzmir',
+    lat: 38.4271, lng: 27.4183, geofenceRadiusM: 220,
+    contact: { name: 'Ahmet Yılmaz', phone: '+90 532 123 4567' },
+    stations: [
+      { code: 'R-01', type: 'rodent',  pestType: 'rodent' },
+      { code: 'R-02', type: 'rodent',  pestType: 'rodent' },
+      { code: 'R-03', type: 'rodent',  pestType: 'rodent' },
+      { code: 'C-01', type: 'crawler', pestType: 'crawler' },
+      { code: 'C-02', type: 'crawler', pestType: 'crawler' },
+      { code: 'F-01', type: 'flying',  pestType: 'flying' },
+    ],
+  },
+  {
+    id: 's8', company: 'Acme Foods', name: 'Ankara Dağıtım Merkezi', city: 'Ankara',
+    sector: 'Gıda Üretimi & Depolama', address: 'Başkent OSB, 06909 Sincan/Ankara',
+    lat: 39.9861, lng: 32.7395, geofenceRadiusM: 230,
+    contact: { name: 'Ahmet Yılmaz', phone: '+90 532 123 4567' },
+    stations: [
+      { code: 'R-01',   type: 'rodent',            pestType: 'rodent' },
+      { code: 'R-02',   type: 'rodent',            pestType: 'rodent' },
+      { code: 'R-03',   type: 'rodent',            pestType: 'rodent' },
+      { code: 'C-01',   type: 'crawler',           pestType: 'crawler' },
+      { code: 'C-02',   type: 'crawler',           pestType: 'crawler' },
+      { code: 'ILT-01', type: 'insect_light_trap', pestType: 'flying' },
+    ],
+  },
 ];
 
 // Today's work orders. techEmail links each job to a login. status/timestamps

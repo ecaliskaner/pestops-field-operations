@@ -34,7 +34,13 @@ const SITE_GEO = {
   s3: { lat: 40.9923, lng: 29.1277, r: 200 }, // Aster Hospital — Ataşehir Kampüsü
   s4: { lat: 41.0812, lng: 29.0101, r: 170 }, // Bora Retail — Levent Merkez Mağaza
   s5: { lat: 40.8252, lng: 29.3761, r: 210 }, // Novatek — Çayırova Ar-Ge Merkezi
-  s6: { lat: 41.0369, lng: 28.9851, r: 160 }  // Orion Hotels — Taksim Otel
+  s6: { lat: 41.0369, lng: 28.9851, r: 160 }, // Orion Hotels — Taksim Otel
+  // Acme's out-of-region locations. They carry real coordinates so the geofence
+  // and the mobile API agree with the rest of the app, but they sit ~330 km and
+  // ~350 km away and no technician is routed to them today — see the operating
+  // bounds below, which deliberately do not frame them.
+  s7: { lat: 38.4271, lng: 27.4183, r: 220 }, // Acme Foods — İzmir Soğuk Hava Deposu (Kemalpaşa)
+  s8: { lat: 39.9861, lng: 32.7395, r: 230 }  // Acme Foods — Ankara Dağıtım Merkezi (Başkent OSB)
 };
 
 const siteById = (id) => initial.sites.find((s) => s.id === id);
@@ -400,10 +406,16 @@ function ensureMap() {
     techLayers[tech] = marker;
   });
 
-  // Frame the whole operating area.
+  // Frame today's operating area: the depot plus the sites actually on the
+  // technicians' loops. Framing to every known site would zoom out to include
+  // other-city facilities nobody is dispatched to today, collapsing the
+  // İstanbul detail this map exists to show. Out-of-region sites still get a
+  // pin and a geofence — they are simply not part of the day's frame.
+  const routeSiteIds = [...new Set(Object.values(TECH_LOOPS).flat())]
+    .filter((id) => SITE_GEO[id]);
   opBounds = L.latLngBounds([
     [DEPOT.lat, DEPOT.lng],
-    ...Object.values(SITE_GEO).map((g) => [g.lat, g.lng])
+    ...routeSiteIds.map((id) => [SITE_GEO[id].lat, SITE_GEO[id].lng])
   ]);
   map.fitBounds(opBounds, { padding: [42, 42] });
 

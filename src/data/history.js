@@ -5,6 +5,7 @@
 // taken today still match the app next week.
 
 import { initial } from './seed.js';
+import { allSites } from '../core/state.js';
 import { chemicalDatabase, pestDatabase } from './catalog.js';
 
 const SEED = 0x1adb69;
@@ -636,9 +637,16 @@ export function technicianStats(siteId) {
     .sort((a, b) => b.visits - a.visits);
 }
 
-/** Per-site totals over the window, worst first — drives the risk ranking. */
+/**
+ * Per-site totals over the window, worst first — drives the risk ranking.
+ *
+ * Reads the live portfolio, not the seed: a facility added through the UI has
+ * no history yet and so ranks last with zeros, which is the honest answer.
+ * Generation above still walks `initial.sites`, so the seeded numbers are
+ * untouched by this.
+ */
 export function siteRanking() {
-  return initial.sites
+  return allSites()
     .map((site) => {
       const visits = visitsForSite(site.id);
       const total = visits.reduce((s, v) => s + v.totals.all, 0);

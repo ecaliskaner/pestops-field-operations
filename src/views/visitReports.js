@@ -128,12 +128,22 @@ export function renderVisitReports() {
 function populateFilterOptions() {
   const sites = visibleSites();
 
+  // Keyed on the company list itself, not a one-shot "built" flag: the visible
+  // set changes when the role switches (a customer sees only their own company)
+  // or when a site is added, and a cached list would then be wrong in both
+  // directions — an admin stuck on the customer's single company, or a customer
+  // shown companies that are not theirs.
   const clientSel = $('#vrFilterClient');
-  if (clientSel && !clientSel.dataset.built) {
+  if (clientSel) {
     const companies = [...new Set(sites.map((s) => s.company))].sort((a, b) => a.localeCompare(b, 'tr'));
-    clientSel.innerHTML = '<option value="">Tüm müşteriler</option>'
-      + companies.map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
-    clientSel.dataset.built = '1';
+    const want = companies.join('|');
+    if (clientSel.dataset.for !== want) {
+      clientSel.innerHTML = '<option value="">Tüm müşteriler</option>'
+        + companies.map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
+      clientSel.dataset.for = want;
+      clientSel.value = companies.includes(f.company) ? f.company : '';
+      if (clientSel.value !== f.company) f.company = clientSel.value;
+    }
   }
 
   // Branch list narrows to the selected client — the reference system's own

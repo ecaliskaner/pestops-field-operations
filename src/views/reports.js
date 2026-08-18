@@ -11,7 +11,7 @@ import { printElement, downloadCSV } from '../ui/export.js';
 import {
   getVisits, visitsForSite, monthlyPestTotals, getRecommendations, siteRanking
 } from '../data/history.js';
-import { initial } from '../data/seed.js';
+import { visibleSites } from '../core/state.js';
 import {
   STANDARDS, complianceOverview, sitesInScope, siteReadiness, STATUS_LABEL
 } from '../data/compliance.js';
@@ -23,7 +23,7 @@ import {
 const esc = (s) => String(s ?? '')
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-const siteById = (id) => initial.sites.find((s) => s.id === id);
+const siteById = (id) => visibleSites().find((s) => s.id === id);
 
 /* ------------------------------------------------------------ report registry */
 
@@ -244,7 +244,7 @@ function renderThirdEye() {
   // sites have *not* had an independent inspection, and only 2 of 6 have.
   const coverage = $('#thirdEyeCoverage');
   if (coverage) {
-    coverage.innerHTML = initial.sites.map((s) => {
+    coverage.innerHTML = visibleSites().map((s) => {
       const last = audits.find((v) => v.siteId === s.id);
       return `<div class="te-cov ${last ? 'done' : 'due'}">
         <span class="te-cov-site">${esc(s.name)}</span>
@@ -328,7 +328,7 @@ function toolbar(report) {
   const parts = [];
 
   if (report.scope.includes('site') || report.scope.includes('siteOptional')) {
-    const chips = initial.sites.map((s) =>
+    const chips = visibleSites().map((s) =>
       `<button class="rep-chip ${current.siteId === s.id ? 'active' : ''}" data-report-site="${s.id}">${esc(s.name)}</button>`).join('');
     parts.push(`<div class="rep-chips"><span class="rep-chips-label">Tesis</span>${
       report.scope.includes('siteOptional')

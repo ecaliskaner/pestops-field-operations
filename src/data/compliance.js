@@ -8,7 +8,7 @@
 // "show me why you think you're BRCGS-ready" — has a real answer on screen. A
 // site with open non-conformities visibly drops out of "ready".
 
-import { initial } from './seed.js';
+import { allSites } from '../core/state.js';
 import { visitsForSite, recommendationStats, getRecommendations, siteRanking } from './history.js';
 
 // `sectors` matches against the site's `sector` string. Red Tractor is UK farm
@@ -76,7 +76,7 @@ const ACTIVITY_LIMIT = 4;
 
 /** Sites whose sector puts them in scope for a standard. */
 export function sitesInScope(standard) {
-  return initial.sites.filter((site) =>
+  return allSites().filter((site) =>
     standard.sectors.some((tag) => (site.sector || '').includes(tag)));
 }
 

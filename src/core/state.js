@@ -44,6 +44,21 @@ export function load(){
 
 export const state = load();
 
+/**
+ * Every site in the live portfolio.
+ *
+ * `initial.sites` is the *frozen seed* the deterministic history generator is
+ * calibrated against, and generation must keep reading it so the seeded numbers
+ * never move. Everything else — planning, reports, rankings, lookups — must read
+ * this instead, or a facility created through the UI is invisible to half the
+ * product (it appeared in the sites list but had no plan, no report scope and no
+ * ranking row).
+ *
+ * Falls back to the seed if state is somehow empty, so a lookup never returns
+ * an empty portfolio.
+ */
+export const allSites = () => (state.sites && state.sites.length ? state.sites : initial.sites);
+
 // Sites the current user is allowed to see. A customer (client role) is scoped
 // to their own company's locations only — the roadmap (§11) is explicit that a
 // customer must never see another company's data. Admin and technician roles
@@ -52,9 +67,9 @@ export const state = load();
 export function visibleSites() {
   const u = state.currentUser;
   if (u && u.role === 'client' && u.company) {
-    return state.sites.filter((s) => s.company === u.company);
+    return allSites().filter((s) => s.company === u.company);
   }
-  return state.sites;
+  return allSites();
 }
 
 export function save(){

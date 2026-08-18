@@ -101,6 +101,23 @@ that shows what to do and notifies the workers".
 | 7-2 | Real service calendar | **done** | Session L (`main`) | `ui/calendar.js`, `data/schedule.js` | Replaces the fixed 31-cell grid. Month navigation, correct weekday alignment, served days from history + future days from the contract-derived plan |
 | 7-3 | Dispatch assignments to technicians | **done** | Session L (`main`) | `core/notify.js`, `ui/demo.js` | Day- and month-level publish; per-technician queue persisted in `state`. Commercial fields are stripped on the way out (§1) |
 
+## Phase 8 — Hardcoding audit
+
+A pass over "what can a user actually create?". The answer was: facilities, work
+orders, inspections, chemical *usage*, stock refills, recommendations, device
+swaps, file uploads and contract edits — and nothing else.
+
+| ID | Task | Status | Owner | Files | Notes |
+|---|---|---|---|---|---|
+| 8-1 | Single source of truth for sites | **done** | Session M (`main`) | `core/state.js`, `data/history.js`, `data/schedule.js`, `data/compliance.js`, `views/reportBodies.js`, `views/reports.js` | `allSites()` added; planning, reports, ranking and compliance now read the live portfolio. See note below |
+| 8-2 | Fix s7/s8 geo drift | **done** | Session M (`main`) | `views/team.js`, `api/mobileData.js` | İzmir/Ankara existed only in `seed.js` — no map pin, no geofence, invisible to the mobile API |
+| 8-3 | Visit-report client filter went stale | **done** | Session M (`main`) | `views/visitReports.js` | Cached on a one-shot `dataset.built`, so an admin who had viewed as a customer was stuck filtering by that one company |
+| 8-4 | Station / monitoring-point CRUD | **todo** | — | — | **Biggest remaining gap.** `.docx` §3–4 calls placing points *"sistem kurulumu"*, the founding workflow — and there is no way to add or remove one. `createSite` injects 4 fixed points |
+| 8-5 | Floor-plan upload + point placement | **todo** | — | — | The plan is one hardcoded SVG in `index.html` with 5 fixed rooms; every facility renders the same building. `getStationArea()` maps coordinates onto those 5 rooms |
+| 8-6 | Chemical catalog admin | **todo** | — | — | §9 requires add/edit/remove by Repellent admins. The 12 products in `catalog.js` are fixed; "Kimyasal Ekle" only records *usage* |
+| 8-7 | Staff & user management | **todo** | — | — | `techData`/`techRates`/`CREDENTIALS` and the 3 accounts in `core/auth.js` are all fixed. §11 also wants customer self-service password change |
+| 8-8 | Replace hardcoded display rows | **todo** | — | — | `renderAiPredictions()` is 4 fixed cards under an "AI AKTİF" badge; `dashboard.js` prepends a fixed `curated[]` feed and a 3-row schedule above the derived rows |
+
 ---
 
 ## Notes for future sessions
@@ -293,6 +310,33 @@ from. Its `defaultSelection` deliberately anchors on the most recent visit with
 click. The zero-activity path is still handled (badge flips to "Aktivite yok",
 the species section and its donut are suppressed rather than rendered empty) —
 7 of the seeded visits are clean, so that path is reachable in the demo.
+
+**`initial.sites` is the frozen seed; `allSites()` is the live portfolio (8-1).**
+The app had two site lists that quietly disagreed: the UI read `state.sites`,
+while history, planning, reports, ranking and compliance all read
+`initial.sites`. A facility created through "Tesis ekle" therefore appeared in
+the sites list and then existed nowhere else — no plan, no report scope, no
+ranking row, `0 kayıt` on the visit board. It degraded quietly rather than
+crashing, which is why it survived this long.
+
+The split now has a clear rule:
+
+- **History *generation* still walks `initial.sites`** and must keep doing so.
+  The generator's per-site RNG is keyed on site id, but `visitSeq`/`recSeq` are
+  global counters, so generating over a mutable list would renumber `VH-…`/`RH-…`
+  ids and shift every calibrated threshold with them.
+- **Everything else reads `allSites()`** (or `visibleSites()` where a role
+  should narrow it). A new site gets a plan from its contract immediately, ranks
+  last with zeros, and renders reports with honest empty states.
+
+A new site deliberately gets *no* back-history — fabricating twelve months of
+service records for a customer signed today would be a lie, not a feature.
+Verified unchanged after the switch: 226 visits, 4077 findings, s1 2260, ranking
+`s1:799 s7:182 s2:177 s8:90 …`, and every compliance badge.
+
+Note `views/team.js` still keeps its own `SITE_GEO`, and `api/mobileData.js` its
+own site list — coordinates and QR tokens the web seed does not carry. Those are
+the remaining duplicates, and 8-2 exists because they silently drifted.
 
 **The planner is contract-derived, and the history stream must not move (7-1/7-2).**
 `data/schedule.js` reads each site's `serviceScope` to decide both how often a

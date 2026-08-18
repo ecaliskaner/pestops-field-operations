@@ -12,7 +12,7 @@
 // Pure computation — no DOM, no state mutation. Deterministic from a seeded PRNG
 // keyed on site + month, so the same month always plans identically.
 
-import { initial } from './seed.js';
+import { allSites } from '../core/state.js';
 import { getVisits, demoToday, crewLabel, monthShortNames } from './history.js';
 
 /* ------------------------------------------------------------ scope → tasks */
@@ -152,9 +152,13 @@ export function plannedVisitsForSite(site, year, month) {
   return out.sort((a, b) => a.day - b.day);
 }
 
-/** Planned visits across every site (or one company) for a month. */
+/**
+ * Planned visits across every site (or one company) for a month. Reads the live
+ * portfolio, so a facility created in the app is scheduled from its contract
+ * immediately rather than never appearing on the calendar.
+ */
 export function plannedVisits(year, month, filterFn) {
-  const sites = filterFn ? initial.sites.filter(filterFn) : initial.sites;
+  const sites = filterFn ? allSites().filter(filterFn) : allSites();
   return sites.flatMap((s) => plannedVisitsForSite(s, year, month));
 }
 

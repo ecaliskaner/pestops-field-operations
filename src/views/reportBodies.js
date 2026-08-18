@@ -15,7 +15,7 @@ import {
   chemicalStats, getRecommendations, siteRanking, technicianStats,
   pointDeviceSummary, readingsForPoint, deviceReplacements, barcodeFor
 } from '../data/history.js';
-import { initial } from '../data/seed.js';
+import { allSites } from '../core/state.js';
 import {
   visitTypes, equipmentTypes, getStationArea, placementSummary
 } from '../data/catalog.js';
@@ -26,7 +26,9 @@ const esc = (s) => String(s ?? '')
 
 const visitTypeName = (code) => (visitTypes.find((v) => v.code === code) || {}).name || code;
 const equipmentName = (type) => (equipmentTypes[type] || {}).name || type;
-const siteById = (id) => initial.sites.find((s) => s.id === id);
+// Live portfolio, so a facility created in the app resolves here too — it just
+// renders with empty history until it has been serviced.
+const siteById = (id) => allSites().find((s) => s.id === id);
 
 // Certificate numbers must be stable: printing the same report twice has to
 // produce the same document, so this is derived rather than random.
