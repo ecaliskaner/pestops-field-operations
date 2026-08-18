@@ -2,7 +2,7 @@
 // Extracted from app.js (Phase 0a-1).
 
 // ===== UI LABEL MAPS =====
-export const names = { dashboard:"Genel bakış", sites:"Tesisler", work:"İş emirleri", team:"Ekip & rota", visitReports:"Ziyaret Raporları", insights:"Analizler", reports:"Raporlar", companyDetail:"Tesis Detayı & Profil", mobileSim:"Mobil Uygulama", inventory:"Stok & Envanter", finance:"Finans & Fatura" };
+export const names = { dashboard:"Genel bakış", sites:"Tesisler", work:"İş emirleri", team:"Ekip & rota", customerHome:"Genel Durum", visitReports:"Ziyaret Raporları", insights:"Analizler", reports:"Raporlar", companyDetail:"Tesis Detayı & Profil", mobileSim:"Mobil Uygulama", inventory:"Stok & Envanter", finance:"Finans & Fatura" };
 export const stateLabel = {risk:"Riskli",watch:"İzlenmeli",healthy:"Sağlıklı"};
 
 // ===== PEST TAXONOMY DATABASE =====

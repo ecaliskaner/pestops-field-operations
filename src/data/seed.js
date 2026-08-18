@@ -35,6 +35,7 @@ export const initial = {
     { 
       id:"s1", company:"Acme Foods", name:"Gebze Üretim Tesisi", city:"Kocaeli", score:62, state:"risk", issues:3, last:"12 Tem · Ayşe Demir", next:"Bugün, 14:30", color:"#e8d8c7",
       sector: "Gıda Üretimi & Depolama",
+      address: "Gebze OSB, 41400 Gebze/Kocaeli",
       contact: { name: "Ahmet Yılmaz", phone: "+90 532 123 4567", email: "ahmet@acmefoods.com" },
       methods: [
         { name: "Kemirgen İstasyon Kontrolü", desc: "Tesis dış çevresinde kilitli yem istasyonları ile kemirgen mücadelesi.", active: true },
@@ -74,6 +75,7 @@ export const initial = {
     { 
       id:"s2", company:"Kuzey Lojistik", name:"Hadımköy Dağıtım Merkezi", city:"İstanbul", score:68, state:"risk", issues:2, last:"11 Tem · Mert Kaya", next:"Bugün, 16:00", color:"#d8e9e4",
       sector: "Lojistik & Depolama",
+      address: "Hadımköy, 34555 Arnavutköy/İstanbul",
       contact: { name: "Banu Gök", phone: "+90 541 456 7890", email: "bgok@kuzeylojistik.com.tr" },
       methods: [
         { name: "Kemirgen İstasyon Kontrolü", desc: "Tesis dış çevresinde kilitli yem istasyonları ile kemirgen mücadelesi.", active: true },
@@ -97,6 +99,7 @@ export const initial = {
     { 
       id:"s3", company:"Aster Hospital", name:"Ataşehir Kampüsü", city:"İstanbul", score:74, state:"watch", issues:1, last:"12 Tem · Ece Yılmaz", next:"14 Tem, 09:00", color:"#e8e0f5",
       sector: "Sağlık & Hastane",
+      address: "Ataşehir, 34758 İstanbul",
       contact: { name: "Dr. Selim Tekin", phone: "+90 533 987 6543", email: "selim.tekin@asterhospital.com" },
       methods: [
         { name: "Kemirgen Kokusuz Jel Uygulaması", desc: "Kritik mutfak ve sterilizasyon alanlarında jel ilaçlama.", active: true },
@@ -119,6 +122,7 @@ export const initial = {
     { 
       id:"s4", company:"Bora Retail", name:"Levent Merkez Mağaza", city:"İstanbul", score:81, state:"watch", issues:0, last:"10 Tem · Can Öztürk", next:"15 Tem, 11:00", color:"#f4e6bf",
       sector: "Perakende & Mağazacılık",
+      address: "Levent, 34330 Beşiktaş/İstanbul",
       contact: { name: "Mustafa Çelik", phone: "+90 535 765 4321", email: "mustafa.celik@boraretail.com" },
       methods: [
         { name: "Yürüyen Haşere İzleme", desc: "Raf ve reyon altlarında yapışkan tuzaklar.", active: true },
@@ -138,6 +142,7 @@ export const initial = {
     { 
       id:"s5", company:"Novatek", name:"Çayırova Ar-Ge Merkezi", city:"Kocaeli", score:91, state:"healthy", issues:0, last:"12 Tem · Mert Kaya", next:"18 Tem, 10:30", color:"#d7e9f4",
       sector: "Ar-Ge & Laboratuvar",
+      address: "Çayırova, 41420 Kocaeli",
       contact: { name: "Eren Demir", phone: "+90 530 234 5678", email: "eren.demir@novatek.io" },
       methods: [
         { name: "Kemirgen İstasyon Kontrolü", desc: "Tesis dış çevresinde kilitli yem istasyonları.", active: true },
@@ -158,6 +163,7 @@ export const initial = {
     { 
       id:"s6", company:"Orion Hotels", name:"Taksim Otel", city:"İstanbul", score:88, state:"healthy", issues:0, last:"11 Tem · Ece Yılmaz", next:"19 Tem, 13:30", color:"#f0dbe2",
       sector: "Turizm & Otelcilik",
+      address: "Taksim, 34437 Beyoğlu/İstanbul",
       contact: { name: "Selin Şen", phone: "+90 542 345 6789", email: "selin.sen@orionhotels.com" },
       methods: [
         { name: "Jel İlaçlama Uygulaması", desc: "Mutfak ve depo alanlarında yürüyen haşere jeli.", active: true },
@@ -179,6 +185,7 @@ export const initial = {
     {
       id:"s7", company:"Acme Foods", name:"İzmir Soğuk Hava Deposu", city:"İzmir", score:77, state:"watch", issues:1, last:"11 Tem · Ece Yılmaz", next:"16 Tem, 10:00", color:"#d7e9f4",
       sector: "Gıda Üretimi & Depolama",
+      address: "Kemalpaşa OSB, 35730 Kemalpaşa/İzmir",
       contact: { name: "Ahmet Yılmaz", phone: "+90 532 123 4567", email: "ahmet@acmefoods.com" },
       methods: [
         { name: "Kemirgen İstasyon Kontrolü", desc: "Soğuk hava deposu dış çevresinde kilitli yem istasyonları.", active: true },
@@ -208,6 +215,7 @@ export const initial = {
     {
       id:"s8", company:"Acme Foods", name:"Ankara Dağıtım Merkezi", city:"Ankara", score:86, state:"healthy", issues:0, last:"10 Tem · Can Öztürk", next:"17 Tem, 09:30", color:"#d8e9e4",
       sector: "Gıda Üretimi & Depolama",
+      address: "Başkent OSB, 06909 Sincan/Ankara",
       contact: { name: "Ahmet Yılmaz", phone: "+90 532 123 4567", email: "ahmet@acmefoods.com" },
       methods: [
         { name: "Kemirgen İstasyon Kontrolü", desc: "Dağıtım merkezi dış çevresinde kilitli yem istasyonları.", active: true },

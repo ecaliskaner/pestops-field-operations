@@ -31,6 +31,7 @@
         <nav class="nav" aria-label="Ana menü">
           <p class="nav-label">OPERASYON</p>
           <button class="nav-item active" data-view="dashboard"><span>▦</span> Genel bakış</button>
+          <button class="nav-item" data-view="customerHome"><span>▦</span> Genel Durum</button>
           <button class="nav-item" data-view="sites"><span>⌖</span> Tesisler <em id="siteAlertCount">0</em></button>
           <button class="nav-item" data-view="work"><span>✓</span> İş emirleri <em id="sidebarWorkCount">0</em></button>
           <button class="nav-item" data-view="team"><span>◉</span> Ekip & rota</button>
@@ -119,6 +120,9 @@
             </div>
           </div>
 
+          <!-- Technician's own day (renders only for the tech role) -->
+          <div id="techTodayPanel" class="hidden"></div>
+
           <!-- Audit warnings (task 3-6): GPS/QR integrity anomalies -->
           <article class="panel audit-panel">
             <div class="panel-header">
@@ -202,6 +206,17 @@
           </article>
 
           <article class="panel roster-panel"><div class="panel-header"><h2>Bugünkü ekip</h2><button class="text-btn">Ekip yönetimi →</button></div><div id="roster" class="roster"></div></article>
+        </section>
+
+        <section id="customerHome" class="view">
+          <div class="page-heading compact">
+            <div>
+              <p class="overline">GENEL DURUM</p>
+              <h1>Tesislerinizin durumu</h1>
+              <p id="customerHomeGreeting">Hoş geldiniz</p>
+            </div>
+          </div>
+          <div id="customerHomeBody" class="ch-body"></div>
         </section>
 
         <section id="visitReports" class="view">

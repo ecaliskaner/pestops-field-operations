@@ -3632,3 +3632,148 @@ button:focus-visible, a:focus-visible, .nav-item:focus-visible, input:focus-visi
   transform: scale(1.15);
   box-shadow: 0 4px 14px rgba(0,0,0,.28);
 }
+
+/* ============================================================
+   Customer overview (müşteri "Genel Durum")
+   ============================================================ */
+.ch-body { display: grid; gap: 16px; }
+.ch-card { padding: 20px; }
+.ch-card h2 { margin: 4px 0 0; font-size: 20px; line-height: 1.3; }
+
+/* The one question a customer opens the portal for gets the lead card. */
+.ch-next {
+  border-left: 4px solid var(--blue);
+  background: linear-gradient(180deg, var(--blue-soft), #fff 55%);
+}
+.ch-next-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.ch-next-site { margin: 4px 0 0; font-size: 12px; color: var(--muted); }
+.ch-next-body {
+  display: grid; gap: 16px; margin-top: 16px; padding-top: 14px;
+  border-top: 1px solid var(--line);
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+}
+.ch-label {
+  display: block; font-size: 10px; font-weight: 700; letter-spacing: .03em;
+  text-transform: uppercase; color: var(--muted); margin-bottom: 4px;
+}
+.ch-next-crew b { font-size: 13px; }
+.ch-next-tasks ul { margin: 0; padding-left: 16px; }
+.ch-next-tasks li { font-size: 12px; line-height: 1.6; }
+.ch-next-actions {
+  display: flex; gap: 8px; flex-wrap: wrap;
+  margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line);
+}
+.ch-next-actions button { min-height: 40px; }
+
+/* Actions the customer owes us. */
+.ch-action-list { display: grid; gap: 8px; margin-top: 12px; }
+.ch-action-row {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  min-height: 52px; padding: 10px 12px; text-align: left; cursor: pointer;
+  background: var(--soft); border: 1px solid var(--line); border-radius: 8px;
+  font-family: inherit; color: var(--ink);
+  transition: border-color .15s ease, transform .15s ease;
+}
+.ch-action-row:hover { border-color: var(--blue); transform: translateX(2px); }
+.ch-action-badge {
+  flex: none; font-size: 10px; font-weight: 700; padding: 3px 8px;
+  border-radius: 20px; background: rgba(37,99,235,.12); color: #1d4ed8;
+}
+.ch-action-badge.warn { background: rgba(245,158,11,.16); color: #b45309; }
+.ch-action-text { flex: 1; min-width: 0; }
+.ch-action-text b { display: block; font-size: 12px; line-height: 1.45; }
+.ch-action-text small { display: block; font-size: 10px; color: var(--muted); margin-top: 2px; }
+.ch-action-go { flex: none; color: var(--muted); font-weight: 700; }
+.ch-more { margin: 10px 0 0; font-size: 11px; color: var(--muted); }
+
+/* Facilities. */
+.ch-last { margin: 6px 0 0; font-size: 12px; color: var(--muted); }
+.ch-site-grid {
+  display: grid; gap: 12px; margin-top: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+}
+.ch-site-card {
+  text-align: left; cursor: pointer; padding: 14px; min-height: 44px;
+  background: #fff; border: 1px solid var(--line); border-radius: 10px;
+  font-family: inherit; color: var(--ink);
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.ch-site-card:hover { border-color: var(--blue); box-shadow: 0 4px 14px rgba(0,0,0,.06); }
+.ch-site-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.ch-site-head b { font-size: 13px; }
+.ch-site-meta { font-size: 11px; color: var(--muted); margin-top: 4px; }
+.ch-site-stats {
+  display: flex; gap: 14px; margin-top: 12px; padding-top: 10px;
+  border-top: 1px solid var(--line); flex-wrap: wrap;
+}
+.ch-site-stats span { display: flex; flex-direction: column; gap: 2px; }
+.ch-site-stats i { font-style: normal; font-size: 9px; text-transform: uppercase; color: var(--muted); letter-spacing: .03em; }
+.ch-site-stats b { font-size: 13px; }
+
+/* Empty states carry an explanation and, where useful, the next action. */
+.ch-empty-card { background: var(--soft); }
+.ch-empty-text { font-size: 12px; color: var(--muted); margin: 8px 0 14px; line-height: 1.6; max-width: 52ch; }
+.ch-price-note {
+  font-size: 11px; color: var(--muted); line-height: 1.6;
+  background: var(--soft); border: 1px solid var(--line);
+  border-radius: 8px; padding: 10px; margin: 0;
+}
+
+/* ============================================================
+   Technician "Bugün" panel
+   ============================================================ */
+.tt-grid {
+  display: grid; gap: 14px; margin-bottom: 16px;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr);
+}
+@media (max-width: 900px) { .tt-grid { grid-template-columns: 1fr; } }
+
+.tt-card { padding: 16px; }
+.tt-card h3 { margin: 4px 0 0; font-size: 17px; }
+.tt-next { border-left: 4px solid var(--blue); }
+.tt-next-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.tt-site { margin: 3px 0 0; font-size: 12px; color: var(--muted); }
+.tt-time {
+  flex: none; text-align: right; font-size: 20px; font-weight: 800;
+  line-height: 1.1; color: var(--blue);
+}
+.tt-time small { display: block; font-size: 10px; font-weight: 600; color: var(--muted); margin-top: 2px; }
+.tt-address { font-size: 12px; color: var(--ink); margin: 12px 0 0; }
+.tt-tasks { margin-top: 12px; }
+.tt-label {
+  display: block; font-size: 10px; font-weight: 700; letter-spacing: .03em;
+  text-transform: uppercase; color: var(--muted); margin-bottom: 4px;
+}
+.tt-tasks ul { margin: 0; padding-left: 16px; }
+.tt-tasks li { font-size: 12px; line-height: 1.6; }
+.tt-actions {
+  display: flex; gap: 8px; flex-wrap: wrap;
+  margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line);
+}
+/* Field use: gloves, sunlight, one hand — targets stay comfortably tappable. */
+.tt-btn { min-height: 44px; display: inline-flex; align-items: center; text-decoration: none; }
+
+.tt-stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+.tt-stat {
+  background: var(--soft); border: 1px solid var(--line);
+  border-radius: 8px; padding: 10px;
+}
+.tt-stat span { display: block; font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+.tt-stat strong { display: block; font-size: 20px; font-weight: 800; margin-top: 2px; }
+
+.tt-cred-list { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 8px; }
+.tt-cred {
+  display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  font-size: 11px; padding: 9px 10px; border-radius: 8px;
+  background: var(--soft); border: 1px solid var(--line);
+  border-left: 3px solid var(--line);
+}
+.tt-cred-name { font-weight: 700; }
+.tt-cred-state { color: var(--muted); text-align: right; }
+.tt-cred.ok { border-left-color: var(--green); }
+.tt-cred.soon { border-left-color: var(--amber); }
+.tt-cred.soon .tt-cred-state { color: #b45309; font-weight: 700; }
+.tt-cred.expired { border-left-color: var(--red); }
+.tt-cred.expired .tt-cred-state { color: var(--red); font-weight: 700; }
+.tt-cred-note { font-size: 10px; color: var(--muted); margin: 10px 0 0; line-height: 1.5; }
+.tt-empty-text { font-size: 12px; color: var(--muted); margin: 8px 0 0; line-height: 1.6; }

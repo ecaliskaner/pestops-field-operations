@@ -15,6 +15,8 @@ import { renderMobileRoute } from '../views/mobile.js';
 import { renderInventory } from '../views/inventory.js';
 import { renderFinance } from '../views/finance.js';
 import { renderVisitReports } from '../views/visitReports.js';
+import { renderCustomerHome } from '../views/customerHome.js';
+import { renderTechToday } from '../views/techToday.js';
 
 export function setView(view){
   state.view=view;
@@ -28,6 +30,7 @@ export function setView(view){
     renderSites();
   } else if (view === 'work') {
     renderWork();
+    renderTechToday();
   } else if (view === 'mobileSim') {
     renderMobileRoute();
   } else if (view === 'inventory') {
@@ -36,6 +39,8 @@ export function setView(view){
     renderFinance();
   } else if (view === 'visitReports') {
     renderVisitReports();
+  } else if (view === 'customerHome') {
+    renderCustomerHome();
   } else if (view === 'insights') {
     // Re-render on entry so the charts mount into the now-visible container and
     // re-scope to the current user (a customer sees only their own locations).
@@ -60,6 +65,8 @@ export function render(){
   renderInventory();
   renderFinance();
   renderVisitReports();
+  renderCustomerHome();
+  renderTechToday();
   setView(state.view);
   applyRoleAccess();
 }

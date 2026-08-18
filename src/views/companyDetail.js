@@ -19,7 +19,20 @@ import {
 } from '../data/history.js';
 import { credentialDocs, KVKK_NOTICE } from '../data/credentials.js';
 import { renderFloorPlan } from './floorPlan.js';
+import { visitsPerMonth } from '../data/schedule.js';
+import { demoToday } from '../data/history.js';
 import { techData } from '../data/seed.js';
+
+// Human-readable service cadence, derived from the contracted scope rather
+// than stored as prose — so it can never disagree with the visit plan.
+function describeFrequency(site) {
+  const t = demoToday();
+  const n = visitsPerMonth(site, t.month);
+  if (n >= 4) return `Haftalık (ayda ${n} servis)`;
+  if (n === 2) return '15 günde bir (ayda 2 servis)';
+  if (n === 1) return 'Aylık periyodik koruma';
+  return `Ayda ${n} servis`;
+}
 
 export function showCompanyDetail(siteId) {
   ui.activeSiteId = siteId;
@@ -77,9 +90,13 @@ export function showCompanyDetail(siteId) {
   const contractPeriodEl = $('#compContractPeriod');
   const serviceFrequencyEl = $('#compServiceFrequency');
   const addressEl = $('#compAddress');
-  if (contractPeriodEl) contractPeriodEl.textContent = (site.contract && site.contract.period) || (site.id === 's1' ? '01.01.2026 - 31.12.2026' : (site.id === 's2' ? '15.02.2026 - 15.02.2027' : '01.03.2026 - 01.03.2027'));
-  if (serviceFrequencyEl) serviceFrequencyEl.textContent = site.serviceFrequency || (site.id === 's1' ? '15 Günde Bir (Ayda 2 Servis)' : (site.id === 's3' ? 'Haftalık (Ayda 4 Servis)' : 'Aylık Periyodik Koruma'));
-  if (addressEl) addressEl.textContent = site.address || (site.id === 's1' ? 'Gebze Organize Sanayi Bölgesi, Kocaeli' : (site.id === 's2' ? 'Hadımköy Nakliyeciler Sitesi, İstanbul' : 'Ataşehir Sağlık Kampüsü, İstanbul'));
+  // These used to fall back to per-site-id hardcoded strings, which meant any
+  // facility beyond s1/s2/s3 was shown another site's address and a made-up
+  // frequency. Every site now carries a real address, and the service frequency
+  // is derived from the contracted scope the planner already works from.
+  if (contractPeriodEl) contractPeriodEl.textContent = (site.contract && site.contract.period) || 'Sözleşme tanımlanmadı';
+  if (serviceFrequencyEl) serviceFrequencyEl.textContent = site.serviceFrequency || describeFrequency(site);
+  if (addressEl) addressEl.textContent = site.address || '—';
   
   // Tab 2: Map Stats
   const checkedClean = site.stations.filter(s => s.checked && s.status === 'clean').length;

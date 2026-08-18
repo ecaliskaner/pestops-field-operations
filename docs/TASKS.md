@@ -118,6 +118,21 @@ swaps, file uploads and contract edits — and nothing else.
 | 8-7 | Staff & user management | **todo** | — | — | `techData`/`techRates`/`CREDENTIALS` and the 3 accounts in `core/auth.js` are all fixed. §11 also wants customer self-service password change |
 | 8-8 | Replace hardcoded display rows | **todo** | — | — | `renderAiPredictions()` is 4 fixed cards under an "AI AKTİF" badge; `dashboard.js` prepends a fixed `curated[]` feed and a 3-row schedule above the derived rows |
 
+## Phase 9 — Customer & technician experience
+
+The two roles were auditable but not *usable*: the customer landed inside one
+building with no way to ask for a visit, and the technician got the same generic
+board an office user sees.
+
+| ID | Task | Status | Owner | Files | Notes |
+|---|---|---|---|---|---|
+| 9-1 | Customer sees other companies' data | **done** | Session O (`main`) | `ui/demo.js` | **Privacy bug.** `operationalNotifs()` had no `client` branch, so a customer fell through to the office alerts and was shown another company's work orders and the whole portfolio's stock levels |
+| 9-2 | Customer overview ("Genel Durum") | **done** | Session O (`main`) | `views/customerHome.js` | Next visit with crew and scope, actions the customer owes, facility cards. Replaces landing inside a single facility |
+| 9-3 | Service request (acil çağrı / ek servis) | **done** | Session O (`main`) | `views/customerHome.js` | §1 prices call-outs and extra visits but the portal could not ask for one. Creates a real work order flagged `requestedByCustomer`, priced from the contract |
+| 9-4 | Technician "Bugün" panel | **done** | Session O (`main`) | `views/techToday.js` | Next stop with address, one-tap navigation and phone, contract-derived task list, day counters, own certificate validity |
+| 9-5 | Real addresses + derived service frequency | **done** | Session O (`main`) | `data/seed.js`, `core/state.js`, `views/companyDetail.js` | Address/period/frequency fell back to per-site-id hardcoded strings, so any site past s3 showed another site's address |
+| 9-6 | Customer usage analytics (§12) | **todo** | — | — | Still the one whole `.docx` stage with no implementation |
+
 ---
 
 ## Notes for future sessions
@@ -310,6 +325,21 @@ from. Its `defaultSelection` deliberately anchors on the most recent visit with
 click. The zero-activity path is still handled (badge flips to "Aktivite yok",
 the species section and its donut are suppressed rather than rendered empty) —
 7 of the seeded visits are clean, so that path is reachable in the demo.
+
+**Role feeds must each have their own branch (9-1).** `operationalNotifs()` in
+`ui/demo.js` returns early per role. The `client` branch was missing, so a
+customer silently inherited the office feed — other companies' work orders, the
+whole portfolio's risk sites and stock levels. When adding a notification
+source, ask which roles it belongs to *first*; the office branch is the fallback
+and it is not safe as a default.
+
+**`load()` backfills fields the seed has gained (9-5).** A saved session keeps
+its own `sites`, so a field added to the seed later (e.g. `address`) never
+appeared for anyone with existing state. `load()` now fills *missing* keys from
+the seed per site — user edits are never overwritten, because only `undefined`
+keys are filled. This is why the per-site-id hardcoded address/frequency
+fallbacks could finally be deleted: they existed to paper over that gap and
+handed any site past s3 another site's address.
 
 **Facility setup is now performable in-app (8-4 / 8-5).** `views/floorPlan.js`
 owns the whole §3 "sistem kurulumu" loop: upload the facility's own plan, click

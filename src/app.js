@@ -36,6 +36,7 @@ import { createSiteSubmit } from './views/sites.js';
 import { demoClicks, openNotificationCenter, updateNotifBadge, mountPresenterBar } from './ui/demo.js';
 import { visitReportClicks, bindVisitReportFilters } from './views/visitReports.js';
 import { calendarClicks } from './ui/calendar.js';
+import { customerHomeClicks, serviceRequestSubmit } from './views/customerHome.js';
 import {
   floorPlanClicks, newStationSubmit, bindFloorPlanInputs,
   planPointerDown, planPointerMove, planPointerUp
@@ -238,6 +239,7 @@ const CLICK_CHAIN = [
   backNavClicks,
   calendarToggleClicks,
   calendarClicks,
+  customerHomeClicks,
   visitReportClicks,
   planToolbarClicks,
   reportModalClicks,
@@ -262,6 +264,7 @@ const CLICK_CHAIN = [
 
 const SUBMIT_CHAIN = [
   newStationSubmit,
+  serviceRequestSubmit,
   loginSubmit,
   createWorkSubmit,
   editSiteSubmit,

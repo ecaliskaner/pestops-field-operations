@@ -12,7 +12,9 @@
 // session-scoped, so a reset genuinely returns the demo to zero.
 
 import { $, $$, toast } from '../core/dom.js';
-import { state, save } from '../core/state.js';
+import { state, save, visibleSites } from '../core/state.js';
+import { recommendationsForSite } from '../data/history.js';
+import { nextVisitFor } from '../data/schedule.js';
 import { initial } from '../data/seed.js';
 import { setView } from '../core/router.js';
 import { ui } from '../core/session.js';
@@ -47,6 +49,40 @@ function operationalNotifs() {
         action: () => setView('work')
       });
     }
+    return list;
+  }
+
+  // A customer's feed is strictly their own facilities. Without this branch the
+  // client fell through to the office alerts below and was shown other
+  // companies' work orders and the whole portfolio's stock levels.
+  if (user && user.role === 'client') {
+    for (const site of visibleSites()) {
+      if (site.state === 'risk') list.push({
+        title: `Kritik aktivite: ${site.name}`,
+        desc: `Tesis sağlık skoru ${site.score}/100. Detaylar ve önerilen aksiyonlar tesis sayfanızda.`,
+        time: 'Bugün', type: 'alert',
+        action: () => showCompanyDetail(site.id)
+      });
+    }
+    // Findings the customer still has to act on (§9 closed loop).
+    for (const site of visibleSites()) {
+      const open = recommendationsForSite(site.id)
+        .filter((r) => r.stage === 'raised' || r.stage === 'rejected');
+      if (open.length) list.push({
+        title: `${open.length} aksiyon bekliyor · ${site.name}`,
+        desc: 'Tarafınızdan tamamlanması gereken öneriler var. Aksiyonu bildirip fotoğraf yükleyebilirsiniz.',
+        time: 'Bugün', type: 'warning',
+        action: () => showCompanyDetail(site.id)
+      });
+    }
+    // The next visit they can expect, from the contract-derived plan.
+    const next = nextVisitFor(visibleSites().map((s) => s.id));
+    if (next) list.push({
+      title: `Sonraki servis: ${next.date} ${next.time}`,
+      desc: `${next.siteName} · ${next.teamLabel}`,
+      time: 'Planlandı', type: 'info',
+      action: () => setView('sites')
+    });
     return list;
   }
 

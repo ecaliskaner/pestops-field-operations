@@ -6,6 +6,7 @@ import { state } from '../core/state.js';
 import { ui } from '../core/session.js';
 import { setView } from '../core/router.js';
 import { showCompanyDetail } from '../views/companyDetail.js';
+import { renderCustomerHome } from '../views/customerHome.js';
 
 export function applyRoleAccess() {
   if (!state.currentUser) return;
@@ -30,7 +31,10 @@ export function applyRoleAccess() {
   }
 
   if (role === 'admin') {
-    $$('.sidebar .nav button').forEach(b => b.classList.remove('hidden'));
+    // "Genel Durum" is the customer's own overview; the office has its own
+    // dashboard and two similarly-named entries would just be confusing.
+    $$('.sidebar .nav button').forEach(b =>
+      b.classList.toggle('hidden', b.dataset.view === 'customerHome'));
     $$('.sidebar .nav-label').forEach(l => l.classList.remove('hidden'));
     $('#addSite')?.classList.remove('hidden');
     $('#newWorkOrder')?.classList.remove('hidden');
@@ -76,7 +80,7 @@ export function applyRoleAccess() {
     // visibleSites(): "Tesisler" (their own locations), "Ziyaret Raporları"
     // (§11 — which dates and time slots they were serviced on, by whom) and
     // "Analizler" (cross-location comparison). Everything else stays hidden.
-    const CLIENT_VIEWS = new Set(['sites', 'visitReports', 'insights']);
+    const CLIENT_VIEWS = new Set(['customerHome', 'sites', 'visitReports', 'insights']);
     $$('.sidebar .nav button').forEach(b => {
       b.classList.toggle('hidden', !CLIENT_VIEWS.has(b.dataset.view));
     });
@@ -90,9 +94,12 @@ export function applyRoleAccess() {
     // the facility page. The client role starts here, so it has to be rendered
     // explicitly or the customer lands on an empty screen. `showCompanyDetail`
     // scopes to their own primary site.
-    const homeSite = state.currentUser.siteId || 's1';
-    ui.activeSiteId = homeSite;
-    showCompanyDetail(homeSite);
+    // Land on the portfolio overview, not inside one building: the customer's
+    // first questions are "when are you coming" and "what do I owe you",
+    // neither of which a single facility page answers.
+    ui.activeSiteId = state.currentUser.siteId || 's1';
+    renderCustomerHome();
+    setView('customerHome');
     
     $('#backToSitesFromCompBtn')?.classList.add('hidden');
     $('#companyFileUploadForm')?.classList.add('hidden');

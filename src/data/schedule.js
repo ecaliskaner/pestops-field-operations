@@ -216,6 +216,29 @@ export function entriesByDay(year, month, filterFn) {
   return map;
 }
 
+/**
+ * The next planned visit at or after "today" for the given sites — the single
+ * question a customer opens the portal to answer ("ne zaman geleceksiniz?") and
+ * a technician's next stop. Looks into next month too, so the answer does not
+ * disappear on the last days of a month.
+ */
+export function nextVisitFor(siteIds) {
+  const ids = new Set(siteIds || []);
+  const t = demoToday();
+  const months = [
+    { y: t.year, m: t.month },
+    t.month === 11 ? { y: t.year + 1, m: 0 } : { y: t.year, m: t.month + 1 }
+  ];
+
+  for (const { y, m } of months) {
+    const candidates = plannedVisits(y, m, (s) => ids.has(s.id))
+      .filter((p) => !(y === t.year && m === t.month && p.day <= t.day))
+      .sort((a, b) => a.day - b.day || String(a.time).localeCompare(String(b.time)));
+    if (candidates.length) return candidates[0];
+  }
+  return null;
+}
+
 /** A technician's own upcoming assignments, for their notification feed. */
 export function assignmentsFor(tech, year, month) {
   return plannedVisits(year, month).filter((p) => p.team.includes(tech));

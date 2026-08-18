@@ -38,6 +38,19 @@ export function load(){
     for (const seedSite of initial.sites) {
       if (!have.has(seedSite.id)) merged.sites.push(structuredClone(seedSite));
     }
+
+    // Backfill fields the seed has gained since this session was saved (e.g.
+    // `address`). Only *missing* keys are filled, so anything the user edited in
+    // the app is never overwritten — without this, a saved session keeps showing
+    // gaps for data the seed already provides.
+    const seedById = new Map(initial.sites.map((s) => [s.id, s]));
+    for (const site of merged.sites) {
+      const seedSite = seedById.get(site.id);
+      if (!seedSite) continue;
+      for (const [key, value] of Object.entries(seedSite)) {
+        if (site[key] === undefined) site[key] = structuredClone(value);
+      }
+    }
     return merged;
   } catch { return structuredClone(initial); }
 }
