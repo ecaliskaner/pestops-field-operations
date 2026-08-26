@@ -11,18 +11,19 @@ import { printElement, downloadCSV } from '../ui/export.js';
 import {
   getVisits, visitsForSite, monthlyPestTotals, getRecommendations, siteRanking
 } from '../data/history.js';
-import { initial } from '../data/seed.js';
+import { visibleSites } from '../core/state.js';
 import {
   STANDARDS, complianceOverview, sitesInScope, siteReadiness, STATUS_LABEL
 } from '../data/compliance.js';
 import {
-  visitReport, trendReport, comparisonReport, nonConformityReport, auditPackage
+  visitReport, trendReport, comparisonReport, nonConformityReport, auditPackage,
+  placementActivityReport, activityReport, placementPoints
 } from './reportBodies.js';
 
 const esc = (s) => String(s ?? '')
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-const siteById = (id) => initial.sites.find((s) => s.id === id);
+const siteById = (id) => visibleSites().find((s) => s.id === id);
 
 /* ------------------------------------------------------------ report registry */
 
@@ -43,6 +44,46 @@ const REPORTS = {
         { key: 'type', label: 'Cihaz Tipi' }, { key: 'category', label: 'Kategori' },
         { key: 'status', label: 'Durum' }, { key: 'pestCount', label: 'Bulgu Adedi' },
         { key: 'pestName', label: 'Tür' }, { key: 'tech', label: 'Teknisyen' }
+      ]
+    })
+  },
+  activity: {
+    icon: '⚠',
+    title: 'Aktivite Raporu',
+    desc: 'Yalnızca aktivite tespit edilen noktalar — tür, adet ve uygulanan ürün.',
+    scope: ['site', 'visit'],
+    build: (s) => activityReport(s.visit),
+    filename: (s) => `aktivite_raporu_${s.visit.id}`,
+    csv: (s) => ({
+      rows: s.visit.readings
+        .filter((r) => r.pestCount > 0)
+        .sort((a, b) => b.pestCount - a.pestCount)
+        .map((r) => ({ ...r, date: s.visit.date, tech: s.visit.tech })),
+      columns: [
+        { key: 'date', label: 'Tarih' }, { key: 'code', label: 'Nokta' },
+        { key: 'type', label: 'Cihaz Tipi' }, { key: 'pestName', label: 'Gözlenen Tür' },
+        { key: 'pestCode', label: 'Tür Kodu' }, { key: 'pestCount', label: 'Adet' },
+        { key: 'status', label: 'Durum' }, { key: 'tech', label: 'Teknisyen' }
+      ]
+    })
+  },
+  placement: {
+    icon: '⌗',
+    title: 'Yerleşim Listesi & Aktivite',
+    desc: 'Ekipman ailesi bazında nokta listesi, barkod, cihaz değişimi ve nokta aktivitesi.',
+    scope: ['site'],
+    build: (s) => placementActivityReport(s.siteId),
+    filename: (s) => `yerlesim_listesi_${s.siteId}`,
+    csv: (s) => ({
+      rows: placementPoints(s.siteId),
+      columns: [
+        { key: 'code', label: 'Nokta' }, { key: 'pointNo', label: 'Nokta No' },
+        { key: 'family', label: 'Ekipman Ailesi' }, { key: 'area', label: 'Bölge Adı' },
+        { key: 'barcode', label: 'Güncel Barkod' },
+        { key: 'generations', label: 'Cihaz Nesli' },
+        { key: 'readings', label: 'Okuma' }, { key: 'totalPests', label: 'Toplam Bulgu' },
+        { key: 'dominant', label: 'Baskın Tür' },
+        { key: 'lastStatus', label: 'Son Durum' }, { key: 'lastDate', label: 'Son Okuma' }
       ]
     })
   },
@@ -142,11 +183,17 @@ let current = null;
 
 function defaultSelection(key) {
   const worstSiteId = siteRanking()[0].id;
-  if (key === 'visit') {
+  if (key === 'visit' || key === 'activity') {
     const visits = visitsForSite(worstSiteId);
-    return { siteId: worstSiteId, visit: visits[visits.length - 1] };
+    // An activity report opens on the most recent visit that actually found
+    // something — landing on an empty "no activity" sheet by default would
+    // undersell the report on the very first click.
+    const anchor = key === 'activity'
+      ? [...visits].reverse().find((v) => v.totals.all > 0) || visits[visits.length - 1]
+      : visits[visits.length - 1];
+    return { siteId: worstSiteId, visit: anchor };
   }
-  if (key === 'trend') return { siteId: worstSiteId };
+  if (key === 'trend' || key === 'placement') return { siteId: worstSiteId };
   if (key === 'nonconformity') return { siteId: null };
   if (key === 'audit') return { standardId: 'brcgs' };
   return {};
@@ -197,7 +244,7 @@ function renderThirdEye() {
   // sites have *not* had an independent inspection, and only 2 of 6 have.
   const coverage = $('#thirdEyeCoverage');
   if (coverage) {
-    coverage.innerHTML = initial.sites.map((s) => {
+    coverage.innerHTML = visibleSites().map((s) => {
       const last = audits.find((v) => v.siteId === s.id);
       return `<div class="te-cov ${last ? 'done' : 'due'}">
         <span class="te-cov-site">${esc(s.name)}</span>
@@ -281,7 +328,7 @@ function toolbar(report) {
   const parts = [];
 
   if (report.scope.includes('site') || report.scope.includes('siteOptional')) {
-    const chips = initial.sites.map((s) =>
+    const chips = visibleSites().map((s) =>
       `<button class="rep-chip ${current.siteId === s.id ? 'active' : ''}" data-report-site="${s.id}">${esc(s.name)}</button>`).join('');
     parts.push(`<div class="rep-chips"><span class="rep-chips-label">Tesis</span>${
       report.scope.includes('siteOptional')

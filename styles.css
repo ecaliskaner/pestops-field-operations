@@ -2445,8 +2445,157 @@ tr.rec-row-selected > td { background: #eef4ff !important; }
 
 /* ===== Phase 3a (Session G): field realism — live GPS, geofence, route opt, credentials, offline, NFC, audit ===== */
 
-/* --- 3-1 live map: smooth drift on the existing .map-person elements --- */
-.map-person { transition: left 1.05s linear, top 1.05s linear; }
+/* --- Real Leaflet field map (replaces the old abstract %-canvas) --- */
+.map-panel { padding: 0; overflow: hidden; }
+.field-map {
+  height: 440px;
+  width: 100%;
+  background: #e8edf0;
+  z-index: 0; /* keep tiles/controls under app overlays and modals */
+}
+.field-map .leaflet-container { font: inherit; background: #e8edf0; }
+.field-map .leaflet-tooltip {
+  font: 600 11px/1.35 "DM Sans", sans-serif;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 6px 18px rgba(16, 34, 51, .14);
+  color: #24323d;
+  padding: 5px 9px;
+}
+.field-map .leaflet-bar a {
+  color: #37505f; border-color: var(--line);
+}
+
+/* Technician live marker: coloured disc + initials + pulsing accuracy ring. */
+.tech-marker {
+  position: relative;
+  width: 34px; height: 34px;
+  display: grid; place-items: center;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  background: var(--tc, #1769e0);
+  color: #fff;
+  font: 700 10px "DM Sans", sans-serif;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, .3);
+}
+.tech-marker::after {
+  content: "";
+  position: absolute; inset: -8px;
+  border: 2px solid var(--tc, #1769e0);
+  border-radius: 50%;
+  opacity: .5;
+  animation: pulse 1.9s ease-out infinite;
+}
+.tech-marker.active {
+  width: 38px; height: 38px;
+  box-shadow: 0 0 0 3px rgba(19, 139, 103, .35), 0 4px 14px rgba(0, 0, 0, .35);
+}
+
+/* A technician reporting real GPS from the mobile app, as opposed to the
+   simulated fleet: solid green halo instead of the ambient pulse. */
+.tech-marker.live {
+  box-shadow: 0 0 0 3px #138b67, 0 4px 16px rgba(19, 139, 103, .5);
+}
+.tech-marker.live::after {
+  border-color: #138b67;
+  opacity: .9;
+  animation-duration: 1.1s;
+}
+
+/* Caption under the field map naming who is on real GPS right now. */
+.live-gps-note {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 4px;
+  min-height: 0;
+}
+.live-gps-note:not(:empty) {
+  margin-top: 10px;
+}
+.live-gps-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 11px;
+  border: 1px solid rgba(19, 139, 103, .35);
+  border-radius: 999px;
+  background: rgba(19, 139, 103, .08);
+  color: #0f6b50;
+  font: 600 12px "DM Sans", sans-serif;
+  cursor: pointer;
+  transition: background .15s ease, border-color .15s ease;
+}
+.live-gps-chip:hover { background: rgba(19, 139, 103, .16); }
+.live-gps-chip i {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: #138b67;
+  animation: pulse 1.4s ease-out infinite;
+}
+
+/* GPS contradicts the arrival the technician reported — the alert case. */
+.live-gps-chip.mismatch {
+  border-color: rgba(224, 87, 74, .5);
+  background: rgba(224, 87, 74, .12);
+  color: #a5342a;
+}
+.live-gps-chip.mismatch:hover { background: rgba(224, 87, 74, .22); }
+.live-gps-chip.mismatch i { background: #e0574a; animation: pulse 1s ease-out infinite; }
+
+.tech-marker.live.mismatch {
+  box-shadow: 0 0 0 3px #e0574a, 0 4px 16px rgba(224, 87, 74, .55);
+}
+.tech-marker.live.mismatch::after { border-color: #e0574a; animation-duration: .8s; }
+
+/* A fix that landed outside the İstanbul operating area — usually a stale or
+   default device location. Called out rather than left to vanish off-map. */
+.live-gps-chip.off-area {
+  border-color: rgba(217, 146, 43, .45);
+  background: rgba(217, 146, 43, .10);
+  color: #8a5b12;
+}
+.live-gps-chip.off-area:hover { background: rgba(217, 146, 43, .2); }
+.live-gps-chip.off-area i { background: #d9922b; animation: none; }
+
+/* Site pins on the real map: teardrop dot + floating label. */
+.site-pin {
+  width: 18px; height: 18px;
+  border: 2.5px solid #fff;
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .3);
+  background: #138b67;
+}
+.site-pin i {
+  position: absolute; top: 5px; left: 5px;
+  width: 6px; height: 6px; border-radius: 50%;
+  background: #fff;
+}
+.site-pin.risk { background: #e0574a; }
+.site-pin.watch { background: #d9922b; }
+.site-pin.ok { background: #138b67; }
+.site-pin-label {
+  position: absolute; top: -14px; left: 14px;
+  white-space: nowrap;
+  font: 700 8.5px "DM Sans", sans-serif;
+  color: #37505f;
+  background: rgba(255, 255, 255, .9);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 1px 5px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .1);
+}
+.site-pin-label.depot { color: #6b4a2a; }
+.depot-pin {
+  width: 24px; height: 24px;
+  display: grid; place-items: center;
+  font-size: 15px;
+  background: #fff;
+  border: 2px solid #c98a4b;
+  border-radius: 7px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .25);
+}
 
 /* --- 3-2 geofence rings, site pins, route overlay on the map canvas --- */
 .geofence-layer { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
@@ -3287,3 +3436,344 @@ button:focus-visible, a:focus-visible, .nav-item:focus-visible, input:focus-visi
   color: var(--accent-hover);
 }
 .filter-btn.active b { color: var(--accent-hover); }
+
+/* ============================================================
+   Service calendar (task 7-2) — real month grid, planner chips
+   ============================================================ */
+.cal-toolbar { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+.cal-nav-btn { width:32px; padding:0; font-size:16px; line-height:1; font-weight:700; }
+
+.cal-legend { margin-left:10px; display:inline-flex; align-items:center; gap:4px; font-size:10px; }
+.cal-legend i { width:9px; height:9px; border-radius:2px; display:inline-block; }
+.cal-legend i.cal-done { background:var(--green); }
+.cal-legend i.cal-planned { background:var(--blue); }
+.cal-legend i.cal-tentative { background:var(--amber); }
+
+#calendarGrid .calendar-cell {
+  border:1px solid var(--line);
+  border-radius:8px;
+  padding:6px;
+  background:#fff;
+  display:flex;
+  flex-direction:column;
+  gap:3px;
+  min-height:92px;
+  cursor:pointer;
+  overflow:hidden;
+}
+#calendarGrid .calendar-cell.empty-cell {
+  background:#fafbfc;
+  border-style:dashed;
+}
+#calendarGrid .calendar-cell.cal-empty-day { background:#fcfcfd; }
+#calendarGrid .calendar-cell.cal-today {
+  border:2px solid var(--blue);
+  background:var(--blue-soft);
+}
+.cal-daynum {
+  font-weight:700; font-size:12px; color:var(--ink);
+  display:flex; align-items:baseline; gap:5px;
+}
+.cal-daynum em {
+  font-style:normal; font-size:9px; font-weight:700;
+  color:var(--blue); text-transform:uppercase; letter-spacing:.03em;
+}
+.cal-chip {
+  font-size:9px; font-weight:600; border-radius:3px;
+  padding:2px 4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  border-left:3px solid transparent;
+}
+.cal-chip b { font-weight:800; }
+.cal-chip.cal-done { background:rgba(34,197,94,.12); border-left-color:var(--green); color:#15803d; }
+.cal-chip.cal-planned { background:rgba(37,99,235,.12); border-left-color:var(--blue); color:#1d4ed8; }
+.cal-chip.cal-tentative { background:rgba(245,158,11,.14); border-left-color:var(--amber); color:#b45309; }
+.cal-more { font-size:9px; color:var(--muted); font-weight:700; }
+
+/* Day-detail modal */
+.cal-day-list { display:grid; gap:10px; max-height:390px; overflow:auto; }
+.cal-day-row {
+  border:1px solid var(--line); border-radius:8px;
+  padding:10px; background:var(--soft);
+}
+.cal-row-head { display:flex; justify-content:space-between; align-items:start; gap:8px; }
+.cal-row-head b { font-size:12px; display:block; }
+.cal-row-head small { font-size:10px; color:var(--muted); }
+.cal-row-desc { font-size:11px; color:var(--muted); margin:6px 0 0; }
+.cal-task-list { margin:6px 0 0; padding-left:16px; }
+.cal-task-list li { font-size:11px; color:var(--ink); line-height:1.5; }
+.cal-row-team {
+  display:flex; justify-content:space-between; align-items:center; gap:8px;
+  margin-top:8px; padding-top:8px; border-top:1px solid var(--line);
+  font-size:10px; color:var(--muted); font-weight:600;
+}
+.cal-day-actions {
+  margin-top:14px; padding-top:12px; border-top:1px solid var(--line);
+  display:flex; justify-content:flex-end;
+}
+
+/* ============================================================
+   Visit-report board (task 7-1)
+   ============================================================ */
+.vr-head-tools { display:flex; gap:8px; align-items:center; }
+.vr-search {
+  height:34px; min-width:230px; padding:0 10px;
+  border:1px solid var(--line); border-radius:8px;
+  font-size:12px; font-family:inherit; background:#fff; color:var(--ink);
+}
+.vr-search:focus, .vr-limit:focus { outline:none; border-color:var(--blue); }
+.vr-limit {
+  height:34px; padding:0 8px; border:1px solid var(--line);
+  border-radius:8px; font-size:12px; font-family:inherit; background:#fff; color:var(--ink);
+}
+
+.vr-filter-panel { margin-bottom:14px; background:var(--soft); }
+.vr-filter-head {
+  display:flex; justify-content:space-between; align-items:center;
+  gap:10px; margin-bottom:12px; flex-wrap:wrap;
+}
+.vr-filter-badge {
+  background:var(--ink); color:#fff; font-size:10px; font-weight:700;
+  padding:5px 11px; border-radius:20px; letter-spacing:.03em;
+}
+.vr-filter-actions { display:flex; gap:6px; }
+.vr-filter-grid {
+  display:grid; gap:10px;
+  grid-template-columns:repeat(auto-fit, minmax(170px, 1fr));
+}
+.vr-field { display:flex; flex-direction:column; gap:4px; min-width:0; }
+.vr-field > span {
+  font-size:10px; font-weight:700; color:var(--muted);
+  text-transform:uppercase; letter-spacing:.03em;
+}
+.vr-field select, .vr-field input {
+  height:34px; padding:0 8px; border:1px solid var(--line); border-radius:8px;
+  font-size:12px; font-family:inherit; background:#fff; color:var(--ink);
+  width:100%; min-width:0;
+}
+.vr-field select:focus, .vr-field input:focus { outline:none; border-color:var(--blue); }
+
+.vr-table-panel { padding-top:12px; }
+.vr-table-meta {
+  font-size:11px; color:var(--muted); font-weight:600;
+  margin-bottom:8px;
+}
+.vr-table-scroll { overflow-x:auto; }
+.vr-table { width:100%; border-collapse:collapse; min-width:940px; }
+.vr-table th {
+  text-align:left; font-size:10px; font-weight:700; color:var(--muted);
+  text-transform:uppercase; letter-spacing:.03em;
+  padding:10px 10px; border-bottom:1px solid var(--line); white-space:nowrap;
+  background:var(--soft);
+}
+.vr-table td {
+  padding:10px; border-bottom:1px solid var(--line);
+  font-size:11.5px; vertical-align:top; line-height:1.45;
+}
+.vr-table tbody tr:hover { background:var(--soft); }
+.vr-no { padding:0; font-size:11.5px; font-weight:700; color:var(--blue); }
+.vr-desc { color:var(--muted); max-width:230px; }
+.vr-team { max-width:210px; }
+.vr-type { font-size:9px; font-weight:700; white-space:nowrap; }
+
+/* ============================================================
+   Facility plan setup (8-4 / 8-5): uploaded plan + point placing
+   ============================================================ */
+.floor-plan-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #fff;
+  border-radius: 6px;
+  pointer-events: none;   /* clicks belong to the wrapper / markers */
+  user-select: none;
+}
+
+.plan-tool-btn {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 11px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.plan-tool-btn.active {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #fff;
+}
+
+/* Placement mode: the plan becomes a target. */
+#blueprintWrapper.placing { cursor: crosshair; }
+#blueprintWrapper.placing::after {
+  content: 'Noktayı işaretlemek için plana tıklayın';
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--blue);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 20px;
+  pointer-events: none;
+  z-index: 5;
+  box-shadow: 0 2px 8px rgba(0,0,0,.18);
+}
+#blueprintWrapper.placing .station-marker { pointer-events: none; }
+
+.station-marker { touch-action: none; }        /* let pointer drag win over scroll */
+.station-marker.dragging {
+  cursor: grabbing;
+  z-index: 20;
+  transform: scale(1.15);
+  box-shadow: 0 4px 14px rgba(0,0,0,.28);
+}
+
+/* ============================================================
+   Customer overview (müşteri "Genel Durum")
+   ============================================================ */
+.ch-body { display: grid; gap: 16px; }
+.ch-card { padding: 20px; }
+.ch-card h2 { margin: 4px 0 0; font-size: 20px; line-height: 1.3; }
+
+/* The one question a customer opens the portal for gets the lead card. */
+.ch-next {
+  border-left: 4px solid var(--blue);
+  background: linear-gradient(180deg, var(--blue-soft), #fff 55%);
+}
+.ch-next-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.ch-next-site { margin: 4px 0 0; font-size: 12px; color: var(--muted); }
+.ch-next-body {
+  display: grid; gap: 16px; margin-top: 16px; padding-top: 14px;
+  border-top: 1px solid var(--line);
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+}
+.ch-label {
+  display: block; font-size: 10px; font-weight: 700; letter-spacing: .03em;
+  text-transform: uppercase; color: var(--muted); margin-bottom: 4px;
+}
+.ch-next-crew b { font-size: 13px; }
+.ch-next-tasks ul { margin: 0; padding-left: 16px; }
+.ch-next-tasks li { font-size: 12px; line-height: 1.6; }
+.ch-next-actions {
+  display: flex; gap: 8px; flex-wrap: wrap;
+  margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line);
+}
+.ch-next-actions button { min-height: 40px; }
+
+/* Actions the customer owes us. */
+.ch-action-list { display: grid; gap: 8px; margin-top: 12px; }
+.ch-action-row {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  min-height: 52px; padding: 10px 12px; text-align: left; cursor: pointer;
+  background: var(--soft); border: 1px solid var(--line); border-radius: 8px;
+  font-family: inherit; color: var(--ink);
+  transition: border-color .15s ease, transform .15s ease;
+}
+.ch-action-row:hover { border-color: var(--blue); transform: translateX(2px); }
+.ch-action-badge {
+  flex: none; font-size: 10px; font-weight: 700; padding: 3px 8px;
+  border-radius: 20px; background: rgba(37,99,235,.12); color: #1d4ed8;
+}
+.ch-action-badge.warn { background: rgba(245,158,11,.16); color: #b45309; }
+.ch-action-text { flex: 1; min-width: 0; }
+.ch-action-text b { display: block; font-size: 12px; line-height: 1.45; }
+.ch-action-text small { display: block; font-size: 10px; color: var(--muted); margin-top: 2px; }
+.ch-action-go { flex: none; color: var(--muted); font-weight: 700; }
+.ch-more { margin: 10px 0 0; font-size: 11px; color: var(--muted); }
+
+/* Facilities. */
+.ch-last { margin: 6px 0 0; font-size: 12px; color: var(--muted); }
+.ch-site-grid {
+  display: grid; gap: 12px; margin-top: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+}
+.ch-site-card {
+  text-align: left; cursor: pointer; padding: 14px; min-height: 44px;
+  background: #fff; border: 1px solid var(--line); border-radius: 10px;
+  font-family: inherit; color: var(--ink);
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.ch-site-card:hover { border-color: var(--blue); box-shadow: 0 4px 14px rgba(0,0,0,.06); }
+.ch-site-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.ch-site-head b { font-size: 13px; }
+.ch-site-meta { font-size: 11px; color: var(--muted); margin-top: 4px; }
+.ch-site-stats {
+  display: flex; gap: 14px; margin-top: 12px; padding-top: 10px;
+  border-top: 1px solid var(--line); flex-wrap: wrap;
+}
+.ch-site-stats span { display: flex; flex-direction: column; gap: 2px; }
+.ch-site-stats i { font-style: normal; font-size: 9px; text-transform: uppercase; color: var(--muted); letter-spacing: .03em; }
+.ch-site-stats b { font-size: 13px; }
+
+/* Empty states carry an explanation and, where useful, the next action. */
+.ch-empty-card { background: var(--soft); }
+.ch-empty-text { font-size: 12px; color: var(--muted); margin: 8px 0 14px; line-height: 1.6; max-width: 52ch; }
+.ch-price-note {
+  font-size: 11px; color: var(--muted); line-height: 1.6;
+  background: var(--soft); border: 1px solid var(--line);
+  border-radius: 8px; padding: 10px; margin: 0;
+}
+
+/* ============================================================
+   Technician "Bugün" panel
+   ============================================================ */
+.tt-grid {
+  display: grid; gap: 14px; margin-bottom: 16px;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr);
+}
+@media (max-width: 900px) { .tt-grid { grid-template-columns: 1fr; } }
+
+.tt-card { padding: 16px; }
+.tt-card h3 { margin: 4px 0 0; font-size: 17px; }
+.tt-next { border-left: 4px solid var(--blue); }
+.tt-next-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.tt-site { margin: 3px 0 0; font-size: 12px; color: var(--muted); }
+.tt-time {
+  flex: none; text-align: right; font-size: 20px; font-weight: 800;
+  line-height: 1.1; color: var(--blue);
+}
+.tt-time small { display: block; font-size: 10px; font-weight: 600; color: var(--muted); margin-top: 2px; }
+.tt-address { font-size: 12px; color: var(--ink); margin: 12px 0 0; }
+.tt-tasks { margin-top: 12px; }
+.tt-label {
+  display: block; font-size: 10px; font-weight: 700; letter-spacing: .03em;
+  text-transform: uppercase; color: var(--muted); margin-bottom: 4px;
+}
+.tt-tasks ul { margin: 0; padding-left: 16px; }
+.tt-tasks li { font-size: 12px; line-height: 1.6; }
+.tt-actions {
+  display: flex; gap: 8px; flex-wrap: wrap;
+  margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line);
+}
+/* Field use: gloves, sunlight, one hand — targets stay comfortably tappable. */
+.tt-btn { min-height: 44px; display: inline-flex; align-items: center; text-decoration: none; }
+
+.tt-stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+.tt-stat {
+  background: var(--soft); border: 1px solid var(--line);
+  border-radius: 8px; padding: 10px;
+}
+.tt-stat span { display: block; font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+.tt-stat strong { display: block; font-size: 20px; font-weight: 800; margin-top: 2px; }
+
+.tt-cred-list { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 8px; }
+.tt-cred {
+  display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  font-size: 11px; padding: 9px 10px; border-radius: 8px;
+  background: var(--soft); border: 1px solid var(--line);
+  border-left: 3px solid var(--line);
+}
+.tt-cred-name { font-weight: 700; }
+.tt-cred-state { color: var(--muted); text-align: right; }
+.tt-cred.ok { border-left-color: var(--green); }
+.tt-cred.soon { border-left-color: var(--amber); }
+.tt-cred.soon .tt-cred-state { color: #b45309; font-weight: 700; }
+.tt-cred.expired { border-left-color: var(--red); }
+.tt-cred.expired .tt-cred-state { color: var(--red); font-weight: 700; }
+.tt-cred-note { font-size: 10px; color: var(--muted); margin: 10px 0 0; line-height: 1.5; }
+.tt-empty-text { font-size: 12px; color: var(--muted); margin: 8px 0 0; line-height: 1.6; }

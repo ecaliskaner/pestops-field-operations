@@ -1,6 +1,6 @@
 // Bump on every asset-manifest change so old caches are evicted.
-// v4: Repellent rebrand (was Ladybug).
-const CACHE_NAME = 'repellent-operations-v4';
+// v5: Repellent rebrand (was Ladybug) + real Leaflet field map (live technician tracking).
+const CACHE_NAME = 'repellent-operations-v5';
 
 const ASSETS = [
   './',
@@ -9,6 +9,8 @@ const ASSETS = [
   './manifest.webmanifest',
   './icon.svg',
   './vendor/html5-qrcode.min.js',
+  './vendor/leaflet.js',
+  './vendor/leaflet.css',
   './vendor/fonts/inter-400.woff2',
   './vendor/fonts/inter-600.woff2',
   './vendor/fonts/inter-ext-400.woff2',

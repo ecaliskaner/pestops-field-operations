@@ -6,6 +6,7 @@ import { state } from '../core/state.js';
 import { ui } from '../core/session.js';
 import { setView } from '../core/router.js';
 import { showCompanyDetail } from '../views/companyDetail.js';
+import { renderCustomerHome } from '../views/customerHome.js';
 
 export function applyRoleAccess() {
   if (!state.currentUser) return;
@@ -30,7 +31,10 @@ export function applyRoleAccess() {
   }
 
   if (role === 'admin') {
-    $$('.sidebar .nav button').forEach(b => b.classList.remove('hidden'));
+    // "Genel Durum" is the customer's own overview; the office has its own
+    // dashboard and two similarly-named entries would just be confusing.
+    $$('.sidebar .nav button').forEach(b =>
+      b.classList.toggle('hidden', b.dataset.view === 'customerHome'));
     $$('.sidebar .nav-label').forEach(l => l.classList.remove('hidden'));
     $('#addSite')?.classList.remove('hidden');
     $('#newWorkOrder')?.classList.remove('hidden');
@@ -41,7 +45,12 @@ export function applyRoleAccess() {
     $('#adminInspectionForm')?.classList.remove('hidden');
     $('#printStationQrBtn')?.classList.remove('hidden');
     $('#btnEditSiteContract')?.classList.remove('hidden');
-  } 
+    // Facility setup (§3) is an admin action: upload the plan, place and remove
+    // the monitoring points.
+    $('#btnAddStation')?.classList.remove('hidden');
+    $('#planUploadLabel')?.classList.remove('hidden');
+    $('#btnDeleteStation')?.classList.remove('hidden');
+  }
   else if (role === 'tech') {
     $$('.sidebar .nav button').forEach(b => {
       const view = b.dataset.view;
@@ -58,24 +67,39 @@ export function applyRoleAccess() {
     $('#adminInspectionForm')?.classList.remove('hidden');
     $('#printStationQrBtn')?.classList.add('hidden');
     $('#btnEditSiteContract')?.classList.add('hidden');
+    $('#btnAddStation')?.classList.add('hidden');
+    $('#planUploadLabel')?.classList.add('hidden');
+    $('#btnDeleteStation')?.classList.add('hidden');
     
     if (state.view !== 'work' && state.view !== 'mobileSim') {
       setView('work');
     }
   } 
   else if (role === 'client') {
-    $$('.sidebar .nav button').forEach(b => b.classList.add('hidden'));
+    // The customer gets three entry points, all company-scoped via
+    // visibleSites(): "Tesisler" (their own locations), "Ziyaret Raporları"
+    // (§11 — which dates and time slots they were serviced on, by whom) and
+    // "Analizler" (cross-location comparison). Everything else stays hidden.
+    const CLIENT_VIEWS = new Set(['customerHome', 'sites', 'visitReports', 'insights']);
+    $$('.sidebar .nav button').forEach(b => {
+      b.classList.toggle('hidden', !CLIENT_VIEWS.has(b.dataset.view));
+    });
     $$('.sidebar .nav-label').forEach(l => l.classList.add('hidden'));
-    
+
     $('#addSite')?.classList.add('hidden');
     $('#newWorkOrder')?.classList.add('hidden');
     $('#newWorkOrderSecondary')?.classList.add('hidden');
-    
+
     // `setView` only toggles which section is visible — it does not populate
     // the facility page. The client role starts here, so it has to be rendered
-    // explicitly or the customer lands on an empty screen.
-    ui.activeSiteId = 's1';
-    showCompanyDetail('s1');
+    // explicitly or the customer lands on an empty screen. `showCompanyDetail`
+    // scopes to their own primary site.
+    // Land on the portfolio overview, not inside one building: the customer's
+    // first questions are "when are you coming" and "what do I owe you",
+    // neither of which a single facility page answers.
+    ui.activeSiteId = state.currentUser.siteId || 's1';
+    renderCustomerHome();
+    setView('customerHome');
     
     $('#backToSitesFromCompBtn')?.classList.add('hidden');
     $('#companyFileUploadForm')?.classList.add('hidden');
@@ -83,6 +107,9 @@ export function applyRoleAccess() {
     $('#adminInspectionForm')?.classList.add('hidden');
     $('#printStationQrBtn')?.classList.add('hidden');
     $('#btnEditSiteContract')?.classList.add('hidden');
+    $('#btnAddStation')?.classList.add('hidden');
+    $('#planUploadLabel')?.classList.add('hidden');
+    $('#btnDeleteStation')?.classList.add('hidden');
   }
 }
 

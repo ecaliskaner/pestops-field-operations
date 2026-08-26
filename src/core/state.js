@@ -29,11 +29,61 @@ export function load(){
         if (!w.visitType) w.visitType = 'RZ';
       });
     }
-    return {...structuredClone(initial),...saved};
+    const merged = {...structuredClone(initial), ...saved};
+    // Reconcile against the seed: it may have gained sites since this session
+    // was persisted (e.g. new customer locations). Append any seed site the
+    // saved portfolio is missing, so the demo picks them up without forcing a
+    // manual localStorage reset. Existing (possibly edited) sites are untouched.
+    const have = new Set((merged.sites || []).map((s) => s.id));
+    for (const seedSite of initial.sites) {
+      if (!have.has(seedSite.id)) merged.sites.push(structuredClone(seedSite));
+    }
+
+    // Backfill fields the seed has gained since this session was saved (e.g.
+    // `address`). Only *missing* keys are filled, so anything the user edited in
+    // the app is never overwritten — without this, a saved session keeps showing
+    // gaps for data the seed already provides.
+    const seedById = new Map(initial.sites.map((s) => [s.id, s]));
+    for (const site of merged.sites) {
+      const seedSite = seedById.get(site.id);
+      if (!seedSite) continue;
+      for (const [key, value] of Object.entries(seedSite)) {
+        if (site[key] === undefined) site[key] = structuredClone(value);
+      }
+    }
+    return merged;
   } catch { return structuredClone(initial); }
 }
 
 export const state = load();
+
+/**
+ * Every site in the live portfolio.
+ *
+ * `initial.sites` is the *frozen seed* the deterministic history generator is
+ * calibrated against, and generation must keep reading it so the seeded numbers
+ * never move. Everything else — planning, reports, rankings, lookups — must read
+ * this instead, or a facility created through the UI is invisible to half the
+ * product (it appeared in the sites list but had no plan, no report scope and no
+ * ranking row).
+ *
+ * Falls back to the seed if state is somehow empty, so a lookup never returns
+ * an empty portfolio.
+ */
+export const allSites = () => (state.sites && state.sites.length ? state.sites : initial.sites);
+
+// Sites the current user is allowed to see. A customer (client role) is scoped
+// to their own company's locations only — the roadmap (§11) is explicit that a
+// customer must never see another company's data. Admin and technician roles
+// see the whole portfolio. This is the single source of truth for site
+// visibility; insights and the sites list both defer to it.
+export function visibleSites() {
+  const u = state.currentUser;
+  if (u && u.role === 'client' && u.company) {
+    return allSites().filter((s) => s.company === u.company);
+  }
+  return allSites();
+}
 
 export function save(){
   localStorage.setItem("repellent-ops",JSON.stringify(state));

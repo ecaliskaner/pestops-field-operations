@@ -4,7 +4,7 @@
 import { $, $$ } from '../core/dom.js';
 import { recalculateSiteStats, state } from '../core/state.js';
 import { ui } from '../core/session.js';
-import { chemicalDatabase, equipmentStatusCodes, equipmentTypes, getChemicalDocuments, getPlacementSchema, pestDatabase, stateLabel } from '../data/catalog.js';
+import { chemicalDatabase, equipmentStatusCodes, equipmentTypes, getChemicalDocuments, getPlacementSchema, getStationArea, pestDatabase, placementSummary, stationAreaName, stateLabel } from '../data/catalog.js';
 import { setView } from '../core/router.js';
 import { renderClientAnalytics } from '../views/insights.js';
 import { toast } from '../core/dom.js';
@@ -15,8 +15,24 @@ import { showMobileInspect } from '../views/mobile.js';
 import { renderSites } from '../views/sites.js';
 import {
   barcodeFor, deviceReplacements, pointDeviceSummary, readingsForPoint,
-  recommendationsForSite, replacementReasons
+  recommendationsForSite, replacementReasons, technicianStats
 } from '../data/history.js';
+import { credentialDocs, KVKK_NOTICE } from '../data/credentials.js';
+import { renderFloorPlan } from './floorPlan.js';
+import { visitsPerMonth } from '../data/schedule.js';
+import { demoToday } from '../data/history.js';
+import { techData } from '../data/seed.js';
+
+// Human-readable service cadence, derived from the contracted scope rather
+// than stored as prose — so it can never disagree with the visit plan.
+function describeFrequency(site) {
+  const t = demoToday();
+  const n = visitsPerMonth(site, t.month);
+  if (n >= 4) return `Haftalık (ayda ${n} servis)`;
+  if (n === 2) return '15 günde bir (ayda 2 servis)';
+  if (n === 1) return 'Aylık periyodik koruma';
+  return `Ayda ${n} servis`;
+}
 
 export function showCompanyDetail(siteId) {
   ui.activeSiteId = siteId;
@@ -74,9 +90,13 @@ export function showCompanyDetail(siteId) {
   const contractPeriodEl = $('#compContractPeriod');
   const serviceFrequencyEl = $('#compServiceFrequency');
   const addressEl = $('#compAddress');
-  if (contractPeriodEl) contractPeriodEl.textContent = (site.contract && site.contract.period) || (site.id === 's1' ? '01.01.2026 - 31.12.2026' : (site.id === 's2' ? '15.02.2026 - 15.02.2027' : '01.03.2026 - 01.03.2027'));
-  if (serviceFrequencyEl) serviceFrequencyEl.textContent = site.serviceFrequency || (site.id === 's1' ? '15 Günde Bir (Ayda 2 Servis)' : (site.id === 's3' ? 'Haftalık (Ayda 4 Servis)' : 'Aylık Periyodik Koruma'));
-  if (addressEl) addressEl.textContent = site.address || (site.id === 's1' ? 'Gebze Organize Sanayi Bölgesi, Kocaeli' : (site.id === 's2' ? 'Hadımköy Nakliyeciler Sitesi, İstanbul' : 'Ataşehir Sağlık Kampüsü, İstanbul'));
+  // These used to fall back to per-site-id hardcoded strings, which meant any
+  // facility beyond s1/s2/s3 was shown another site's address and a made-up
+  // frequency. Every site now carries a real address, and the service frequency
+  // is derived from the contracted scope the planner already works from.
+  if (contractPeriodEl) contractPeriodEl.textContent = (site.contract && site.contract.period) || 'Sözleşme tanımlanmadı';
+  if (serviceFrequencyEl) serviceFrequencyEl.textContent = site.serviceFrequency || describeFrequency(site);
+  if (addressEl) addressEl.textContent = site.address || '—';
   
   // Tab 2: Map Stats
   const checkedClean = site.stations.filter(s => s.checked && s.status === 'clean').length;
@@ -97,6 +117,7 @@ export function showCompanyDetail(siteId) {
   if (unLabel) unLabel.textContent = unchecked;
   
   // Render nodes
+  renderFloorPlan(site);
   renderStationMarkers(site.stations);
   
   // Render applied methods
@@ -141,9 +162,10 @@ export function switchCompanyTab(tabId) {
     files: 'paneCompFiles',
     recommendations: 'paneCompRecommendations',
     chemicals: 'paneCompChemicals',
-    analytics: 'paneCompAnalytics'
+    analytics: 'paneCompAnalytics',
+    credentials: 'paneCompCredentials'
   };
-  
+
   Object.entries(tabPanes).forEach(([t, id]) => {
     const pane = $(`#${id}`);
     if (pane) pane.classList.toggle('hidden', t !== tabId);
@@ -151,7 +173,42 @@ export function switchCompanyTab(tabId) {
 
   if (tabId === 'analytics') {
     renderClientAnalytics();
+  } else if (tabId === 'credentials') {
+    const site = state.sites.find(s => s.id === ui.activeSiteId);
+    if (site) renderCompanyCredentials(site);
   }
+}
+
+// Roadmap §11: the customer can open the technicians who serviced their site
+// and see each one's compliance documents (SGK, iş güvenliği, uygulama izni,
+// portör sağlık raporu). Which technicians serviced this facility is derived
+// from the visit history, so the list is honest — no one who never attended
+// appears. Documents are KVKK-safe placeholders (see data/credentials.js).
+export function renderCompanyCredentials(site) {
+  const host = $('#compCredentialsList');
+  if (!host) return;
+
+  const stats = technicianStats(site.id);
+  const techs = stats.length ? stats.map(t => t.tech) : ['Ayşe Demir'];
+
+  host.innerHTML = techs.map(tech => {
+    const meta = techData[tech] || [];
+    const initials = meta[0] || tech.slice(0, 2).toUpperCase();
+    const stat = stats.find(s => s.tech === tech);
+    const visitNote = stat ? `Bu tesiste ${stat.visits} ziyaret` : 'Atanmış teknisyen';
+    return `
+      <div class="cred-card panel" style="box-shadow:none; border:1px solid var(--line);">
+        <div class="cred-head">
+          <span class="tech-avatar" style="background:${meta[5] || '#eee'}">${initials}</span>
+          <div><b>${tech}</b><span>${visitNote}</span></div>
+        </div>
+        <div class="cred-docs">
+          ${credentialDocs(tech)}
+        </div>
+      </div>`;
+  }).join('');
+
+  host.insertAdjacentHTML('beforeend', `<p class="cred-kvkk">${KVKK_NOTICE} Belgeler yalnızca hizmet süresince ve yalnızca ilgili tesise gösterilir.</p>`);
 }
 
 export function renderCompanyMethods(site) {
@@ -484,27 +541,6 @@ function renderRecActions(rec, role) {
   return '';
 }
 
-export function getStationArea(x, y) {
-  const px = (x / 100) * 800;
-  const py = (y / 100) * 500;
-  if (px >= 20 && px < 300 && py >= 20 && py < 220) return "Hammadde Deposu";
-  if (px >= 300 && px < 550 && py >= 20 && py < 140) return "Ofisler & Laboratuvar";
-  if (px >= 550 && px <= 780 && py >= 20 && py < 220) return "Sosyal Tesisler";
-  if (px >= 20 && px < 470 && py >= 220 && py <= 480) return "Ana Üretim Hattı";
-  if (px >= 470 && px <= 780 && py >= 220 && py <= 480) return "Ambalaj & Sevkiyat";
-  return "Dış Çevre / Genel";
-}
-
-// One-line digest of the type-specific placement fields, for the tracking
-// table. Returns '' when nothing type-specific has been recorded yet.
-export function placementSummary(station) {
-  const p = station.placement;
-  if (!p) return '';
-  const parts = [p.unitPower, p.tubeLength, p.uvTubeType, p.trapType, p.pheromonePeriod && `Feromon: ${p.pheromonePeriod}`]
-    .filter(Boolean);
-  return parts.join(' · ');
-}
-
 export function renderCompanyStationsTable(site) {
   const container = $('#compStationsTableBody');
   if (!container) return;
@@ -543,7 +579,7 @@ export function renderCompanyStationsTable(site) {
     const lastCheck = s.checked ? (s.lastControl || "12 Tem 2026") : "—";
     const inspector = s.checked ? (s.controlledBy || "Ayşe Demir") : "—";
     const placement = s.placement || {};
-    const area = placement.areaName || getStationArea(s.x, s.y);
+    const area = stationAreaName(site, s);
     const typeLabel = typeLabels[s.type] || s.type;
     const specs = placementSummary(s);
     const statusText = statusLabels[s.status] || s.status;
@@ -845,7 +881,7 @@ export function renderPlacementForm(station) {
     // that number stable even when the physical device is replaced.
     let value = saved[f.key] ?? '';
     if (!value && f.key === 'pointNo') value = (station.code.match(/\d+/) || [''])[0];
-    if (!value && f.key === 'areaName') value = getStationArea(station.x, station.y);
+    if (!value && f.key === 'areaName') value = stationAreaName(site, station);
 
     const label = `<span class="placement-label">${f.label}<small>${f.en}</small></span>`;
 

@@ -12,12 +12,16 @@
 // session-scoped, so a reset genuinely returns the demo to zero.
 
 import { $, $$, toast } from '../core/dom.js';
-import { state, save } from '../core/state.js';
+import { state, save, visibleSites } from '../core/state.js';
+import { recommendationsForSite } from '../data/history.js';
+import { nextVisitFor } from '../data/schedule.js';
 import { initial } from '../data/seed.js';
 import { setView } from '../core/router.js';
 import { ui } from '../core/session.js';
 import { showCompanyDetail } from '../views/companyDetail.js';
 import { switchRole } from '../core/auth.js';
+import { getGpsAlerts } from '../core/gpsAlerts.js';
+import { notificationsFor, relativeTime, pendingByTech, markReadFor, unreadFor } from '../core/notify.js';
 
 // Session-lifetime demo events (e.g. an emailed report). Deliberately not
 // persisted — a reset should wipe them, and it does.
@@ -30,6 +34,83 @@ window.__DEMO_NOTIFS__ = window.__DEMO_NOTIFS__ || [];
 // keeps working via the shared window.__ACTIVE_NOTIFS__ list.
 function operationalNotifs() {
   const list = [];
+
+  // A technician's feed is their own dispatched assignments — what to do, when,
+  // and where — and nothing else. Office alerts below would be noise on a
+  // field phone, and the roadmap (§1) keeps commercial detail off it entirely.
+  const user = state.currentUser;
+  if (user && user.role === 'tech') {
+    for (const n of notificationsFor(user.name)) {
+      list.push({
+        title: n.title,
+        desc: `${n.desc}${(n.tasks || []).length ? ` · Yapılacaklar: ${n.tasks.join(', ')}` : ''}`,
+        time: relativeTime(n.sentAt),
+        type: n.read ? 'info' : 'alert',
+        action: () => setView('work')
+      });
+    }
+    return list;
+  }
+
+  // A customer's feed is strictly their own facilities. Without this branch the
+  // client fell through to the office alerts below and was shown other
+  // companies' work orders and the whole portfolio's stock levels.
+  if (user && user.role === 'client') {
+    for (const site of visibleSites()) {
+      if (site.state === 'risk') list.push({
+        title: `Kritik aktivite: ${site.name}`,
+        desc: `Tesis sağlık skoru ${site.score}/100. Detaylar ve önerilen aksiyonlar tesis sayfanızda.`,
+        time: 'Bugün', type: 'alert',
+        action: () => showCompanyDetail(site.id)
+      });
+    }
+    // Findings the customer still has to act on (§9 closed loop).
+    for (const site of visibleSites()) {
+      const open = recommendationsForSite(site.id)
+        .filter((r) => r.stage === 'raised' || r.stage === 'rejected');
+      if (open.length) list.push({
+        title: `${open.length} aksiyon bekliyor · ${site.name}`,
+        desc: 'Tarafınızdan tamamlanması gereken öneriler var. Aksiyonu bildirip fotoğraf yükleyebilirsiniz.',
+        time: 'Bugün', type: 'warning',
+        action: () => showCompanyDetail(site.id)
+      });
+    }
+    // The next visit they can expect, from the contract-derived plan.
+    const next = nextVisitFor(visibleSites().map((s) => s.id));
+    if (next) list.push({
+      title: `Sonraki servis: ${next.date} ${next.time}`,
+      desc: `${next.siteName} · ${next.teamLabel}`,
+      time: 'Planlandı', type: 'info',
+      action: () => setView('sites')
+    });
+    return list;
+  }
+
+  // Office view: how many assignments are still unacknowledged in the field.
+  for (const [tech, count] of pendingByTech()) {
+    list.push({
+      title: `Görev bildirimi bekliyor: ${tech}`,
+      desc: `${count} atanmış ziyaret teknisyen tarafından henüz görüntülenmedi.`,
+      time: 'Bugün', type: 'warning',
+      action: () => setView('team')
+    });
+  }
+
+  // Location-mismatch alerts come first: a technician reporting an arrival they
+  // are not actually at is the most actionable thing the office can see. These
+  // are real device fixes from the mobile app, not simulation.
+  getGpsAlerts().forEach(a => {
+    const dist = a.distanceM >= 1000
+      ? `${(a.distanceM / 1000).toFixed(a.distanceM >= 100000 ? 0 : 1)} km`
+      : `${a.distanceM} m`;
+    list.push({
+      title: `Konum uyuşmazlığı: ${a.techName}`,
+      desc: `${a.siteCompany || 'Tesis'} için "tesise varıldı" bildirildi, ancak cihaz konumu ${dist} uzakta (geofence ${a.radiusM} m). İlk QR okutulmadan iş gerçek olarak başlamaz.`,
+      time: new Date(a.at).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
+      type: 'alert',
+      action: () => setView('team')
+    });
+  });
   state.sites.forEach(s => {
     if (s.state === 'risk') list.push({
       title: `Kritik Risk: ${s.company}`,
@@ -67,7 +148,13 @@ const ICON = { alert: '!', warning: '⚠', info: '✓', success: '📧' };
 export function updateNotifBadge() {
   const bell = $('.topbar .notification');
   if (!bell) return;
-  const n = allNotifs().length;
+  // A technician's feed keeps every assignment, but the badge must mean "new" —
+  // otherwise it never clears after they read them. Office roles have no
+  // read-state, so there the badge is the count of live alerts.
+  const user = state.currentUser;
+  const n = user && user.role === 'tech'
+    ? unreadFor(user.name)
+    : allNotifs().length;
   let badge = bell.querySelector('.notif-badge');
   if (n > 0) {
     if (!badge) { badge = document.createElement('span'); badge.className = 'notif-badge'; bell.appendChild(badge); }
@@ -108,6 +195,13 @@ export function openNotificationCenter() {
     </div>
   `;
   modalEl.classList.remove('hidden');
+
+  // Opening the feed is the acknowledgement. Marked after rendering so the
+  // technician still sees which rows were new, then the badge clears.
+  const user = state.currentUser;
+  if (user && user.role === 'tech' && markReadFor(user.name)) {
+    updateNotifBadge();
+  }
 }
 
 // The simulated Stage-2 "report emailed to customer" event (task 4-4).

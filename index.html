@@ -12,6 +12,7 @@
     <link rel="preload" href="./vendor/fonts/inter-600.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="./vendor/fonts/inter-ext-400.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="./vendor/fonts/inter-ext-600.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="./vendor/leaflet.css" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
@@ -31,11 +32,13 @@
         <nav class="nav" aria-label="Ana menü">
           <p class="nav-label">OPERASYON</p>
           <button class="nav-item active" data-view="dashboard"><span>▦</span> Genel bakış</button>
+          <button class="nav-item" data-view="customerHome"><span>▦</span> Genel Durum</button>
           <button class="nav-item" data-view="sites"><span>⌖</span> Tesisler <em id="siteAlertCount">0</em></button>
           <button class="nav-item" data-view="work"><span>✓</span> İş emirleri <em id="sidebarWorkCount">0</em></button>
           <button class="nav-item" data-view="team"><span>◉</span> Ekip & rota</button>
           <button class="nav-item" data-view="mobileSim"><span>📱</span> Mobil Uygulama</button>
           <p class="nav-label">YÖNETİM</p>
+          <button class="nav-item" data-view="visitReports"><span>🗒</span> Ziyaret Raporları</button>
           <button class="nav-item" data-view="insights"><span>↗</span> Analizler</button>
           <button class="nav-item" data-view="reports"><span>▤</span> Raporlar</button>
           <button class="nav-item" data-view="inventory" id="navInventoryBtn"><span>📦</span> Stok & Envanter</button>
@@ -118,6 +121,9 @@
             </div>
           </div>
 
+          <!-- Technician's own day (renders only for the tech role) -->
+          <div id="techTodayPanel" class="hidden"></div>
+
           <!-- Audit warnings (task 3-6): GPS/QR integrity anomalies -->
           <article class="panel audit-panel">
             <div class="panel-header">
@@ -146,13 +152,26 @@
 
           <!-- Monthly Calendar Container -->
           <div id="workCalendarContainer" class="panel hidden" style="margin-top:0;">
-            <div class="panel-header" style="margin-bottom:20px;">
+            <div class="panel-header" style="margin-bottom:14px;">
               <div>
                 <p class="overline">PLANLAMA & TAKVİM</p>
-                <h2>Operasyonel Servis Takvimi - Temmuz 2026</h2>
+                <h2>Operasyonel Servis Takvimi — <span id="calendarMonthLabel">Temmuz 2026</span></h2>
               </div>
-              <span style="font-size:11px; color:var(--muted)">Tesis randevusu planlamak için takvimdeki bir güne dokunun.</span>
+              <div class="cal-toolbar">
+                <button class="secondary-btn cal-nav-btn" data-cal-nav="-1" aria-label="Önceki ay">‹</button>
+                <button class="secondary-btn" data-cal-nav="0">Bugün</button>
+                <button class="secondary-btn cal-nav-btn" data-cal-nav="1" aria-label="Sonraki ay">›</button>
+                <button class="primary-btn" data-cal-publish="1">🔔 Ayın planını ekibe gönder</button>
+              </div>
             </div>
+            <div class="rep-stats" id="calendarSummary" style="margin-bottom:14px;"></div>
+            <p style="font-size:11px; color:var(--muted); margin-bottom:10px;">
+              Sözleşme kapsamından türetilen plan. Yapılacak işleri görmek ve ekibi
+              bilgilendirmek için bir güne dokunun.
+              <span class="cal-legend"><i class="cal-done"></i> Tamamlandı</span>
+              <span class="cal-legend"><i class="cal-planned"></i> Planlı</span>
+              <span class="cal-legend"><i class="cal-tentative"></i> Teyit bekliyor</span>
+            </p>
             <div style="display:grid; grid-template-columns: repeat(7, 1fr); gap:6px; text-align:center; font-weight:700; font-size:11px; color:var(--muted); margin-bottom:8px; border-bottom:1px solid var(--line); padding-bottom:8px;">
               <div>Pzt</div><div>Sal</div><div>Çar</div><div>Per</div><div>Cum</div><div>Cmt</div><div>Paz</div>
             </div>
@@ -164,7 +183,7 @@
 
         <section id="team" class="view">
           <div class="page-heading compact"><div><p class="overline">EKİP & ROTA</p><h1>Saha görünürlüğü</h1><p>Teknisyenlerin rota, zaman ve doğrulama durumları.</p></div><span class="live-pill" style="font-size:11px;"><i></i> Canlı GPS simülasyonu</span></div>
-          <div class="team-layout"><article class="panel map-panel"><div class="map-toolbar"><b>İstanbul saha bölgesi</b><span class="live-pill"><i></i> 4 teknisyen sahada</span></div><div class="map-canvas"><div class="map-label label-one">AVRUPA YAKASI</div><div class="map-label label-two">ANADOLU YAKASI</div><button class="map-person active" data-tech="Ayşe Demir" style="left:24%;top:58%">AD</button><button class="map-person" data-tech="Mert Kaya" style="left:24%;top:58%">MK</button><button class="map-person" data-tech="Ece Yılmaz" style="left:24%;top:58%">EY</button><button class="map-person" data-tech="Can Öztürk" style="left:24%;top:58%">CÖ</button></div></article><aside class="panel tech-panel"><p class="overline">CANLI DURUM</p><div id="techDetail"></div><div class="verification-note"><span>✓</span><p><b>İlk QR doğrulaması</b><br />Gerçek servis başlangıcı, tesiste ilk QR okutulduğunda kayda alınır.</p></div></aside></div>
+          <div class="team-layout"><article class="panel map-panel"><div class="map-toolbar"><b>İstanbul saha bölgesi · canlı konum</b><span class="live-pill"><i></i> 4 teknisyen sahada</span></div><div id="fieldMap" class="field-map"></div><div id="liveGpsNote" class="live-gps-note"></div></article><aside class="panel tech-panel"><p class="overline">CANLI DURUM</p><div id="techDetail"></div><div class="verification-note"><span>✓</span><p><b>İlk QR doğrulaması</b><br />Gerçek servis başlangıcı, tesiste ilk QR okutulduğunda kayda alınır.</p></div></aside></div>
 
           <div class="field-realism-grid">
             <article class="panel geofence-panel">
@@ -188,6 +207,89 @@
           </article>
 
           <article class="panel roster-panel"><div class="panel-header"><h2>Bugünkü ekip</h2><button class="text-btn">Ekip yönetimi →</button></div><div id="roster" class="roster"></div></article>
+        </section>
+
+        <section id="customerHome" class="view">
+          <div class="page-heading compact">
+            <div>
+              <p class="overline">GENEL DURUM</p>
+              <h1>Tesislerinizin durumu</h1>
+              <p id="customerHomeGreeting">Hoş geldiniz</p>
+            </div>
+          </div>
+          <div id="customerHomeBody" class="ch-body"></div>
+        </section>
+
+        <section id="visitReports" class="view">
+          <div class="page-heading compact">
+            <div>
+              <p class="overline">SAHA KAYITLARI</p>
+              <h1>Ziyaret Raporları</h1>
+              <p>Tamamlanan tüm servis ziyaretleri — müşteri, şube, ekip ve ziyaret tipine göre filtrelenebilir.</p>
+            </div>
+            <div class="vr-head-tools">
+              <input type="search" id="vrSearch" class="vr-search" placeholder="Ziyaret raporlarında ara..." aria-label="Ziyaret raporlarında ara" />
+              <select id="vrLimit" class="vr-limit" aria-label="Sayfa boyutu">
+                <option value="50">50</option>
+                <option value="100" selected>100</option>
+                <option value="250">250</option>
+                <option value="1000">Tümü</option>
+              </select>
+            </div>
+          </div>
+
+          <article class="panel vr-filter-panel">
+            <div class="vr-filter-head">
+              <span class="vr-filter-badge">⛃ Filtreler</span>
+              <div class="vr-filter-actions">
+                <button class="secondary-btn" id="vrExportCsv">⭳ CSV indir</button>
+                <button class="secondary-btn" id="vrClearFilters">↺ Temizle</button>
+              </div>
+            </div>
+            <div class="vr-filter-grid">
+              <label class="vr-field">
+                <span>🏷 Ziyaret Tipi</span>
+                <select id="vrFilterType"></select>
+              </label>
+              <label class="vr-field">
+                <span>📅 Başlangıç Tarihi</span>
+                <input type="date" id="vrFilterStart" />
+              </label>
+              <label class="vr-field">
+                <span>📅 Bitiş Tarihi</span>
+                <input type="date" id="vrFilterFinish" />
+              </label>
+              <label class="vr-field">
+                <span>👤 Müşteri</span>
+                <select id="vrFilterClient"></select>
+              </label>
+              <label class="vr-field">
+                <span>🏢 Şube</span>
+                <select id="vrFilterBranch"></select>
+              </label>
+            </div>
+          </article>
+
+          <article class="panel table-panel vr-table-panel">
+            <div class="vr-table-meta"><span id="vrResultCount">0 kayıt</span></div>
+            <div class="vr-table-scroll">
+              <table class="vr-table">
+                <thead>
+                  <tr>
+                    <th>Ziyaret Raporu</th>
+                    <th>Tamamlanma Tarihi</th>
+                    <th>Müşteri</th>
+                    <th>Şube</th>
+                    <th>Açıklama</th>
+                    <th>Personel / Ekip</th>
+                    <th>Ziyaret Tipi</th>
+                    <th>Bulgu</th>
+                  </tr>
+                </thead>
+                <tbody id="vrTableBody"></tbody>
+              </table>
+            </div>
+          </article>
         </section>
 
         <section id="insights" class="view">
@@ -586,6 +688,7 @@
                 <button class="comp-nav-tab" data-comp-tab="recommendations">✓ Öneriler & Aksiyonlar (<span id="compRecsCount">0</span>)</button>
                 <button class="comp-nav-tab" data-comp-tab="chemicals">💊 Kimyasal Kullanım (<span id="compChemicalsCount">0</span>)</button>
                 <button class="comp-nav-tab" data-comp-tab="analytics">📊 Tesis Analizleri</button>
+                <button class="comp-nav-tab" data-comp-tab="credentials">🛡 Hizmet Personeli & Belgeler</button>
               </nav>
             </aside>
 
@@ -695,8 +798,15 @@
 
                   <article class="panel plan-map-panel">
                     <div class="map-toolbar" style="display:flex; justify-content:space-between; align-items:center; padding:10px 18px;">
-                      <b>İnteraktif Kat Planı</b>
-                      <div style="display:flex; align-items:center; gap:16px;">
+                      <div>
+                        <b>İnteraktif Kat Planı</b>
+                        <div id="planSourceNote" style="font-size:10px; color:var(--muted); margin-top:2px;">Örnek şablon plan — kendi kat planınızı yükleyebilirsiniz.</div>
+                      </div>
+                      <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                        <button class="secondary-btn plan-tool-btn" id="btnAddStation">＋ İstasyon Ekle</button>
+                        <label class="secondary-btn plan-tool-btn" id="planUploadLabel" for="floorPlanInput" style="margin:0;">🖼 Plan Yükle</label>
+                        <input type="file" id="floorPlanInput" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden />
+                        <button class="secondary-btn plan-tool-btn hidden" id="btnRemovePlan">Planı Kaldır</button>
                         <label style="display:inline-flex; align-items:center; gap:6px; font-size:11px; font-weight:700; cursor:pointer; background:var(--soft); padding:4px 8px; border:1px solid var(--line); border-radius:6px; margin:0; color:var(--ink);">
                           <input type="checkbox" id="heatmapToggleBtn" style="cursor:pointer; margin:0;"> 🔥 Isı Haritası
                         </label>
@@ -710,6 +820,7 @@
                     </div>
                     <div class="plan-canvas-container" style="min-height:360px;">
                       <div class="blueprint-svg-wrap" id="blueprintWrapper">
+                        <img id="floorPlanImage" class="floor-plan-image hidden" alt="Tesis kat planı" />
                         <svg class="blueprint-svg" viewBox="0 0 800 500" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
                           <defs>
                             <pattern id="blueprint-grid2" width="20" height="20" patternUnits="userSpaceOnUse">
@@ -749,6 +860,7 @@
                         <span class="status-chip" id="detStationStatus">Temiz</span>
                         <h3 id="detStationCode" style="margin:0;">R-01</h3>
                         <button class="secondary-btn" id="printStationQrBtn" style="height:26px; padding:0 8px; font-size:10px; margin-left:auto; font-weight:700;">🖨 QR Barkod</button>
+                        <button class="secondary-btn" id="btnDeleteStation" style="height:26px; padding:0 8px; font-size:10px; font-weight:700; color:var(--red); border-color:var(--red);">🗑 Sil</button>
                       </div>
                       <p class="overline">İSTASYON TÜRÜ</p>
                       <b id="detStationType">Kemirgen Yem İstasyonu</b>
@@ -1174,6 +1286,20 @@
                 </div>
               </div>
 
+              <!-- TAB Pane: Service technician credentials (roadmap §11) -->
+              <div class="tab-pane hidden" id="paneCompCredentials">
+                <article class="panel">
+                  <div class="panel-header" style="margin-bottom:14px;">
+                    <div>
+                      <p class="overline">HİZMET PERSONELİ</p>
+                      <h2>Tesisinize Hizmet Veren Teknisyenler & Belgeleri</h2>
+                    </div>
+                  </div>
+                  <p style="font-size:12px; color:var(--muted); margin-bottom:16px;">Tesisinizde görev yapan teknisyenlerin SGK, iş güvenliği, uygulama izin ve sağlık (portör) belgelerinin güncellik durumu.</p>
+                  <div id="compCredentialsList" style="display:grid; gap:16px;"></div>
+                </article>
+              </div>
+
             </div>
           </div>
         </section>
@@ -1564,6 +1690,10 @@
     <!-- Vendored (html5-qrcode 2.3.8): a CDN fetch would kill the QR scanner
          on venue wifi, and the demo cannot depend on the network. -->
     <script src="./vendor/html5-qrcode.min.js"></script>
+    <!-- Vendored Leaflet 1.9.4: real map for live field tracking. Tiles load
+         from the network; the library itself is local so it never fails on
+         venue wifi during a demo. -->
+    <script src="./vendor/leaflet.js"></script>
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {

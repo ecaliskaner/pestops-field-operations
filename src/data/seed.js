@@ -3,6 +3,9 @@
 
 export const initial = {
   view: "dashboard", selectedWork: "WO-2048", selectedTech: "Ayşe Demir", completed: 27,
+  // Assignments dispatched to technicians' phones (core/notify.js). Empty at
+  // seed: the demo shows them arriving when the planner publishes a day.
+  techNotifications: [],
   inventory: [
     { id: 'stock1', chemicalId: 'ch1', name: 'K-Othrine SC 25', lotNo: 'LOT-2026-A1', qty: 25.5, unit: 'lt', minQty: 5.0, unitCost: 350 },
     { id: 'stock2', chemicalId: 'ch2', name: 'Goliath Gel', lotNo: 'LOT-2026-G9', qty: 120, unit: 'tüp', minQty: 20, unitCost: 450 },
@@ -32,6 +35,7 @@ export const initial = {
     { 
       id:"s1", company:"Acme Foods", name:"Gebze Üretim Tesisi", city:"Kocaeli", score:62, state:"risk", issues:3, last:"12 Tem · Ayşe Demir", next:"Bugün, 14:30", color:"#e8d8c7",
       sector: "Gıda Üretimi & Depolama",
+      address: "Gebze OSB, 41400 Gebze/Kocaeli",
       contact: { name: "Ahmet Yılmaz", phone: "+90 532 123 4567", email: "ahmet@acmefoods.com" },
       methods: [
         { name: "Kemirgen İstasyon Kontrolü", desc: "Tesis dış çevresinde kilitli yem istasyonları ile kemirgen mücadelesi.", active: true },
@@ -71,6 +75,7 @@ export const initial = {
     { 
       id:"s2", company:"Kuzey Lojistik", name:"Hadımköy Dağıtım Merkezi", city:"İstanbul", score:68, state:"risk", issues:2, last:"11 Tem · Mert Kaya", next:"Bugün, 16:00", color:"#d8e9e4",
       sector: "Lojistik & Depolama",
+      address: "Hadımköy, 34555 Arnavutköy/İstanbul",
       contact: { name: "Banu Gök", phone: "+90 541 456 7890", email: "bgok@kuzeylojistik.com.tr" },
       methods: [
         { name: "Kemirgen İstasyon Kontrolü", desc: "Tesis dış çevresinde kilitli yem istasyonları ile kemirgen mücadelesi.", active: true },
@@ -94,6 +99,7 @@ export const initial = {
     { 
       id:"s3", company:"Aster Hospital", name:"Ataşehir Kampüsü", city:"İstanbul", score:74, state:"watch", issues:1, last:"12 Tem · Ece Yılmaz", next:"14 Tem, 09:00", color:"#e8e0f5",
       sector: "Sağlık & Hastane",
+      address: "Ataşehir, 34758 İstanbul",
       contact: { name: "Dr. Selim Tekin", phone: "+90 533 987 6543", email: "selim.tekin@asterhospital.com" },
       methods: [
         { name: "Kemirgen Kokusuz Jel Uygulaması", desc: "Kritik mutfak ve sterilizasyon alanlarında jel ilaçlama.", active: true },
@@ -116,6 +122,7 @@ export const initial = {
     { 
       id:"s4", company:"Bora Retail", name:"Levent Merkez Mağaza", city:"İstanbul", score:81, state:"watch", issues:0, last:"10 Tem · Can Öztürk", next:"15 Tem, 11:00", color:"#f4e6bf",
       sector: "Perakende & Mağazacılık",
+      address: "Levent, 34330 Beşiktaş/İstanbul",
       contact: { name: "Mustafa Çelik", phone: "+90 535 765 4321", email: "mustafa.celik@boraretail.com" },
       methods: [
         { name: "Yürüyen Haşere İzleme", desc: "Raf ve reyon altlarında yapışkan tuzaklar.", active: true },
@@ -135,6 +142,7 @@ export const initial = {
     { 
       id:"s5", company:"Novatek", name:"Çayırova Ar-Ge Merkezi", city:"Kocaeli", score:91, state:"healthy", issues:0, last:"12 Tem · Mert Kaya", next:"18 Tem, 10:30", color:"#d7e9f4",
       sector: "Ar-Ge & Laboratuvar",
+      address: "Çayırova, 41420 Kocaeli",
       contact: { name: "Eren Demir", phone: "+90 530 234 5678", email: "eren.demir@novatek.io" },
       methods: [
         { name: "Kemirgen İstasyon Kontrolü", desc: "Tesis dış çevresinde kilitli yem istasyonları.", active: true },
@@ -155,6 +163,7 @@ export const initial = {
     { 
       id:"s6", company:"Orion Hotels", name:"Taksim Otel", city:"İstanbul", score:88, state:"healthy", issues:0, last:"11 Tem · Ece Yılmaz", next:"19 Tem, 13:30", color:"#f0dbe2",
       sector: "Turizm & Otelcilik",
+      address: "Taksim, 34437 Beyoğlu/İstanbul",
       contact: { name: "Selin Şen", phone: "+90 542 345 6789", email: "selin.sen@orionhotels.com" },
       methods: [
         { name: "Jel İlaçlama Uygulaması", desc: "Mutfak ve depo alanlarında yürüyen haşere jeli.", active: true },
@@ -172,6 +181,65 @@ export const initial = {
         { code:"C-02", type:"crawler", x:68, y:72, checked:true, status:"clean", baitStatus:"intact", pestType:"none", pestCount:0, notes:"" },
         { code:"ILT-01", type:"insect_light_trap", x:50, y:48, checked:true, status:"clean", baitStatus:"intact", pestType:"none", pestCount:0, notes:"" }
       ]
+    },
+    {
+      id:"s7", company:"Acme Foods", name:"İzmir Soğuk Hava Deposu", city:"İzmir", score:77, state:"watch", issues:1, last:"11 Tem · Ece Yılmaz", next:"16 Tem, 10:00", color:"#d7e9f4",
+      sector: "Gıda Üretimi & Depolama",
+      address: "Kemalpaşa OSB, 35730 Kemalpaşa/İzmir",
+      contact: { name: "Ahmet Yılmaz", phone: "+90 532 123 4567", email: "ahmet@acmefoods.com" },
+      methods: [
+        { name: "Kemirgen İstasyon Kontrolü", desc: "Soğuk hava deposu dış çevresinde kilitli yem istasyonları.", active: true },
+        { name: "Yürüyen Haşere İzleme", desc: "Yükleme koridorlarında yapışkan pheromone tuzakları.", active: true },
+        { name: "Uçan Haşere UV Işıklı Cihazlar", desc: "Sevkiyat kabul alanında UV cihaz denetimi.", active: true }
+      ],
+      files: [
+        { name: "Acme_Izmir_Servis_Sozlesmesi.pdf", type: "pdf", size: "1.1 MB", date: "04 Ocak 2026" }
+      ],
+      stations: [
+        { code:"R-01", type:"rodent", x:16, y:24, checked:true, status:"clean", baitStatus:"intact", pestType:"none", pestCount:0, notes:"" },
+        { code:"R-02", type:"rodent", x:52, y:26, checked:true, status:"clean", baitStatus:"replaced", pestType:"none", pestCount:0, notes:"" },
+        { code:"R-03", type:"rodent", x:82, y:22, checked:true, status:"activity", baitStatus:"consumed", pestType:"mouse", pestCount:1, notes:"Sevkiyat kapısı çevresinde kemirgen izi." },
+        { code:"C-01", type:"crawler", x:28, y:70, checked:true, status:"clean", baitStatus:"intact", pestType:"none", pestCount:0, notes:"" },
+        { code:"C-02", type:"crawler", x:68, y:74, checked:false, status:"unchecked", baitStatus:"intact", pestType:"none", pestCount:0, notes:"" },
+        { code:"F-01", type:"flying", x:50, y:50, checked:true, status:"clean", baitStatus:"intact", pestType:"none", pestCount:0, notes:"" }
+      ],
+      serviceScope: {
+        outdoorRodent: { frequency: 2, unit: 'ay', seasonNote: '' },
+        indoorRodent: { frequency: 4, unit: 'ay', seasonNote: '' },
+        crawlingPest: { frequency: 4, unit: 'ay', seasonNote: '' },
+        flyingPest: { frequency: 4, unit: 'ay', seasonNote: 'Nisan-Ekim: 4/ay, Kasım-Mart: 2/ay' },
+        storagePest: { frequency: 4, unit: 'ay', seasonNote: '' }
+      },
+      contract: { taxOffice: 'Gebze VD', taxNo: '1234567890', annualPrice: 39600, monthlyPrice: 3300, extraVisitPrice: 650, emergencyCallPrice: 1300, period: '01.01.2026 - 31.12.2026' }
+    },
+    {
+      id:"s8", company:"Acme Foods", name:"Ankara Dağıtım Merkezi", city:"Ankara", score:86, state:"healthy", issues:0, last:"10 Tem · Can Öztürk", next:"17 Tem, 09:30", color:"#d8e9e4",
+      sector: "Gıda Üretimi & Depolama",
+      address: "Başkent OSB, 06909 Sincan/Ankara",
+      contact: { name: "Ahmet Yılmaz", phone: "+90 532 123 4567", email: "ahmet@acmefoods.com" },
+      methods: [
+        { name: "Kemirgen İstasyon Kontrolü", desc: "Dağıtım merkezi dış çevresinde kilitli yem istasyonları.", active: true },
+        { name: "Yürüyen Haşere İzleme", desc: "Depo içlerinde yapışkan pheromone tuzakları.", active: true }
+      ],
+      files: [
+        { name: "Acme_Ankara_Servis_Sozlesmesi.pdf", type: "pdf", size: "980 KB", date: "04 Ocak 2026" }
+      ],
+      stations: [
+        { code:"R-01", type:"rodent", x:20, y:24, checked:true, status:"clean", baitStatus:"intact", pestType:"none", pestCount:0, notes:"" },
+        { code:"R-02", type:"rodent", x:50, y:22, checked:true, status:"clean", baitStatus:"replaced", pestType:"none", pestCount:0, notes:"" },
+        { code:"R-03", type:"rodent", x:80, y:26, checked:true, status:"clean", baitStatus:"intact", pestType:"none", pestCount:0, notes:"" },
+        { code:"C-01", type:"crawler", x:30, y:72, checked:true, status:"clean", baitStatus:"intact", pestType:"none", pestCount:0, notes:"" },
+        { code:"C-02", type:"crawler", x:70, y:74, checked:true, status:"clean", baitStatus:"intact", pestType:"none", pestCount:0, notes:"" },
+        { code:"ILT-01", type:"insect_light_trap", x:50, y:48, checked:true, status:"clean", baitStatus:"intact", pestType:"none", pestCount:0, notes:"" }
+      ],
+      serviceScope: {
+        outdoorRodent: { frequency: 2, unit: 'ay', seasonNote: '' },
+        indoorRodent: { frequency: 4, unit: 'ay', seasonNote: '' },
+        crawlingPest: { frequency: 4, unit: 'ay', seasonNote: '' },
+        flyingPest: { frequency: 4, unit: 'ay', seasonNote: 'Nisan-Ekim: 4/ay, Kasım-Mart: 2/ay' },
+        storagePest: { frequency: 4, unit: 'ay', seasonNote: '' }
+      },
+      contract: { taxOffice: 'Gebze VD', taxNo: '1234567890', annualPrice: 42000, monthlyPrice: 3500, extraVisitPrice: 680, emergencyCallPrice: 1400, period: '01.01.2026 - 31.12.2026' }
     }
   ],
   work: [

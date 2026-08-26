@@ -34,6 +34,13 @@ import { invoiceActionClicks, invoiceFilterClicks, billingClicks } from './views
 import { stockRefillSubmit } from './views/inventory.js';
 import { createSiteSubmit } from './views/sites.js';
 import { demoClicks, openNotificationCenter, updateNotifBadge, mountPresenterBar } from './ui/demo.js';
+import { visitReportClicks, bindVisitReportFilters } from './views/visitReports.js';
+import { calendarClicks } from './ui/calendar.js';
+import { customerHomeClicks, serviceRequestSubmit } from './views/customerHome.js';
+import {
+  floorPlanClicks, newStationSubmit, bindFloorPlanInputs,
+  planPointerDown, planPointerMove, planPointerUp
+} from './views/floorPlan.js';
 
 // Clean stale data from previous versions
 localStorage.removeItem("repellent-product-demo"); localStorage.removeItem("ladybug-product-demo"); localStorage.removeItem("insectram-product-demo"); localStorage.removeItem("ladybug-ops"); localStorage.removeItem("ladybug-user"); localStorage.removeItem("insectram-ops");
@@ -231,11 +238,17 @@ const CLICK_CHAIN = [
   completeWorkClicks,
   backNavClicks,
   calendarToggleClicks,
+  calendarClicks,
+  customerHomeClicks,
+  visitReportClicks,
   planToolbarClicks,
   reportModalClicks,
   reportCardClicks,
   mobileMenuClicks,
   lifecycleClicks,
+  // Before planCanvasClicks: placement-mode clicks and the click that ends a
+  // marker drag must not also fall through to station selection.
+  floorPlanClicks,
   planCanvasClicks,
   mobileClicks,
   companyTabClicks,
@@ -250,6 +263,8 @@ const CLICK_CHAIN = [
 ];
 
 const SUBMIT_CHAIN = [
+  newStationSubmit,
+  serviceRequestSubmit,
   loginSubmit,
   createWorkSubmit,
   editSiteSubmit,
@@ -280,6 +295,15 @@ function bind() {
   }));
 
   $('#trendFilter')?.addEventListener('change', renderInsights);
+
+  bindVisitReportFilters();
+  bindFloorPlanInputs();
+
+  // Drag-to-reposition for station markers. Bound on document so markers
+  // re-rendered after every save keep working without rebinding.
+  document.addEventListener('pointerdown', planPointerDown);
+  document.addEventListener('pointermove', planPointerMove);
+  document.addEventListener('pointerup', planPointerUp);
 
   document.addEventListener('submit', e => {
     for (const handle of SUBMIT_CHAIN) if (handle(e)) return;

@@ -5,6 +5,7 @@
 // taken today still match the app next week.
 
 import { initial } from './seed.js';
+import { allSites } from '../core/state.js';
 import { chemicalDatabase, pestDatabase } from './catalog.js';
 
 const SEED = 0x1adb69;
@@ -16,7 +17,7 @@ const WINDOW_MONTHS = 12;
 const LAST_DAY = 12;
 
 const TECHS = ['Ayşe Demir', 'Mert Kaya', 'Ece Yılmaz', 'Can Öztürk'];
-const PRIMARY_TECH = { s1: 'Ayşe Demir', s2: 'Mert Kaya', s3: 'Ece Yılmaz', s4: 'Can Öztürk', s5: 'Mert Kaya', s6: 'Ece Yılmaz' };
+const PRIMARY_TECH = { s1: 'Ayşe Demir', s2: 'Mert Kaya', s3: 'Ece Yılmaz', s4: 'Can Öztürk', s5: 'Mert Kaya', s6: 'Ece Yılmaz', s7: 'Ece Yılmaz', s8: 'Can Öztürk' };
 
 // Relative pest pressure by calendar month (0 = January). Flying peaks Jun–Aug;
 // rodents move indoors as it cools, so they peak Oct–Dec.
@@ -115,6 +116,14 @@ export function monthWindow() {
 }
 
 const formatDate = (y, m, d) => `${String(d).padStart(2, '0')} ${MONTH_SHORT[m]} ${y}`;
+
+// The date the seeded dataset treats as "now". Everything in the demo is
+// internally consistent around it, so the calendar and planner anchor here
+// rather than on the wall clock.
+export const demoToday = () => ({ year: WINDOW_END.year, month: WINDOW_END.month, day: LAST_DAY });
+export const monthName = (m) => MONTH_SHORT[m];
+export const monthShortNames = MONTH_SHORT;
+export const formatDayLabel = formatDate;
 const clock = (mins) => `${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`;
 
 // ---------- generation ----------
@@ -349,7 +358,67 @@ function generate() {
     }
   }
 
+  assignCrews(visits);
+
   return { months, visits, recommendations, deviceReplacements: buildDeviceReplacements() };
+}
+
+// ---- visit crew, description and report number (7-1) ----
+//
+// A visit is carried out by a *team*, not always one technician, and carries a
+// short work description — both of which the office lists on the visit-report
+// board. Neither existed on the generated visit.
+//
+// Assigned in a post-pass from an rng keyed on the visit id, deliberately NOT
+// drawn from the main `r()` stream: consuming extra numbers inside the
+// generation loop would shift every seeded value downstream and invalidate the
+// thresholds calibrated against them (compliance.js ACTIVITY_LIMIT, the
+// short-visit rule in views/work.js). Same reason the closed-loop stage spread
+// above uses its own `rng('loop|…')`.
+
+const VISIT_DESCRIPTIONS = {
+  RZ: ['Monitörler kontrol edilecek', 'İç alan rutin kontrolleri yapılacaktır',
+       'Dış alan istasyon kontrolü yapılacaktır', 'Periyodik izleme ve kayıt alınacaktır'],
+  TZ: ['Önceki bulgunun takip kontrolü', 'Aksiyon sonrası doğrulama ziyareti'],
+  AC: ['Müşteri acil çağrısı — aktivite şikâyeti', 'Acil müdahale talebi'],
+  IZ: ['Rezidüel ilaçlama uygulaması', 'Jel uygulama ve bariyer yenileme'],
+  ILK: ['Sistem kurulumu ve ilk yerleşim yapılacaktır'],
+  ES: ['Sözleşme dışı ek servis talebi'],
+  '3G': ['3. göz bağımsız denetim ziyareti'],
+  DZ: ['Dezenfeksiyon uygulaması yapılacaktır']
+};
+
+const firstName = (name) => String(name).split(' ')[0];
+
+// "Ayşe-Mert (Ayşe Demir, Mert Kaya)" — the office's own crew shorthand. A crew
+// of one is just that person's full name; the shorthand only earns its keep when
+// there is more than one surname to disambiguate.
+export const crewLabel = (team) =>
+  team.length === 1 ? team[0] : `${team.map(firstName).join('-')} (${team.join(', ')})`;
+
+function assignCrews(visits) {
+  for (const v of visits) {
+    const r = rng(`crew|${v.id}`);
+
+    // Most routine work is solo; heavier visits pair up, occasionally a trio.
+    const roll = r();
+    const size = roll < 0.55 ? 1 : roll < 0.9 ? 2 : 3;
+    const extras = TECHS
+      .filter((t) => t !== v.tech)
+      .map((t) => ({ t, k: r() }))
+      .sort((a, b) => a.k - b.k)
+      .slice(0, size - 1)
+      .map((x) => x.t);
+
+    v.team = [v.tech, ...extras];
+    v.teamLabel = crewLabel(v.team);
+
+    const pool = VISIT_DESCRIPTIONS[v.visitType] || VISIT_DESCRIPTIONS.RZ;
+    v.description = pool[Math.floor(r() * pool.length) % pool.length];
+
+    // Stable public document number, the id the office quotes on the phone.
+    v.reportNo = `VR_${(hash(`vr|${v.id}`) % 9000000) + 1000000}`;
+  }
 }
 
 // ---- equipment replacement history (1-2) ----
@@ -568,9 +637,16 @@ export function technicianStats(siteId) {
     .sort((a, b) => b.visits - a.visits);
 }
 
-/** Per-site totals over the window, worst first — drives the risk ranking. */
+/**
+ * Per-site totals over the window, worst first — drives the risk ranking.
+ *
+ * Reads the live portfolio, not the seed: a facility added through the UI has
+ * no history yet and so ranks last with zeros, which is the honest answer.
+ * Generation above still walks `initial.sites`, so the seeded numbers are
+ * untouched by this.
+ */
 export function siteRanking() {
-  return initial.sites
+  return allSites()
     .map((site) => {
       const visits = visitsForSite(site.id);
       const total = visits.reduce((s, v) => s + v.totals.all, 0);
