@@ -44,14 +44,14 @@ function ensureDataDir() {
 function writePersistedState(body) {
   ensureDataDir();
   fs.writeFileSync(stateJsonPath, body, 'utf8');
-  fs.writeFileSync(stateJsPath, `window.__LADYBUG_STATE__ = ${body};\n`, 'utf8');
+  fs.writeFileSync(stateJsPath, `window.__REPELLENT_STATE__ = ${body};\n`, 'utf8');
 }
 
 function readPersistedStateScript() {
   try {
     return fs.readFileSync(stateJsPath, 'utf8');
   } catch {
-    return 'window.__LADYBUG_STATE__ = null;\n';
+    return 'window.__REPELLENT_STATE__ = null;\n';
   }
 }
 
@@ -128,5 +128,5 @@ http.createServer((req, res) => {
     send(res, 200, data, { 'Content-Type': contentType, 'Cache-Control': cacheControl });
   });
 }).listen(port, () => {
-  console.log(`Ladybug Operations static server running at http://localhost:${port}`);
+  console.log(`Repellent Operations static server running at http://localhost:${port}`);
 });

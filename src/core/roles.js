@@ -87,7 +87,7 @@ export function applyRoleAccess() {
 }
 
 export function checkSession() {
-  const savedUser = localStorage.getItem("ladybug-user");
+  const savedUser = localStorage.getItem("repellent-user");
   const appShell = $('.app-shell');
   const viewLogin = $('#viewLogin');
   
@@ -105,7 +105,7 @@ export function checkSession() {
 
 export function logout() {
   state.currentUser = null;
-  localStorage.removeItem("ladybug-user");
+  localStorage.removeItem("repellent-user");
   checkSession();
   toast("Oturum kapatıldı.");
 }

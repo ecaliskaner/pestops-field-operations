@@ -438,7 +438,7 @@ export function printQrCodeSticker(code) {
       <p class="text-muted" style="font-size:11px; margin-bottom:20px;">Termal rulo etiket yazıcıları için uygundur.</p>
       
       <div id="qrPrintArea" style="width:220px; margin:0 auto; padding:15px; border:3px double #000; border-radius:8px; text-align:center; background:#fff; color:#000;">
-        <div style="font-size:9px; font-weight:800; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">LADYBUG OPERATIONS</div>
+        <div style="font-size:9px; font-weight:800; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">REPELLENT OPERATIONS</div>
         
         <div style="width:110px; height:110px; margin: 0 auto; border:4px solid #000; padding:4px; display:flex; flex-direction:column; gap:6px; justify-content:center; align-items:center; background:#fff; position:relative;">
           <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:6px; width:90px; height:90px;">

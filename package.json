@@ -1,8 +1,8 @@
 {
-  "name": "ladybug-operations",
+  "name": "repellent-operations",
   "version": "1.0.0",
   "private": true,
-  "description": "Static deploy scaffold for Ladybug Operations.",
+  "description": "Static deploy scaffold for Repellent Operations.",
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js"

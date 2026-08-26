@@ -1,4 +1,4 @@
-// Ladybug Operations — application shell.
+// Repellent Operations — application shell.
 //
 // Owns only bootstrap, a few shell-level handlers (auth, nav, search,
 // notifications), and the handler chains below. Every other handler lives
@@ -36,7 +36,7 @@ import { createSiteSubmit } from './views/sites.js';
 import { demoClicks, openNotificationCenter, updateNotifBadge, mountPresenterBar } from './ui/demo.js';
 
 // Clean stale data from previous versions
-localStorage.removeItem("ladybug-product-demo"); localStorage.removeItem("insectram-product-demo"); localStorage.removeItem("insectram-ops");
+localStorage.removeItem("repellent-product-demo"); localStorage.removeItem("ladybug-product-demo"); localStorage.removeItem("insectram-product-demo"); localStorage.removeItem("ladybug-ops"); localStorage.removeItem("ladybug-user"); localStorage.removeItem("insectram-ops");
 
 export function shellClicks(e) {
     if (e.target.id === 'btnLogOut') {
@@ -47,12 +47,12 @@ export function shellClicks(e) {
     const quickLogin = e.target.closest('.quick-login-btn');
     if (quickLogin) {
       const roleKey = quickLogin.dataset.loginAs;
-      let email = 'admin@ladybug.com';
-      if (roleKey === 'tech') email = 'ayse@ladybug.com';
+      let email = 'admin@repellent.com';
+      if (roleKey === 'tech') email = 'ayse@repellent.com';
       if (roleKey === 'client') email = 'acme@client.com';
-      
+
       state.currentUser = users[email];
-      localStorage.setItem("ladybug-user", JSON.stringify(state.currentUser));
+      localStorage.setItem("repellent-user", JSON.stringify(state.currentUser));
       checkSession();
       render();
       mountPresenterBar();
@@ -202,7 +202,7 @@ export function loginSubmit(e) {
       const user = users[email];
       if (user && password === '123') {
         state.currentUser = user;
-        localStorage.setItem("ladybug-user", JSON.stringify(state.currentUser));
+        localStorage.setItem("repellent-user", JSON.stringify(state.currentUser));
         checkSession();
         render();
         mountPresenterBar();

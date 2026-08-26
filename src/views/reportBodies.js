@@ -59,7 +59,7 @@ function docHeader({ title, subtitle, cert, badge }) {
         <p class="rep-sub">${esc(subtitle)}</p>
       </div>
       <div class="rep-brand">
-        <strong>LADYBUG</strong>
+        <strong>REPELLENT</strong>
         <div class="rep-cert">Belge No: ${esc(cert)}</div>
         ${badge ? `<div style="margin-top:4px;">${badge}</div>` : ''}
       </div>
@@ -532,5 +532,5 @@ export function auditPackage(standardId, siteId) {
         otomatik olarak derlenmiştir. Her ziyaret, tesiste okutulan ilk QR ile
         başlatılmış ve çift taraflı dijital imza ile kapatılmıştır.
       </p>`
-    + signatureBlock('Ladybug Teknik Müdürlüğü', 'Denetim Sorumlusu'));
+    + signatureBlock('Repellent Teknik Müdürlüğü', 'Denetim Sorumlusu'));
 }

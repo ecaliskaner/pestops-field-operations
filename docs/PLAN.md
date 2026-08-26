@@ -1,4 +1,4 @@
-# PestOps / Ladybug — Demo Build Plan
+# PestOps / Repellent — Demo Build Plan
 
 ## Governing constraint
 

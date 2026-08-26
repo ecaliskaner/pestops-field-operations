@@ -4,11 +4,11 @@ import { initial } from '../data/seed.js';
 
 export function load(){
   try {
-    const saved = window.__LADYBUG_STATE__ || JSON.parse(localStorage.getItem("ladybug-ops"));
+    const saved = window.__REPELLENT_STATE__ || JSON.parse(localStorage.getItem("repellent-ops"));
     if (!saved) return structuredClone(initial);
     // Detect stale data missing new fields and reset
     if (!saved.inventory || (saved.sites && saved.sites[0] && !saved.sites[0].chemicalsUsed)) {
-      localStorage.removeItem("ladybug-ops");
+      localStorage.removeItem("repellent-ops");
       return structuredClone(initial);
     }
     // Initialize recommendations and new arrays for all sites if missing
@@ -36,7 +36,7 @@ export function load(){
 export const state = load();
 
 export function save(){
-  localStorage.setItem("ladybug-ops",JSON.stringify(state));
+  localStorage.setItem("repellent-ops",JSON.stringify(state));
   const persistableState = structuredClone(state);
   delete persistableState.currentUser;
   fetch("./api/state", {

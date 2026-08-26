@@ -257,10 +257,10 @@ function docHeader(title, no, dateStr, extra = '') {
     <header class="bill-head">
       <div>
         <h2 class="bill-title">${esc(title)}</h2>
-        <p class="bill-sub">Ladybug Enterprise Operations · Zararlı Yönetimi Hizmetleri</p>
+        <p class="bill-sub">Repellent Enterprise Operations · Zararlı Yönetimi Hizmetleri</p>
       </div>
       <div class="bill-brand">
-        <strong>LADYBUG</strong>
+        <strong>REPELLENT</strong>
         <div class="bill-no">${esc(no)}</div>
         <div class="bill-date">${esc(dateStr)}</div>
         ${extra}
@@ -273,7 +273,7 @@ function partyBlock(party) {
     <div class="bill-parties">
       <div>
         <p class="overline">DÜZENLEYEN</p>
-        <b>Ladybug Operasyon A.Ş.</b>
+        <b>Repellent Operasyon A.Ş.</b>
         <div class="bill-party-line">Esentepe Mah. Kore Şehitleri Cad. No:12, İstanbul</div>
         <div class="bill-party-line">Mecidiyeköy VD · 9876543210</div>
       </div>

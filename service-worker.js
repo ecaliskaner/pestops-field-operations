@@ -1,6 +1,6 @@
 // Bump on every asset-manifest change so old caches are evicted.
-// v3: Modern SaaS design refresh + self-hosted Inter.
-const CACHE_NAME = 'ladybug-operations-v3';
+// v4: Repellent rebrand (was Ladybug).
+const CACHE_NAME = 'repellent-operations-v4';
 
 const ASSETS = [
   './',
