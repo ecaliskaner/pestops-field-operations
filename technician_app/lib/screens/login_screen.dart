@@ -69,21 +69,15 @@ class _LoginScreenState extends State<LoginScreen> {
                   const SizedBox(height: 8),
                   Center(
                     child: Container(
-                      width: 72,
-                      height: 72,
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF10B981),
-                        borderRadius: BorderRadius.circular(20),
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
                       ),
-                      child: const Center(
-                        child: Icon(Icons.shield_rounded, color: Colors.white, size: 38),
-                      ),
+                      child: Image.asset('assets/branding/repellent_logo.png', height: 56),
                     ),
                   ),
                   const SizedBox(height: 16),
-                  const Text('Repellent Saha',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.bold)),
                   const Text('Teknisyen Uygulaması',
                       textAlign: TextAlign.center,
                       style: TextStyle(color: Colors.white70, fontSize: 14)),
