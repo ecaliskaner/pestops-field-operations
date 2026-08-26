@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/models.dart';
 import 'api_client.dart';
+import 'mock_backend.dart';
 import 'outbox.dart';
 
 /// Result of a QR scan, so the screen can react to the first-QR unlock.
@@ -89,7 +90,21 @@ class AppState extends ChangeNotifier {
     } on ApiException catch (e) {
       return e.statusCode == 401 ? 'E-posta veya şifre hatalı.' : e.message;
     } catch (_) {
-      return 'Sunucuya ulaşılamadı. Adresi kontrol edin: $baseUrl';
+      // Backend unreachable (wrong address, or this build has no server
+      // behind it at all — e.g. a static demo deploy). Fall back to the
+      // bundled demo dataset so the known accounts still work, fully
+      // offline: every action already has a local/offline path.
+      final mockTech = MockBackend.findTechnician(email, password);
+      if (mockTech == null) return 'E-posta veya şifre hatalı.';
+      technician = mockTech;
+      _token = 'demo-${mockTech.email}';
+      api.token = _token;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('token', _token!);
+      await prefs.setString('technician', technician!.email);
+      offlineMode = true;
+      route = MockBackend.routeFor(mockTech.email);
+      return null;
     } finally {
       loading = false;
       notifyListeners();
