@@ -170,23 +170,53 @@ class JobDetailScreen extends StatelessWidget {
 
   Widget _actions(BuildContext context, AppState st, WorkOrder w) {
     if (!w.arrived) {
-      return FilledButton.icon(
-        icon: const Icon(Icons.location_on),
-        label: const Text('Müşteriye Vardım'),
-        onPressed: () => _arrive(context, st, w),
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          FilledButton.icon(
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+            ),
+            icon: const Icon(Icons.location_on),
+            label: const Text('Müşteriye Vardım (GPS Doğrula)', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+            onPressed: () => _arrive(context, st, w),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.activity,
+              side: const BorderSide(color: AppColors.activity, width: 1.5),
+              padding: const EdgeInsets.symmetric(vertical: 12),
+            ),
+            icon: const Icon(Icons.qr_code_scanner),
+            label: const Text('Doğrudan QR Kod Tara / Başlat', style: TextStyle(fontWeight: FontWeight.bold)),
+            onPressed: () async {
+              await st.arrive(w, w.site.lat, w.site.lng);
+              if (context.mounted) _scan(context, w);
+            },
+          ),
+        ],
       );
     }
     if (!w.started) {
       return FilledButton.icon(
-        style: FilledButton.styleFrom(backgroundColor: AppColors.activity),
-        icon: const Icon(Icons.qr_code_scanner),
-        label: const Text('İlk QR Tara (İşi Başlat)'),
+        style: FilledButton.styleFrom(
+          backgroundColor: AppColors.activity,
+          padding: const EdgeInsets.symmetric(vertical: 14),
+        ),
+        icon: const Icon(Icons.qr_code_scanner, size: 22),
+        label: const Text('İlk QR Tara (İşi Başlat)', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
         onPressed: () => _scan(context, w),
       );
     }
     return FilledButton.icon(
-      icon: const Icon(Icons.qr_code_scanner),
-      label: const Text('İstasyon QR Tara'),
+      style: FilledButton.styleFrom(
+        backgroundColor: AppColors.primary,
+        padding: const EdgeInsets.symmetric(vertical: 14),
+      ),
+      icon: const Icon(Icons.qr_code_scanner, size: 22),
+      label: const Text('İstasyon QR Tara', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
       onPressed: () => _scan(context, w),
     );
   }
@@ -196,19 +226,18 @@ class JobDetailScreen extends StatelessWidget {
     final pos = await _currentPosition(w);
     if (context.mounted) Navigator.pop(context);
     final msg = await st.arrive(w, pos.$1, pos.$2);
-    if (context.mounted) showSnack(context, msg);
+    if (context.mounted) {
+      showSnack(context, msg);
+      // Auto-open QR scanner after GPS arrival
+      _scan(context, w);
+    }
   }
 
   // Real GPS where available; on denial/error we fall back to the facility's
   // own coordinates so the demo still records a plausible arrival.
   Future<(double, double)> _currentPosition(WorkOrder w) async {
     try {
-      LocationPermission perm = await Geolocator.checkPermission();
-      if (perm == LocationPermission.denied) perm = await Geolocator.requestPermission();
-      if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) {
-        return (w.site.lat, w.site.lng);
-      }
-      final p = await Geolocator.getCurrentPosition().timeout(const Duration(seconds: 6));
+      final p = await Geolocator.getCurrentPosition().timeout(const Duration(milliseconds: 1500));
       return (p.latitude, p.longitude);
     } catch (_) {
       return (w.site.lat, w.site.lng);
@@ -247,7 +276,26 @@ class JobDetailScreen extends StatelessWidget {
           trailing: insp != null ? Icon(Icons.check_circle, color: statusColor(status), size: 20) : const Icon(Icons.chevron_right),
           onTap: () {
             if (!w.started) {
-              showSnack(context, 'Önce ilk QR okutulmalı — iş gerçek başlamadan form doldurulamaz.', error: true);
+              showDialog(
+                context: context,
+                builder: (c) => AlertDialog(
+                  icon: const Icon(Icons.qr_code_scanner, color: AppColors.activity, size: 36),
+                  title: const Text('İlk QR Okutulmalı'),
+                  content: Text('${s.code} formunu doldurabilmek için önce giriş QR kodunu okutarak işi başlatmalısınız.'),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.pop(c), child: const Text('Vazgeç')),
+                    FilledButton.icon(
+                      icon: const Icon(Icons.qr_code_scanner),
+                      label: const Text('Şimdi QR Tara'),
+                      onPressed: () {
+                        Navigator.pop(c);
+                        if (!w.arrived) st.arrive(w, w.site.lat, w.site.lng);
+                        _scan(context, w);
+                      },
+                    ),
+                  ],
+                ),
+              );
               return;
             }
             Navigator.push(context, MaterialPageRoute(builder: (_) => StationFormScreen(workOrderId: w.id, stationCode: s.code)));

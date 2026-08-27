@@ -56,9 +56,11 @@ class AppState extends ChangeNotifier {
     baseUrl = prefs.getString('baseUrl') ?? _defaultBaseUrl();
     _token = prefs.getString('token');
     lastSyncAtLocal = prefs.getString('lastSyncAt');
-    final techJson = prefs.getString('technician');
-    if (techJson != null) {
-      // stored as email:name:... minimal — re-fetch on next bootstrap anyway
+    final techEmail = prefs.getString('technician');
+    if (_token != null && _token!.startsWith('demo-') && techEmail != null) {
+      offlineMode = true;
+      technician = MockBackend.findTechnician(techEmail, '1234');
+      route = MockBackend.routeFor(techEmail);
     }
     api = ApiClient(baseUrl: baseUrl, token: _token);
     await outbox.load();

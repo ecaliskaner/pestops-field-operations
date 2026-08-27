@@ -735,8 +735,18 @@ export function mobileClicks(e) {
         // 150 m fence is the audit trail's arrival marker.
         addTelemetryLog(`GEOFENCE GİRİŞ: ${site.company} — ${site.name} sınırına (150 m) girildi.`);
         addTelemetryLog(`BAŞARILI: Teknisyen konumu geofence sınırları içerisinde doğrulandı! (${lat.toFixed(4)}, ${lon.toFixed(4)})`);
-        toast("GPS Konumu doğrulandı. İlk QR/NFC okutarak mesaiyi başlatın.");
+        toast("GPS Konumu doğrulandı. Giriş QR taraması açılıyor...");
         updateSimStepsHighlight();
+        setTimeout(() => {
+          if (!ui.mobQrStarted && ui.mobJob) {
+            openMobileScanner(
+              "Giriş QR Kodu Tara",
+              "Tesis giriş kapısındaki kontrol ünitesinde yer alan QR barkodunu okutun.",
+              site.stations,
+              (scannedCode) => startFirstScan(scannedCode, 'QR')
+            );
+          }
+        }, 400);
       };
 
       const gpsWatchdog = setTimeout(() => {
@@ -763,6 +773,13 @@ export function mobileClicks(e) {
     
     if (e.target.id === 'btnMobScanFirstQr') {
       const site = state.sites.find(s => s.id === ui.mobJob.siteId) || state.sites[0];
+      if (!ui.mobArrived && ui.mobJob) {
+        ui.mobArrived = true;
+        ui.mobJob.status = 'arrived_gps';
+        save();
+        $('#btnMobArrived')?.classList.add('hidden');
+        $('#indicatorGpsVerified')?.classList.remove('hidden');
+      }
       addTelemetryLog("Kamera açılıyor... Giriş QR Kodu taraması bekleniyor.");
       openMobileScanner(
         "Giriş QR Kodu Tara",

@@ -63,23 +63,46 @@ class _QrScanScreenState extends State<QrScanScreen> {
   }
 
   void _manualEntry() {
+    final st = context.read<AppState>();
+    final w = st.jobById(widget.workOrderId);
+    final stations = w?.site.stations ?? [];
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       builder: (c) => Padding(
         padding: EdgeInsets.only(bottom: MediaQuery.of(c).viewInsets.bottom, left: 20, right: 20, top: 20),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Text('Manuel kod girişi', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 12),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          const Text('Manuel Kod Girişi / İstasyon Seç', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          if (stations.isNotEmpty) ...[
+            const Text('Hızlı İstasyon Seçimi:', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: stations.map((s) => ActionChip(
+                label: Text(s.code, style: const TextStyle(fontWeight: FontWeight.bold)),
+                avatar: const Icon(Icons.qr_code, size: 16),
+                onPressed: () {
+                  Navigator.pop(c);
+                  _submit(s.code);
+                },
+              )).toList(),
+            ),
+            const SizedBox(height: 14),
+            const Divider(),
+            const SizedBox(height: 8),
+          ],
           TextField(
             controller: _manual,
             autofocus: true,
             textCapitalization: TextCapitalization.characters,
-            decoration: const InputDecoration(labelText: 'İstasyon kodu (örn. R-01)', prefixIcon: Icon(Icons.qr_code)),
+            decoration: const InputDecoration(labelText: 'Veya kod yazın (örn. R-01)', prefixIcon: Icon(Icons.qr_code)),
             onSubmitted: (v) { Navigator.pop(c); _submit(v); },
           ),
           const SizedBox(height: 12),
-          FilledButton(onPressed: () { Navigator.pop(c); _submit(_manual.text); }, child: const Text('Onayla')),
+          FilledButton(onPressed: () { Navigator.pop(c); _submit(_manual.text); }, child: const Text('Onayla & Başlat')),
           const SizedBox(height: 20),
         ]),
       ),

@@ -17,7 +17,7 @@ class ApiClient {
   String? token;
   final Duration timeout;
 
-  ApiClient({required this.baseUrl, this.token, this.timeout = const Duration(seconds: 8)});
+  ApiClient({required this.baseUrl, this.token, this.timeout = const Duration(seconds: 2)});
 
   Uri _u(String path) => Uri.parse('$baseUrl/api/mobile$path');
 
