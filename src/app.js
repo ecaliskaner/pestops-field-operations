@@ -28,7 +28,6 @@ import {
   showStationDetail, switchCompanyTab, showCompanyDetail
 } from './views/companyDetail.js';
 import { reportCardClicks, reportModalClicks, generateReportSubmit } from './views/reports.js';
-import { mobileClicks, mobileChemDeleteClicks, mobChemicalSubmit, chemicalDocClicks } from './views/mobile.js';
 import { insightsClicks } from './views/insights.js';
 import { invoiceActionClicks, invoiceFilterClicks, billingClicks } from './views/finance.js';
 import { stockRefillSubmit } from './views/inventory.js';
@@ -251,13 +250,10 @@ const CLICK_CHAIN = [
   // marker drag must not also fall through to station selection.
   floorPlanClicks,
   planCanvasClicks,
-  mobileClicks,
   companyTabClicks,
   insightsClicks,
   invoiceActionClicks,
   billingClicks,
-  chemicalDocClicks,
-  mobileChemDeleteClicks,
   taskChemDeleteClicks,
   invoiceFilterClicks,
   fileDownloadClicks
@@ -280,8 +276,7 @@ const SUBMIT_CHAIN = [
   recommendationSubmit,
   chemicalUsageSubmit,
   stockRefillSubmit,
-  taskChemicalSubmit,
-  mobChemicalSubmit
+  taskChemicalSubmit
 ];
 
 function bind() {

@@ -11,7 +11,6 @@ import { renderWork } from '../views/work.js';
 import { renderTeam, startFieldSimulation } from '../views/team.js';
 import { renderAiPredictions, renderInsights } from '../views/insights.js';
 import { renderReports } from '../views/reports.js';
-import { renderMobileRoute } from '../views/mobile.js';
 import { renderInventory } from '../views/inventory.js';
 import { renderFinance } from '../views/finance.js';
 import { renderVisitReports } from '../views/visitReports.js';
@@ -31,8 +30,6 @@ export function setView(view){
   } else if (view === 'work') {
     renderWork();
     renderTechToday();
-  } else if (view === 'mobileSim') {
-    renderMobileRoute();
   } else if (view === 'inventory') {
     renderInventory();
   } else if (view === 'finance') {

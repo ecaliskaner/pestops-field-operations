@@ -11,7 +11,6 @@ import { toast } from '../core/dom.js';
 import { save } from '../core/state.js';
 import { modal, printQrCodeSticker } from '../ui/modal.js';
 import { deductStock } from '../views/inventory.js';
-import { showMobileInspect } from '../views/mobile.js';
 import { renderSites } from '../views/sites.js';
 import {
   barcodeFor, deviceReplacements, pointDeviceSummary, readingsForPoint,
@@ -1243,13 +1242,7 @@ export function recApprovalSubmit(e) {
 export function planCanvasClicks(e) {
     const marker = e.target.closest('[data-station-code]');
     if (marker) {
-      const stationCode = marker.dataset.stationCode;
-      const isMobile = e.target.closest('#mobileBlueprintWrapper');
-      if (isMobile) {
-        showMobileInspect(stationCode);
-      } else {
-        showStationDetail(stationCode);
-      }
+      showStationDetail(marker.dataset.stationCode);
     }
     
     // Station filters click in facility plan
