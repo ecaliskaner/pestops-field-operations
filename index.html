@@ -1666,25 +1666,6 @@
           <button type="submit" class="primary-btn" style="width:100%; justify-content:center; height:38px; margin-top:12px; font-weight:700;">Giriş Yap</button>
         </form>
         
-        <div class="login-divider" style="margin:20px 0; text-align:center; position:relative; font-size:10px; font-weight:700; color:var(--muted);">
-          <span style="background:#fff; padding:0 8px; position:relative; z-index:1;">VEYA TEST KULLANICISI SEÇİN</span>
-          <div style="position:absolute; top:50%; left:0; right:0; height:1px; background:var(--line); z-index:0;"></div>
-        </div>
-        
-        <div class="quick-login-grid" style="display:grid; grid-template-columns:1fr; gap:8px;">
-          <button class="secondary-btn quick-login-btn" data-login-as="admin" style="display:flex; flex-direction:column; align-items:start; padding:10px; height:auto; text-align:left; gap:2px;">
-            <b style="font-size:12px; color:var(--ink);">🔑 Seda Kaya (Yönetici)</b>
-            <span style="font-size:10px; color:var(--muted); font-weight:normal;">Tam yetkili sistem yöneticisi ve zararlı uzmanı boss.</span>
-          </button>
-          <button class="secondary-btn quick-login-btn" data-login-as="tech" style="display:flex; flex-direction:column; align-items:start; padding:10px; height:auto; text-align:left; gap:2px;">
-            <b style="font-size:12px; color:var(--ink);">🔧 Ayşe Demir (Teknisyen)</b>
-            <span style="font-size:10px; color:var(--muted); font-weight:normal;">Saha çalışanı. Sadece kendi iş emirlerini ve rotasını görür.</span>
-          </button>
-          <button class="secondary-btn quick-login-btn" data-login-as="client" style="display:flex; flex-direction:column; align-items:start; padding:10px; height:auto; text-align:left; gap:2px;">
-            <b style="font-size:12px; color:var(--ink);">🏢 Acme Foods (Müşteri)</b>
-            <span style="font-size:10px; color:var(--muted); font-weight:normal;">Müşteri temsilcisi portalı. Sadece kendi tesisine erişir.</span>
-          </button>
-        </div>
       </div>
     </div>
 
@@ -1702,6 +1683,10 @@
         });
       }
     </script>
+    <!-- Runtime config from the server's environment, then the Supabase SDK.
+         Both must load before any module that talks to the backend. -->
+    <script src="./env.js"></script>
+    <script src="./vendor/supabase.js"></script>
     <script src="./state.js"></script>
     <script type="module" src="./src/app.js"></script>
   </body>

@@ -10,15 +10,12 @@
 // number opens the existing printable service report rather than a second,
 // divergent renderer.
 
-import { $, $$, toast } from '../core/dom.js';
+import { $, $$, toast, esc } from '../core/dom.js';
 import { state, visibleSites } from '../core/state.js';
 import { getVisits } from '../data/history.js';
 import { visitTypes } from '../data/catalog.js';
 import { downloadCSV } from '../ui/export.js';
 import { openReport } from './reports.js';
-
-const esc = (s) => String(s ?? '')
-  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 const visitTypeName = (code) => (visitTypes.find((v) => v.code === code) || {}).name || code;
 

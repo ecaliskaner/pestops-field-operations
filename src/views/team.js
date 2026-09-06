@@ -10,7 +10,7 @@
 // technician who reports a real fix from the Flutter app is pinned to their
 // true coordinates instead — see pollLivePositions() below.
 
-import { $, $$ } from '../core/dom.js';
+import { $, $$, esc } from '../core/dom.js';
 import { state } from '../core/state.js';
 import { save } from '../core/state.js';
 import { techData, techSites, initial } from '../data/seed.js';
@@ -599,22 +599,22 @@ function renderRouteOptimization() {
 
   const chips = ['depot', ...shown, 'depot'].map((id, i) => {
     const name = id === 'depot' ? 'Merkez' : label(id);
-    return `<span class="route-chip ${id === 'depot' ? 'depot' : ''}">${i}. ${name}</span>`;
+    return `<span class="route-chip ${id === 'depot' ? 'depot' : ''}">${i}. ${esc(name)}</span>`;
   }).join('<span class="route-arrow">→</span>');
 
   panel.innerHTML = `
     <div class="route-compare">
-      <div class="route-metric ${routeOptimized ? '' : 'active'}">
-        <span>Mevcut sıralama</span><strong>${naiveMin} dk</strong><small>${routeKm(naive)} km</small>
+      <div class="route-metric ${esc(routeOptimized ? '' : 'active')}">
+        <span>Mevcut sıralama</span><strong>${esc(naiveMin)} dk</strong><small>${routeKm(naive)} km</small>
       </div>
-      <div class="route-metric ${routeOptimized ? 'active' : ''}">
-        <span>Optimize sıralama</span><strong>${optMin} dk</strong><small>${routeKm(optimized)} km</small>
+      <div class="route-metric ${esc(routeOptimized ? 'active' : '')}">
+        <span>Optimize sıralama</span><strong>${esc(optMin)} dk</strong><small>${routeKm(optimized)} km</small>
       </div>
       <div class="route-metric saved">
-        <span>Kazanç</span><strong>${saved} dk · %${savedPct}</strong>
+        <span>Kazanç</span><strong>${esc(saved)} dk · %${esc(savedPct)}</strong>
       </div>
     </div>
-    <p class="route-mode">${routeOptimized ? '✓ Optimize edilmiş en yakın-komşu rotası' : 'Sözleşme/giriş sırasına göre ham rota'}</p>
+    <p class="route-mode">${esc(routeOptimized ? '✓ Optimize edilmiş en yakın-komşu rotası' : 'Sözleşme/giriş sırasına göre ham rota')}</p>
     <div class="route-chips">${chips}</div>`;
 
   drawRouteOverlay(routeOptimized ? optimized : naive);
@@ -650,8 +650,8 @@ function renderCredentials(tech) {
 
   host.innerHTML = `
     <div class="cred-head">
-      <span class="tech-avatar" style="background:${(techData[tech] || [])[5] || '#eee'}">${initials}</span>
-      <div><b>${tech}</b><span>Belgeler müşteri portalında görüntülenebilir</span></div>
+      <span class="tech-avatar" style="background:${esc((techData[tech] || [])[5] || '#eee')}">${esc(initials)}</span>
+      <div><b>${esc(tech)}</b><span>Belgeler müşteri portalında görüntülenebilir</span></div>
     </div>
     <div class="cred-docs">
       ${credentialDocs(tech)}
@@ -710,10 +710,10 @@ function renderProductivity() {
 
   body.innerHTML = `
     <div class="prod-summary">
-      <div class="prod-stat"><span>Ekip verimliliği</span><strong class="${teamUtil >= 70 ? 'good' : teamUtil >= 60 ? 'mid' : 'bad'}">%${teamUtil}</strong><small>saha / toplam mesai</small></div>
+      <div class="prod-stat"><span>Ekip verimliliği</span><strong class="${esc(teamUtil >= 70 ? 'good' : teamUtil >= 60 ? 'mid' : 'bad')}">%${esc(teamUtil)}</strong><small>saha / toplam mesai</small></div>
       <div class="prod-stat"><span>Toplam saha süresi</span><strong>${hours(totalOn)} sa</strong><small>faturalanabilir</small></div>
       <div class="prod-stat"><span>Toplam yol süresi</span><strong>${hours(totalTravel)} sa</strong><small>windshield / gayri-faturalı</small></div>
-      <div class="prod-stat"><span>Toplam ziyaret</span><strong>${totalVisits}</strong><small>12 ay</small></div>
+      <div class="prod-stat"><span>Toplam ziyaret</span><strong>${esc(totalVisits)}</strong><small>12 ay</small></div>
     </div>
     <div class="prod-chart-wrap"><div id="teamProductivityChart" class="prod-chart"></div></div>
     <div class="prod-legend"><span><i class="on"></i> Saha (faturalanabilir)</span><span><i class="travel"></i> Yol (windshield)</span></div>
@@ -744,15 +744,15 @@ export function renderTeam(){
 
   $('#techDetail').innerHTML=`
     <div class="tech-summary">
-      <span class="tech-avatar" style="background:${d[5]}">${d[0]}</span>
-      <div><b>${state.selectedTech}</b><span>${d[1]} · ${d[2]}</span></div>
+      <span class="tech-avatar" style="background:${esc(d[5])}">${esc(d[0])}</span>
+      <div><b>${esc(state.selectedTech)}</b><span>${esc(d[1])} · ${esc(d[2])}</span></div>
     </div>
     <div class="tech-rows">
-      <div><span>Mevcut durum</span><b>${d[1]}</b></div>
-      <div><span>Servis doğrulaması</span><b>${d[3]}</b></div>
-      <div><span>Son konum sinyali</span><b>${d[4]}</b></div>
-      <div><span>Bugünkü rota</span><b>${stopNames || '—'}</b></div>
-      <div><span>12 aylık saha özeti</span><b>${statLine}</b></div>
+      <div><span>Mevcut durum</span><b>${esc(d[1])}</b></div>
+      <div><span>Servis doğrulaması</span><b>${esc(d[3])}</b></div>
+      <div><span>Son konum sinyali</span><b>${esc(d[4])}</b></div>
+      <div><span>Bugünkü rota</span><b>${esc(stopNames || '—')}</b></div>
+      <div><span>12 aylık saha özeti</span><b>${esc(statLine)}</b></div>
     </div>
     <button class="secondary-btn map-access" data-action="facilityMap">⌖ Tesis planını görüntüle</button>
     <p class="map-hint">Plan uygulama içinde çevrimiçi görüntülenir; teknisyen isterse offline kullanım için ayrıca indirebilir.</p>

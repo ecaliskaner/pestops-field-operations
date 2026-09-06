@@ -6,7 +6,7 @@
 // demo re-run. This module renders them and wires the print / CSV actions;
 // documents print through printElement() from ui/export.js.
 
-import { $ } from '../core/dom.js';
+import { $, esc } from '../core/dom.js';
 import { state } from '../core/state.js';
 import { $$, toast } from '../core/dom.js';
 import { save } from '../core/state.js';
@@ -17,8 +17,6 @@ import {
 import { printElement, downloadCSV } from '../ui/export.js';
 import { stackedBarChart, mountChart } from '../ui/charts.js';
 
-const esc = (s) => String(s ?? '')
-  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const tl = (n) => `₺${Number(n || 0).toLocaleString('tr-TR')}`;
 const marginColor = (m) => (m < 0 ? 'var(--red)' : m < 50 ? 'var(--amber)' : 'var(--green)');
 
@@ -179,9 +177,9 @@ function renderTechEfficiency() {
 
   body.innerHTML = `
     <div class="fin-eff-metrics">
-      <div class="fin-eff-metric"><span>Yol (windshield) maliyeti</span><strong style="color:var(--red);">${tl(totalTravelCost)}</strong><small>işgücü bütçesinin %${windshieldPct}'i</small></div>
+      <div class="fin-eff-metric"><span>Yol (windshield) maliyeti</span><strong style="color:var(--red);">${tl(totalTravelCost)}</strong><small>işgücü bütçesinin %${esc(windshieldPct)}'i</small></div>
       <div class="fin-eff-metric"><span>Saha işgücü maliyeti</span><strong style="color:var(--green);">${tl(totalOnSiteCost)}</strong><small>faturalanabilir üretim</small></div>
-      <div class="fin-eff-metric"><span>Ziyaret başı yol maliyeti</span><strong>${tl(totalVisits ? Math.round(totalTravelCost / totalVisits) : 0)}</strong><small>${totalVisits} ziyaret ortalaması</small></div>
+      <div class="fin-eff-metric"><span>Ziyaret başı yol maliyeti</span><strong>${tl(totalVisits ? Math.round(totalTravelCost / totalVisits) : 0)}</strong><small>${esc(totalVisits)} ziyaret ortalaması</small></div>
     </div>
     <div class="fin-eff-chart-wrap"><div id="finEfficiencyChart" class="fin-eff-chart"></div></div>
     <div class="table-panel" style="border:1px solid var(--line); border-radius:8px; overflow:auto; margin-top:12px;">
@@ -465,7 +463,7 @@ function openIrsaliyePicker(visits) {
   content.innerHTML = `
     <div class="bill-doc-shell">
       <h2 style="margin:0 0 4px; font-size:16px;">Sevk İrsaliyeleri</h2>
-      <p class="text-muted" style="font-size:11px; margin-bottom:12px;">${esc(visits[0].company)} · ${visits.length} irsaliye</p>
+      <p class="text-muted" style="font-size:11px; margin-bottom:12px;">${esc(visits[0].company)} · ${esc(visits.length)} irsaliye</p>
       <div class="irs-pick-list">${rows}</div>
       <footer class="bill-doc-actions no-print" style="margin-top:14px;">
         <button class="secondary-btn" data-billing-action="close">Kapat</button>

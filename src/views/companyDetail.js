@@ -1,7 +1,7 @@
 // Facility detail page: profile, tabs, floor plan, stations.
 // Extracted from app.js (Phase 0a-3).
 
-import { $, $$ } from '../core/dom.js';
+import { $, $$, esc } from '../core/dom.js';
 import { recalculateSiteStats, state } from '../core/state.js';
 import { ui } from '../core/session.js';
 import { chemicalDatabase, equipmentStatusCodes, equipmentTypes, getChemicalDocuments, getPlacementSchema, getStationArea, pestDatabase, placementSummary, stationAreaName, stateLabel } from '../data/catalog.js';
@@ -463,19 +463,19 @@ export function renderRecLoopDetail(site, recId) {
     <li class="rec-step ${s.done ? 'done' : ''} ${(!s.done && s.n === stage.waitingStep) ? 'current' : ''}">
       <span class="rec-step-no">${s.done ? '✓' : s.n}</span>
       <span class="rec-step-body">
-        <b>${s.title}</b>
-        <small>${s.done ? `${s.who || '—'} · ${s.when || '—'}` : 'bekliyor'}</small>
+        <b>${esc(s.title)}</b>
+        <small>${s.done ? `${esc(s.who || '—')} · ${esc(s.when || '—')}` : 'bekliyor'}</small>
       </span>
     </li>`).join('');
 
   el.innerHTML = `
     <div class="rec-detail-head">
       <div>
-        <p class="overline" style="margin:0;">KAPALI DÖNGÜ · ${rec.id}</p>
-        <h3 class="rec-detail-title">${rec.desc}</h3>
-        <p class="rec-detail-meta">${rec.category}${rec.stationCode ? ` · Nokta ${rec.stationCode}` : ''} · Termin: <b>${rec.dueDate || '—'}</b></p>
+        <p class="overline" style="margin:0;">KAPALI DÖNGÜ · ${esc(rec.id)}</p>
+        <h3 class="rec-detail-title">${esc(rec.desc)}</h3>
+        <p class="rec-detail-meta">${esc(rec.category)}${rec.stationCode ? ` · Nokta ${rec.stationCode}` : ''} · Termin: <b>${esc(rec.dueDate || '—')}</b></p>
       </div>
-      <span class="status-chip ${stage.chip} rec-detail-stage">${stage.label}</span>
+      <span class="status-chip ${esc(stage.chip)} rec-detail-stage">${esc(stage.label)}</span>
     </div>
 
     <ol class="rec-stepper">${stepper}</ol>
@@ -494,7 +494,7 @@ export function renderRecLoopDetail(site, recId) {
     ${rec.customerNote ? `<p class="rec-note customer"><b>Müşteri notu:</b> ${rec.customerNote}</p>` : ''}
     ${rec.rejectionNote ? `<p class="rec-note reject"><b>Onaylanmama nedeni:</b> ${rec.rejectionNote}</p>` : ''}
 
-    <p class="rec-waiting-on">⏳ ${stage.actor}</p>
+    <p class="rec-waiting-on">⏳ ${esc(stage.actor)}</p>
 
     ${renderRecActions(rec, role)}`;
 }
@@ -751,16 +751,16 @@ export function renderDeviceBlock(site, station) {
   container.innerHTML = `
     <div class="device-id-row">
       <span class="device-id-label">Nokta No</span>
-      <b class="device-point-no">${station.code}</b>
+      <b class="device-point-no">${esc(station.code)}</b>
       <span class="device-permanent">kalıcı</span>
     </div>
     <div class="device-id-row">
       <span class="device-id-label">Barkod</span>
-      <b class="device-barcode">${current}</b>
+      <b class="device-barcode">${esc(current)}</b>
     </div>
     <div class="device-id-row">
       <span class="device-id-label">Toplam Okuma</span>
-      <b>${summary.totalReadings} ölçüm · ${summary.totalPests} adet bulgu</b>
+      <b>${esc(summary.totalReadings)} ölçüm · ${esc(summary.totalPests)} adet bulgu</b>
     </div>`;
 
   // Prefill the swap form with the next barcode in the sequence.
@@ -797,8 +797,8 @@ function renderDeviceTimeline(site, station, swaps, summary) {
     `<li class="device-swap">
        <span class="device-swap-icon">⇄</span>
        <span class="device-gen-body">
-         <b>${s.date} — ${s.reason} (${s.reasonCode})</b>
-         <small>${s.oldBarcode} → ${s.newBarcode}${s.note ? ` · ${s.note}` : ''}</small>
+         <b>${esc(s.date)} — ${esc(s.reason)} (${esc(s.reasonCode)})</b>
+         <small>${esc(s.oldBarcode)} → ${esc(s.newBarcode)}${s.note ? ` · ${esc(s.note)}` : ''}</small>
        </span>
      </li>`).join('');
 
@@ -858,7 +858,7 @@ function renderPointHistory(site, station) {
   }).join('');
 
   el.innerHTML = `
-    <p class="overline device-section-title">NOKTA ÖLÇÜM GEÇMİŞİ <span class="ph-total">${shown.length} / ${readings.length} kayıt</span></p>
+    <p class="overline device-section-title">NOKTA ÖLÇÜM GEÇMİŞİ <span class="ph-total">${esc(shown.length)} / ${esc(readings.length)} kayıt</span></p>
     <ul class="point-history-list">${rows}</ul>`;
 }
 
@@ -1011,8 +1011,8 @@ export function renderServiceScope(site) {
         </div>
       </div>
       <div style="margin-top:10px; display:flex; gap:16px; font-size:11px; color:var(--muted); justify-content:center;">
-        <span><b>Vergi Dairesi:</b> ${c.taxOffice || '—'}</span>
-        <span><b>Vergi No:</b> ${c.taxNo || '—'}</span>
+        <span><b>Vergi Dairesi:</b> ${esc(c.taxOffice || '—')}</span>
+        <span><b>Vergi No:</b> ${esc(c.taxNo || '—')}</span>
       </div>
     `;
   }

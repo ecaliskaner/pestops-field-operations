@@ -12,7 +12,7 @@
 // visits, but the portal had no way to ask for one. That is what makes this a
 // portal rather than a report viewer.
 
-import { $, toast } from '../core/dom.js';
+import { $, toast, esc } from '../core/dom.js';
 import { state, save, visibleSites } from '../core/state.js';
 import { ui } from '../core/session.js';
 import { recommendationsForSite, visitsForSite } from '../data/history.js';
@@ -21,9 +21,6 @@ import { contractFor } from '../data/billing.js';
 import { visitTypes } from '../data/catalog.js';
 import { showCompanyDetail } from './companyDetail.js';
 import { setView } from '../core/router.js';
-
-const esc = (s) => String(s ?? '')
-  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 const visitTypeName = (code) => (visitTypes.find((v) => v.code === code) || {}).name || code;
 

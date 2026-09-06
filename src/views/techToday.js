@@ -14,16 +14,13 @@
 // contract-driven planner the office publishes from, so what the technician
 // sees is exactly what was dispatched.
 
-import { $ } from '../core/dom.js';
+import { $, esc } from '../core/dom.js';
 import { state } from '../core/state.js';
 import { allSites } from '../core/state.js';
 import { nextVisitFor, plannedVisits } from '../data/schedule.js';
 import { demoToday, technicianStats } from '../data/history.js';
 import { getCredential } from '../data/credentials.js';
 import { notificationsFor, unreadFor } from '../core/notify.js';
-
-const esc = (s) => String(s ?? '')
-  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 const siteById = (id) => allSites().find((s) => s.id === id);
 

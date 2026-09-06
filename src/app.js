@@ -6,9 +6,9 @@
 
 import { $, $$, toast } from './core/dom.js';
 import { save, state } from './core/state.js';
-import { users } from './core/auth.js';
+import { signIn, signOut, restoreSession, watchSession } from './core/auth.js';
 import { ui } from './core/session.js';
-import { checkSession, logout } from './core/roles.js';
+import { checkSession } from './core/roles.js';
 import { techSites } from './data/seed.js';
 import { render, setView } from './core/router.js';
 import { modal } from './ui/modal.js';
@@ -47,26 +47,19 @@ localStorage.removeItem("repellent-product-demo"); localStorage.removeItem("lady
 
 export function shellClicks(e) {
     if (e.target.id === 'btnLogOut') {
-      logout();
+      // signOut() rather than the old roles.js:logout(): clearing the local
+      // profile cache without ending the Supabase session would leave a live,
+      // still-usable token behind on a shared machine.
+      signOut().then(() => {
+        render();
+        toast('Oturum kapatıldı.');
+      });
       return true;
     }
     
-    const quickLogin = e.target.closest('.quick-login-btn');
-    if (quickLogin) {
-      const roleKey = quickLogin.dataset.loginAs;
-      let email = 'admin@repellent.com';
-      if (roleKey === 'tech') email = 'ayse@repellent.com';
-      if (roleKey === 'client') email = 'acme@client.com';
-
-      state.currentUser = users[email];
-      localStorage.setItem("repellent-user", JSON.stringify(state.currentUser));
-      checkSession();
-      render();
-      mountPresenterBar();
-      updateNotifBadge();
-      toast(`Hoş geldiniz, ${state.currentUser.name}!`);
-      return true;
-    }
+    // The one-click "log in as admin/tech/client" buttons that used to live
+    // here are gone. They bypassed authentication entirely, and there is no
+    // version of them that is safe once this app holds real customer data.
 
     // data-action click event bindings
     const actionEl = e.target.closest('[data-action]');
@@ -204,20 +197,28 @@ export function loginSubmit(e) {
     if (e.target.id === 'loginForm') {
       e.preventDefault();
       const email = $('#inpLoginEmail').value.trim();
-      const password = $('#inpLoginPassword').value.trim();
-      
-      const user = users[email];
-      if (user && password === '123') {
-        state.currentUser = user;
-        localStorage.setItem("repellent-user", JSON.stringify(state.currentUser));
-        checkSession();
-        render();
-        mountPresenterBar();
-        updateNotifBadge();
-        toast(`Başarıyla giriş yapıldı. Hoş geldiniz, ${user.name}!`);
-      } else {
-        toast('Hata: Geçersiz e-posta veya şifre (Şifre: 123)');
-      }
+      const password = $('#inpLoginPassword').value;
+      const button = e.target.querySelector('button[type="submit"], .primary-btn');
+
+      // The network round-trip is real now, so the button has to say so —
+      // otherwise an impatient double-click fires two sign-in requests.
+      const restore = button ? button.textContent : null;
+      if (button) { button.disabled = true; button.textContent = 'Giriş yapılıyor…'; }
+
+      signIn(email, password)
+        .then((result) => {
+          if (result.ok) {
+            render();
+            updateNotifBadge();
+            toast(`Hoş geldiniz, ${state.currentUser.name}!`);
+          } else {
+            toast(result.message);
+          }
+        })
+        .catch(() => toast('Giriş yapılamadı. Bağlantınızı kontrol edin.'))
+        .finally(() => {
+          if (button) { button.disabled = false; button.textContent = restore; }
+        });
       return true;
     }
   return false;
@@ -314,7 +315,22 @@ function bind() {
 Object.assign(window, { showStationDetail, switchCompanyTab });
 
 bind();
+
+// Boot. checkSession() paints the shell or the login screen from the cached
+// profile immediately, so the page is never blank while the network is slow;
+// restoreSession() then confirms the cached identity against a real Supabase
+// session and clears it if the token is gone. Order matters: without the
+// optimistic first paint a refresh flashes the login screen at a signed-in
+// user, and without the confirmation an expired token still renders a shell.
 checkSession();
 render();
 mountPresenterBar();
 updateNotifBadge();
+
+restoreSession().then((restored) => {
+  if (!restored) return;
+  render();
+  mountPresenterBar();
+  updateNotifBadge();
+});
+watchSession();

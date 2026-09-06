@@ -9,6 +9,7 @@
 // hardcoded findings left: what prints is what the generator produced, so the
 // numbers agree with the dashboard, the insights charts and the CSV exports.
 
+import { esc } from '../core/dom.js';
 import { lineChart, barChart, stackedBarChart, donutChart } from '../ui/charts.js';
 import {
   getVisits, visitsForSite, monthlyPestTotals, recommendationStats,
@@ -20,9 +21,6 @@ import {
   visitTypes, equipmentTypes, stationAreaName, placementSummary
 } from '../data/catalog.js';
 import { STANDARDS, siteReadiness, sitesInScope, STATUS_LABEL, STATUS_CHIP, openNonConformities } from '../data/compliance.js';
-
-const esc = (s) => String(s ?? '')
-  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 const visitTypeName = (code) => (visitTypes.find((v) => v.code === code) || {}).name || code;
 const equipmentName = (type) => (equipmentTypes[type] || {}).name || type;

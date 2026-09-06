@@ -89,11 +89,22 @@ export function save(){
   localStorage.setItem("repellent-ops",JSON.stringify(state));
   const persistableState = structuredClone(state);
   delete persistableState.currentUser;
+  // fetch only rejects on a network failure, so a 403 from the server lands in
+  // the success branch. Checking res.ok is what stops a rejected write from
+  // looking identical to a successful one — the browser copy above still holds
+  // the data, but nothing reached the server.
   fetch("./api/state", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(persistableState)
-  }).catch(() => {});
+  }).then((res) => {
+    if (!res.ok) {
+      console.warn(
+        `[repellent] Sunucuya kayit reddedildi (HTTP ${res.status}). ` +
+        'Veri yalnizca bu tarayicida tutuluyor. Gelistirme icin ALLOW_LEGACY_STATE_WRITE=1 gerekir.'
+      );
+    }
+  }).catch(() => { /* offline — localStorage copy above is the fallback */ });
 }
 
 export function recalculateSiteStats(site) {

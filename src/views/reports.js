@@ -6,7 +6,7 @@
 // history engine. Nothing on this screen is hardcoded any more; the six cards
 // that previously shared three static bodies are now five distinct reports.
 
-import { $, toast } from '../core/dom.js';
+import { $, toast, esc } from '../core/dom.js';
 import { printElement, downloadCSV } from '../ui/export.js';
 import {
   getVisits, visitsForSite, monthlyPestTotals, getRecommendations, siteRanking
@@ -19,9 +19,6 @@ import {
   visitReport, trendReport, comparisonReport, nonConformityReport, auditPackage,
   placementActivityReport, activityReport, placementPoints
 } from './reportBodies.js';
-
-const esc = (s) => String(s ?? '')
-  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 const siteById = (id) => visibleSites().find((s) => s.id === id);
 
@@ -234,10 +231,10 @@ function renderThirdEye() {
     const clean = audits.filter((v) => v.totals.all === 0).length;
     const sites = new Set(audits.map((v) => v.siteId)).size;
     summary.innerHTML = `
-      <div class="rep-stat"><span>Bağımsız denetim</span><strong>${audits.length}</strong></div>
-      <div class="rep-stat"><span>Denetlenen tesis</span><strong>${sites}</strong></div>
-      <div class="rep-stat"><span>Bulgusuz kapanan</span><strong style="color:var(--green)">${clean}</strong></div>
-      <div class="rep-stat"><span>Bulgu tespit edilen</span><strong style="color:${audits.length - clean ? 'var(--red)' : 'var(--green)'}">${audits.length - clean}</strong></div>`;
+      <div class="rep-stat"><span>Bağımsız denetim</span><strong>${esc(audits.length)}</strong></div>
+      <div class="rep-stat"><span>Denetlenen tesis</span><strong>${esc(sites)}</strong></div>
+      <div class="rep-stat"><span>Bulgusuz kapanan</span><strong style="color:var(--green)">${esc(clean)}</strong></div>
+      <div class="rep-stat"><span>Bulgu tespit edilen</span><strong style="color:${audits.length - clean ? 'var(--red)' : 'var(--green)'}">${esc(audits.length - clean)}</strong></div>`;
   }
 
   // Coverage matters as much as the records themselves: an auditor asks which
@@ -329,7 +326,7 @@ function toolbar(report) {
 
   if (report.scope.includes('site') || report.scope.includes('siteOptional')) {
     const chips = visibleSites().map((s) =>
-      `<button class="rep-chip ${current.siteId === s.id ? 'active' : ''}" data-report-site="${s.id}">${esc(s.name)}</button>`).join('');
+      `<button class="rep-chip ${current.siteId === s.id ? 'active' : ''}" data-report-site="${esc(s.id)}">${esc(s.name)}</button>`).join('');
     parts.push(`<div class="rep-chips"><span class="rep-chips-label">Tesis</span>${
       report.scope.includes('siteOptional')
         ? `<button class="rep-chip ${!current.siteId ? 'active' : ''}" data-report-site="">Tüm portföy</button>` : ''
@@ -341,7 +338,7 @@ function toolbar(report) {
     // actually want to print.
     const visits = visitsForSite(current.siteId).slice(-8).reverse();
     parts.push(`<div class="rep-chips"><span class="rep-chips-label">Ziyaret</span>${
-      visits.map((v) => `<button class="rep-chip ${current.visit && current.visit.id === v.id ? 'active' : ''}" data-report-visit="${v.id}">${esc(v.date)}${v.totals.all ? ` · ${v.totals.all}` : ''}</button>`).join('')
+      visits.map((v) => `<button class="rep-chip ${current.visit && current.visit.id === v.id ? 'active' : ''}" data-report-visit="${esc(v.id)}">${esc(v.date)}${v.totals.all ? ` · ${esc(v.totals.all)}` : ''}</button>`).join('')
     }</div>`);
   }
 

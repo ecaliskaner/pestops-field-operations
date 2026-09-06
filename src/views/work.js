@@ -1,6 +1,6 @@
 // Extracted from app.js (Phase 0a-3).
 
-import { $ } from '../core/dom.js';
+import { $, esc } from '../core/dom.js';
 import { state } from '../core/state.js';
 import { chemicalDatabase, visitTypes } from '../data/catalog.js';
 import { $$, toast } from '../core/dom.js';
@@ -174,8 +174,8 @@ export function renderTask(){
     return `
       <div style="display:flex; justify-content:space-between; align-items:center; background:var(--soft); border:1px solid var(--line); border-radius:6px; padding:6px 10px; margin-bottom:6px; font-size:12px;">
         <div>
-          <b>${chemName}</b><br>
-          <small class="text-muted">Miktar: ${cu.quantity} · Alan: ${cu.area} ${cu.notes ? `· ${cu.notes}` : ''}</small>
+          <b>${esc(chemName)}</b><br>
+          <small class="text-muted">Miktar: ${esc(cu.quantity)} · Alan: ${esc(cu.area)} ${cu.notes ? `· ${esc(cu.notes)}` : ''}</small>
         </div>
         ${w.completed ? '' : `<button class="text-btn delete-task-chem-btn" data-chem-index="${idx}" style="color:var(--red); font-size:16px; font-weight:700; border:none; background:none; cursor:pointer;">×</button>`}
       </div>
@@ -205,15 +205,15 @@ export function renderTask(){
     `<button class="primary-btn" id="completeWork">✓ Tamamlandı olarak işaretle</button>`;
     
   $('#taskDetail').innerHTML=`
-    <span class="status-chip ${w.completed?'healthy':w.priority}">${w.completed?'Tamamlandı':w.type}</span>
-    <h2>${w.title}</h2>
-    <p>${w.description}</p>
+    <span class="status-chip ${esc(w.completed?'healthy':w.priority)}">${esc(w.completed?'Tamamlandı':w.type)}</span>
+    <h2>${esc(w.title)}</h2>
+    <p>${esc(w.description)}</p>
     <div class="detail-list" style="margin-bottom:14px;">
       <div><span>Tesis</span><b>${w.site.split(' · ')[1]}</b></div>
       <div><span>Ziyaret Türü</span><b>${(visitTypes.find(v=>v.code===w.visitType)||{}).name || 'Belirtilmedi'}</b></div>
-      <div><span>Atanan teknisyen</span><b>${w.tech}</b></div>
-      <div><span>Hedef zaman</span><b>${w.due}</b></div>
-      <div><span>İş emri</span><b>${w.id}</b></div>
+      <div><span>Atanan teknisyen</span><b>${esc(w.tech)}</b></div>
+      <div><span>Hedef zaman</span><b>${esc(w.due)}</b></div>
+      <div><span>İş emri</span><b>${esc(w.id)}</b></div>
     </div>
     
     <div style="margin-bottom:14px;">
@@ -227,7 +227,7 @@ export function renderTask(){
     
     <div style="display:grid; gap:8px;">
       ${compBtn}
-      <button class="secondary-btn" data-site-id="${w.siteId}">⌖ Tesis Kat Planını Aç</button>
+      <button class="secondary-btn" data-site-id="${esc(w.siteId)}">⌖ Tesis Kat Planını Aç</button>
     </div>
   `;
 }

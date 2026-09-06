@@ -1,7 +1,7 @@
 // Mobile technician simulator: route, job detail, QR, inspection.
 // Extracted from app.js (Phase 0a-3).
 
-import { $, $$, toast } from '../core/dom.js';
+import { $, $$, toast, esc } from '../core/dom.js';
 import { state } from '../core/state.js';
 import { ui } from '../core/session.js';
 import { chemicalDatabase } from '../data/catalog.js';
@@ -538,7 +538,7 @@ export function addTelemetryLog(text) {
   const timestamp = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const log = document.createElement('div');
   log.className = 'log-line';
-  log.innerHTML = `<span style="color:#2ecc71">[${timestamp}]</span> ${text}`;
+  log.innerHTML = `<span style="color:#2ecc71">[${esc(timestamp)}]</span> ${esc(text)}`;
   container.appendChild(log);
   container.scrollTop = container.scrollHeight;
 }
@@ -587,7 +587,7 @@ export function renderChemicalDocs(chemicalId) {
   const chem = chemicalDatabase.find(c => c.id === chemicalId);
   container.innerHTML = `
     <div class="chem-doc-card" style="padding:8px;">
-      <h4>${chem ? chem.name : 'Kimyasal'}</h4>
+      <h4>${esc(chem ? chem.name : 'Kimyasal')}</h4>
       <p class="chem-doc-sub">${chem ? `${chem.activeIngredient} · ${chem.concentration}` : ''}</p>
       ${docs.map(d => `
         <div class="chem-doc-row">
@@ -638,11 +638,11 @@ export function updateDosePanel() {
   panel.innerHTML = `
     <div class="dose-head">⚗ OTOMATİK DOZAJ HESABI</div>
     <div class="dose-grid">
-      <div class="dose-cell"><span>Gerekli Ürün</span><strong>${result.productAmount} ${result.productUnit}</strong></div>
-      <div class="dose-cell"><span>Etiket Dozu</span><strong>${result.doseText}</strong></div>
+      <div class="dose-cell"><span>Gerekli Ürün</span><strong>${esc(result.productAmount)} ${esc(result.productUnit)}</strong></div>
+      <div class="dose-cell"><span>Etiket Dozu</span><strong>${esc(result.doseText)}</strong></div>
       ${waterCells}
     </div>
-    <div class="dose-note">${note} Tahmini maliyet: <b>₺${result.estimatedCost}</b>.</div>`;
+    <div class="dose-note">${esc(note)} Tahmini maliyet: <b>₺${esc(result.estimatedCost)}</b>.</div>`;
   panel.classList.remove('hidden');
 }
 

@@ -1,6 +1,6 @@
 // Extracted from app.js (Phase 0a-3).
 
-import { $, $$ } from '../core/dom.js';
+import { $, $$, esc } from '../core/dom.js';
 import { recalculateSiteStats, state } from '../core/state.js';
 import { getVisits } from '../data/history.js';
 
@@ -111,9 +111,9 @@ export function renderDashboard(range){
   const legend = $('.score-legend');
   if (legend) {
     legend.innerHTML = `
-      <p><i class="legend-dot good"></i><b>${healthyCount}</b> Sağlıklı</p>
-      <p><i class="legend-dot watch"></i><b>${watchCount}</b> İzlenmeli</p>
-      <p><i class="legend-dot risk"></i><b>${riskCount}</b> Riskli</p>
+      <p><i class="legend-dot good"></i><b>${esc(healthyCount)}</b> Sağlıklı</p>
+      <p><i class="legend-dot watch"></i><b>${esc(watchCount)}</b> İzlenmeli</p>
+      <p><i class="legend-dot risk"></i><b>${esc(riskCount)}</b> Riskli</p>
     `;
   }
 }

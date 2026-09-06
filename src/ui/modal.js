@@ -1,7 +1,7 @@
 // Modal dialogs, quick-schedule, QR sticker printing.
 // Extracted from app.js (Phase 0a-3).
 
-import { $, toast } from '../core/dom.js';
+import { $, toast, esc } from '../core/dom.js';
 import { save, state } from '../core/state.js';
 import { ui } from '../core/session.js';
 import { renderDashboard } from '../views/dashboard.js';
@@ -122,91 +122,91 @@ export function modal(type, siteId = null) {
     
     content.innerHTML = `
       <h2>Tesis Sözleşme & Kapsam Düzenle</h2>
-      <p class="text-muted" style="margin-bottom:12px;">${s.company} - ${s.name} sözleşme bedelleri ve periyodik hizmet kapsamları.</p>
+      <p class="text-muted" style="margin-bottom:12px;">${esc(s.company)} - ${esc(s.name)} sözleşme bedelleri ve periyodik hizmet kapsamları.</p>
       
-      <form class="form-grid" id="editSiteForm" data-site-id="${s.id}" style="max-height:480px; overflow-y:auto; padding-right:6px; display:grid; gap:12px; grid-template-columns: 1fr 1fr;">
+      <form class="form-grid" id="editSiteForm" data-site-id="${esc(s.id)}" style="max-height:480px; overflow-y:auto; padding-right:6px; display:grid; gap:12px; grid-template-columns: 1fr 1fr;">
         <div style="grid-column: span 2; font-weight:700; font-size:11px; color:var(--muted); border-bottom:1px solid var(--line); padding-bottom:4px; text-transform:uppercase;">MÜŞTERİ YETKİLİ BİLGİLERİ</div>
         <label class="form-label">
           Yetkili Temsilci
-          <input required type="text" name="contactName" value="${s.contact?.name || ''}" class="form-input">
+          <input required type="text" name="contactName" value="${esc(s.contact?.name || '')}" class="form-input">
         </label>
         <label class="form-label">
           İletişim Telefonu
-          <input required type="text" name="contactPhone" value="${s.contact?.phone || ''}" class="form-input">
+          <input required type="text" name="contactPhone" value="${esc(s.contact?.phone || '')}" class="form-input">
         </label>
         <label class="form-label" style="grid-column: span 2;">
           E-Posta Adresi
-          <input required type="email" name="contactEmail" value="${s.contact?.email || ''}" class="form-input">
+          <input required type="email" name="contactEmail" value="${esc(s.contact?.email || '')}" class="form-input">
         </label>
         
         <div style="grid-column: span 2; font-weight:700; font-size:11px; color:var(--muted); border-bottom:1px solid var(--line); padding-bottom:4px; text-transform:uppercase; margin-top:6px;">SÖZLEŞME & ADRES BİLGİLERİ</div>
         <label class="form-label">
           Sözleşme Kapsamı (Tarih Periyodu)
-          <input required type="text" name="contractPeriod" value="${co.period || ''}" placeholder="Örn: 01.01.2026 - 31.12.2026" class="form-input">
+          <input required type="text" name="contractPeriod" value="${esc(co.period || '')}" placeholder="Örn: 01.01.2026 - 31.12.2026" class="form-input">
         </label>
         <label class="form-label">
           Hizmet Periyodu (Açıklama)
-          <input required type="text" name="serviceFrequency" value="${s.serviceFrequency || '15 Günde Bir'}" placeholder="Örn: 15 Günde Bir" class="form-input">
+          <input required type="text" name="serviceFrequency" value="${esc(s.serviceFrequency || '15 Günde Bir')}" placeholder="Örn: 15 Günde Bir" class="form-input">
         </label>
         <label class="form-label" style="grid-column: span 2;">
           Tesis Adresi
-          <input required type="text" name="address" value="${s.address || ''}" class="form-input">
+          <input required type="text" name="address" value="${esc(s.address || '')}" class="form-input">
         </label>
         
         <div style="grid-column: span 2; font-weight:700; font-size:11px; color:var(--muted); border-bottom:1px solid var(--line); padding-bottom:4px; text-transform:uppercase; margin-top:6px;">VERGİLENDİRME & MALİ BİLGİLER</div>
         <label class="form-label">
           Vergi Dairesi
-          <input type="text" name="taxOffice" value="${co.taxOffice || ''}" class="form-input">
+          <input type="text" name="taxOffice" value="${esc(co.taxOffice || '')}" class="form-input">
         </label>
         <label class="form-label">
           Vergi Numarası
-          <input type="text" name="taxNo" value="${co.taxNo || ''}" class="form-input">
+          <input type="text" name="taxNo" value="${esc(co.taxNo || '')}" class="form-input">
         </label>
         
         <label class="form-label">
           Yıllık Bedel (₺)
-          <input required type="number" name="annualPrice" value="${co.annualPrice || 0}" class="form-input">
+          <input required type="number" name="annualPrice" value="${esc(co.annualPrice || 0)}" class="form-input">
         </label>
         <label class="form-label">
           Aylık Bedel (₺)
-          <input required type="number" name="monthlyPrice" value="${co.monthlyPrice || 0}" class="form-input">
+          <input required type="number" name="monthlyPrice" value="${esc(co.monthlyPrice || 0)}" class="form-input">
         </label>
         <label class="form-label">
           Ek Servis Bedeli (₺)
-          <input required type="number" name="extraVisitPrice" value="${co.extraVisitPrice || 0}" class="form-input">
+          <input required type="number" name="extraVisitPrice" value="${esc(co.extraVisitPrice || 0)}" class="form-input">
         </label>
         <label class="form-label">
           Acil Çağrı Bedeli (₺)
-          <input required type="number" name="emergencyCallPrice" value="${co.emergencyCallPrice || 0}" class="form-input">
+          <input required type="number" name="emergencyCallPrice" value="${esc(co.emergencyCallPrice || 0)}" class="form-input">
         </label>
         
         <div style="grid-column: span 2; font-weight:700; font-size:11px; color:var(--muted); border-bottom:1px solid var(--line); padding-bottom:4px; text-transform:uppercase; margin-top:6px;">HİZMET KAPSAMI FREKANSLARI (AYLIK HEDEF)</div>
         <label class="form-label">
           Dış Alan Kemirgen (Ziyaret/Ay)
-          <input required type="number" name="freqOutdoorRodent" value="${sc.outdoorRodent?.frequency || 2}" class="form-input">
+          <input required type="number" name="freqOutdoorRodent" value="${esc(sc.outdoorRodent?.frequency || 2)}" class="form-input">
         </label>
         <label class="form-label">
           İç Alan Kemirgen (Ziyaret/Ay)
-          <input required type="number" name="freqIndoorRodent" value="${sc.indoorRodent?.frequency || 4}" class="form-input">
+          <input required type="number" name="freqIndoorRodent" value="${esc(sc.indoorRodent?.frequency || 4)}" class="form-input">
         </label>
         <label class="form-label">
           Yürüyen Haşere (Ziyaret/Ay)
-          <input required type="number" name="freqCrawlingPest" value="${sc.crawlingPest?.frequency || 4}" class="form-input">
+          <input required type="number" name="freqCrawlingPest" value="${esc(sc.crawlingPest?.frequency || 4)}" class="form-input">
         </label>
         <label class="form-label">
           Uçan Haşere (Ziyaret/Ay)
-          <input required type="number" name="freqFlyingPest" value="${sc.flyingPest?.frequency || 4}" class="form-input">
+          <input required type="number" name="freqFlyingPest" value="${esc(sc.flyingPest?.frequency || 4)}" class="form-input">
         </label>
         <label class="form-label" style="grid-column: span 2;">
           Depo Zararlısı (Ziyaret/Ay)
-          <input required type="number" name="freqStoragePest" value="${sc.storagePest?.frequency || 4}" class="form-input">
+          <input required type="number" name="freqStoragePest" value="${esc(sc.storagePest?.frequency || 4)}" class="form-input">
         </label>
         
         <button type="submit" class="primary-btn" style="grid-column: span 2; justify-content:center; margin-top:10px; height:38px;">✓ Değişiklikleri Kaydet</button>
       </form>
     `;
   } else if (type === 'work') {
-    const siteOptions = state.sites.map(s => `<option value="${s.name}">${s.company} - ${s.name}</option>`).join('');
+    const siteOptions = state.sites.map(s => `<option value="${esc(s.name)}">${esc(s.company)} - ${esc(s.name)}</option>`).join('');
     content.innerHTML = `
       <h2>Yeni İş Emri Oluştur</h2>
       <p class="text-muted">Teknisyenler için periyodik veya acil servis ziyareti planlayın.</p>
@@ -261,7 +261,7 @@ export function modal(type, siteId = null) {
       </form>
     `;
   } else if (type === 'report') {
-    const siteOptions = state.sites.map(s => `<option value="${s.id}">${s.company} - ${s.name}</option>`).join('');
+    const siteOptions = state.sites.map(s => `<option value="${esc(s.id)}">${esc(s.company)} - ${esc(s.name)}</option>`).join('');
     content.innerHTML = `
       <h2>Müşteri Raporu Oluştur</h2>
       <p class="text-muted">Tesis denetim verilerinden audit-ready PDF raporu derleyin.</p>
@@ -346,11 +346,11 @@ export function openQuickScheduleModal(day) {
   const modal = $('#modal');
   if (!content || !modal) return;
   
-  const sitesOptions = state.sites.map(s => `<option value="${s.id}">${s.company} - ${s.name}</option>`).join('');
+  const sitesOptions = state.sites.map(s => `<option value="${esc(s.id)}">${esc(s.company)} - ${esc(s.name)}</option>`).join('');
   
   content.innerHTML = `
     <h2>Yeni İş Emri Planla</h2>
-    <p class="text-muted">Seçilen Tarih: <b>${day} Temmuz 2026</b></p>
+    <p class="text-muted">Seçilen Tarih: <b>${esc(day)} Temmuz 2026</b></p>
     <form class="form-grid" id="quickScheduleForm">
       <label class="form-label">
         Tesis & Müşteri Seçin
@@ -452,10 +452,10 @@ export function printQrCodeSticker(code) {
           <div style="position:absolute; width:25px; height:25px; background:#fff; border:3px solid #000; bottom:6px; left:6px;"></div>
         </div>
         
-        <h4 style="font-size:22px; font-weight:900; margin:10px 0 2px;">${s.code}</h4>
-        <div style="font-size:9px; font-weight:700; color:#555; text-transform:uppercase; margin-bottom:4px;">${typeNames[s.type] || s.type}</div>
-        <div style="font-size:8px; color:#888;">${site.company} - ${site.name}</div>
-        <div style="font-size:7px; color:#aaa; margin-top:2px;">Cihaz ID: INS-ST-${site.id}-${s.code}</div>
+        <h4 style="font-size:22px; font-weight:900; margin:10px 0 2px;">${esc(s.code)}</h4>
+        <div style="font-size:9px; font-weight:700; color:#555; text-transform:uppercase; margin-bottom:4px;">${esc(typeNames[s.type] || s.type)}</div>
+        <div style="font-size:8px; color:#888;">${esc(site.company)} - ${esc(site.name)}</div>
+        <div style="font-size:7px; color:#aaa; margin-top:2px;">Cihaz ID: INS-ST-${esc(site.id)}-${esc(s.code)}</div>
       </div>
       
       <div style="margin-top:24px; display:flex; gap:10px; justify-content:center;">

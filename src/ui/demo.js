@@ -11,7 +11,7 @@
 // simulated e-mail is a client-side notification. All state is in-memory and
 // session-scoped, so a reset genuinely returns the demo to zero.
 
-import { $, $$, toast } from '../core/dom.js';
+import { $, $$, toast, esc } from '../core/dom.js';
 import { state, save, visibleSites } from '../core/state.js';
 import { recommendationsForSite } from '../data/history.js';
 import { nextVisitFor } from '../data/schedule.js';
@@ -19,7 +19,10 @@ import { initial } from '../data/seed.js';
 import { setView } from '../core/router.js';
 import { ui } from '../core/session.js';
 import { showCompanyDetail } from '../views/companyDetail.js';
-import { switchRole } from '../core/auth.js';
+// switchRole() is gone: with real authentication a role is a property of the
+// signed-in account, and there is no way to "become" another role without that
+// account's credentials. Demonstrating all three views now means signing in as
+// three real users (see docs/PRODUCTION.md §3.4).
 import { getGpsAlerts } from '../core/gpsAlerts.js';
 import { notificationsFor, relativeTime, pendingByTech, markReadFor, unreadFor } from '../core/notify.js';
 
@@ -285,14 +288,14 @@ function renderTour() {
   overlay.innerHTML = `
     <div class="tour-card">
       <div class="tour-progress">${TOUR.map((_, i) => `<i class="${i === tourIdx ? 'active' : ''}"></i>`).join('')}</div>
-      <span class="tour-step-count">Adım ${tourIdx + 1} / ${TOUR.length}</span>
-      <h3>${step.title}</h3>
-      <p>${step.body}</p>
+      <span class="tour-step-count">Adım ${esc(tourIdx + 1)} / ${esc(TOUR.length)}</span>
+      <h3>${esc(step.title)}</h3>
+      <p>${esc(step.body)}</p>
       <div class="tour-nav">
         <button class="text-btn" data-demo="tour-end">Turu kapat</button>
         <div style="display:flex; gap:8px;">
           ${tourIdx > 0 ? '<button class="secondary-btn" data-demo="tour-prev">← Önceki</button>' : ''}
-          <button class="primary-btn" data-demo="${last ? 'tour-end' : 'tour-next'}">${last ? 'Bitir ✓' : 'Sonraki →'}</button>
+          <button class="primary-btn" data-demo="${esc(last ? 'tour-end' : 'tour-next')}">${esc(last ? 'Bitir ✓' : 'Sonraki →')}</button>
         </div>
       </div>
     </div>
@@ -325,13 +328,10 @@ export function mountPresenterBar() {
     bar.className = 'presenter-bar';
     shell.appendChild(bar);
   }
+  const ROLE_LABELS = { admin: 'Yönetici', tech: 'Teknisyen', client: 'Müşteri' };
   bar.innerHTML = `
     <span class="presenter-tag">SUNUM</span>
-    <div class="role-switch" role="group" aria-label="Rol değiştir">
-      <button data-switch-role="admin"${role === 'admin' ? ' class="active"' : ''}>Yönetici</button>
-      <button data-switch-role="tech"${role === 'tech' ? ' class="active"' : ''}>Teknisyen</button>
-      <button data-switch-role="client"${role === 'client' ? ' class="active"' : ''}>Müşteri</button>
-    </div>
+    <span class="presenter-role">${esc(ROLE_LABELS[role] || role)}</span>
     <button class="presenter-btn" data-demo="start-tour">🎬 Tur</button>
     <button class="presenter-btn" data-demo="open-reset">↻ Sıfırla</button>
   `;
@@ -342,15 +342,6 @@ export function mountPresenterBar() {
 // Single delegated handler for every demo control. Registered once in the
 // app.js CLICK_CHAIN so parallel sessions only ever see one new line there.
 export function demoClicks(e) {
-  const roleBtn = e.target.closest('[data-switch-role]');
-  if (roleBtn) {
-    switchRole(roleBtn.dataset.switchRole);
-    // switchRole repaints views but not our shell-level extras.
-    mountPresenterBar();
-    updateNotifBadge();
-    return true;
-  }
-
   const el = e.target.closest('[data-demo]');
   if (!el) return false;
 
