@@ -12,8 +12,8 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _email = TextEditingController(text: 'ayse@ladybug.com');
-  final _password = TextEditingController(text: '1234');
+  final _email = TextEditingController();
+  final _password = TextEditingController();
   bool _obscure = true;
 
   @override
@@ -28,27 +28,6 @@ class _LoginScreenState extends State<LoginScreen> {
     final err = await st.login(_email.text, _password.text);
     if (!mounted) return;
     if (err != null) showSnack(context, err, error: true);
-  }
-
-  Future<void> _editServer() async {
-    final st = context.read<AppState>();
-    final ctrl = TextEditingController(text: st.baseUrl);
-    final url = await showDialog<String>(
-      context: context,
-      builder: (c) => AlertDialog(
-        title: const Text('Sunucu adresi'),
-        content: TextField(
-          controller: ctrl,
-          decoration: const InputDecoration(hintText: 'http://10.0.2.2:4173'),
-          autofocus: true,
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(c), child: const Text('İptal')),
-          FilledButton(onPressed: () => Navigator.pop(c, ctrl.text), child: const Text('Kaydet')),
-        ],
-      ),
-    );
-    if (url != null && url.isNotEmpty) await st.setBaseUrl(url);
   }
 
   @override
@@ -127,18 +106,6 @@ class _LoginScreenState extends State<LoginScreen> {
                         ],
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 14),
-                  TextButton.icon(
-                    onPressed: _editServer,
-                    icon: const Icon(Icons.dns_outlined, size: 16, color: Colors.white70),
-                    label: Text('Sunucu: ${st.baseUrl}',
-                        style: const TextStyle(color: Colors.white70, fontSize: 12)),
-                  ),
-                  Center(
-                    child: Text('Demo: ayse@ladybug.com · mert@ / ece@ / can@ladybug.com — şifre 1234',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11)),
                   ),
                 ],
               ),

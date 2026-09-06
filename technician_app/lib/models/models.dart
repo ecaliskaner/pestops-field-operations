@@ -1,4 +1,8 @@
-// Data models mirroring the /api/mobile serialization (api/mobileApi.js).
+// Data models mirroring the Supabase schema (supabase/migrations/
+// 20260905000001_core_schema.sql), read through the embedded-select shape
+// SupabaseService's queries produce — snake_case column names, with `site`
+// and `customer` nested via foreign-key embedding rather than the old REST
+// API's hand-built JSON.
 
 class Technician {
   final String id, name, email, phone, avatar, title;
@@ -12,30 +16,25 @@ class Technician {
   });
   factory Technician.fromJson(Map<String, dynamic> j) => Technician(
         id: j['id'] ?? '',
-        name: j['name'] ?? '',
+        name: j['full_name'] ?? '',
         email: j['email'] ?? '',
         phone: j['phone'] ?? '',
-        avatar: j['avatar'] ?? '',
+        avatar: j['initials'] ?? '',
+        // The schema has no per-technician title column (that lives on
+        // profiles.title, one hop away); left blank rather than joined for —
+        // no screen currently renders it, so the extra query isn't worth it.
         title: j['title'] ?? '',
       );
-  Map<String, dynamic> toJson() => {
-        'id': id,
-        'name': name,
-        'email': email,
-        'phone': phone,
-        'avatar': avatar,
-        'title': title,
-      };
 }
 
 class Station {
-  final String code, type, pestType, qrToken;
-  Station({required this.code, required this.type, required this.pestType, required this.qrToken});
+  final String id, code, type, qrToken;
+  Station({required this.id, required this.code, required this.type, required this.qrToken});
   factory Station.fromJson(Map<String, dynamic> j) => Station(
+        id: j['id'] ?? '',
         code: j['code'] ?? '',
         type: j['type'] ?? '',
-        pestType: j['pestType'] ?? 'none',
-        qrToken: j['qrToken'] ?? '',
+        qrToken: j['qr_token'] ?? '',
       );
 }
 
@@ -61,16 +60,18 @@ class Site {
   });
   factory Site.fromJson(Map<String, dynamic> j) => Site(
         id: j['id'] ?? '',
-        company: j['company'] ?? '',
+        // customer is a foreign-key embed (sites.customer_id -> customers.id);
+        // PostgREST nests it as a single object under the relation name.
+        company: (j['customer']?['name']) ?? '',
         name: j['name'] ?? '',
         city: j['city'] ?? '',
         sector: j['sector'] ?? '',
         address: j['address'] ?? '',
         lat: (j['lat'] ?? 0).toDouble(),
         lng: (j['lng'] ?? 0).toDouble(),
-        geofenceRadiusM: (j['geofenceRadiusM'] ?? 150).toInt(),
-        contactName: (j['contact']?['name']) ?? '',
-        contactPhone: (j['contact']?['phone']) ?? '',
+        geofenceRadiusM: (j['geofence_radius_m'] ?? 150).toInt(),
+        contactName: j['contact_name'] ?? '',
+        contactPhone: j['contact_phone'] ?? '',
         stations: ((j['stations'] as List?) ?? [])
             .map((e) => Station.fromJson(e as Map<String, dynamic>))
             .toList(),
@@ -87,10 +88,10 @@ class InspectionSummary {
     required this.activityCount,
   });
   factory InspectionSummary.fromJson(Map<String, dynamic> j) => InspectionSummary(
-        stationCode: j['stationCode'] ?? '',
+        stationCode: j['station_code'] ?? '',
         status: j['status'] ?? '',
-        pestType: j['pestType'] ?? 'none',
-        activityCount: (j['activityCount'] ?? 0).toInt(),
+        pestType: j['pest_type'] ?? 'none',
+        activityCount: (j['activity_count'] ?? 0).toInt(),
       );
 }
 
@@ -119,14 +120,14 @@ class WorkOrder {
   factory WorkOrder.fromJson(Map<String, dynamic> j) => WorkOrder(
         id: j['id'] ?? '',
         title: j['title'] ?? '',
-        priority: j['priority'] ?? 'medium',
-        visitType: j['visitType'] ?? '',
-        dueAt: j['dueAt'] ?? '',
+        priority: j['priority'] ?? 'normal',
+        visitType: j['visit_type'] ?? '',
+        dueAt: j['due_at'] ?? '',
         description: j['description'] ?? '',
         status: j['status'] ?? 'scheduled',
-        arrivedGpsAt: j['arrivedGpsAt'],
-        realWorkStartedAt: j['realWorkStartedAt'],
-        completedAt: j['completedAt'],
+        arrivedGpsAt: j['arrived_gps_at'],
+        realWorkStartedAt: j['real_work_started_at'],
+        completedAt: j['completed_at'],
         site: Site.fromJson((j['site'] as Map<String, dynamic>?) ?? {}),
         inspections: ((j['inspections'] as List?) ?? [])
             .map((e) => InspectionSummary.fromJson(e as Map<String, dynamic>))

@@ -1,7 +1,6 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const { handleMobileApi } = require('./api/mobileApi');
 
 const rootDir = __dirname;
 
@@ -147,14 +146,6 @@ function readPersistedStateScript() {
 
 http.createServer((req, res) => {
   const requestPath = (req.url || '/').split('?')[0];
-
-  // Mobile technician app REST API. Owns everything under /api/mobile/*.
-  if (requestPath.startsWith('/api/mobile')) {
-    Promise.resolve(handleMobileApi(req, res)).catch(() => {
-      if (!res.headersSent) send(res, 500, 'Mobile API error');
-    });
-    return;
-  }
 
   // Runtime configuration for the browser. Generated per request from the
   // process environment so the keys live in the deployment, not the repository.

@@ -75,10 +75,11 @@ class Outbox {
     required String type,
     required String label,
     required Map<String, dynamic> payload,
+    String? mobileEventId,
     String? capturedAt,
   }) async {
     final ev = OutboxEvent(
-      mobileEventId: newEventId(),
+      mobileEventId: mobileEventId ?? newEventId(),
       type: type,
       label: label,
       capturedAt: capturedAt ?? DateTime.now().toUtc().toIso8601String(),
