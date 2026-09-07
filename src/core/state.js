@@ -85,6 +85,19 @@ export function visibleSites() {
   return allSites();
 }
 
+/**
+ * Replace the seeded demo portfolio with real sites loaded from Supabase, in
+ * place — every view holds `state.sites` by reference (visibleSites(),
+ * allSites(), the sites/dashboard/team renderers), so mutating the existing
+ * array's contents is what makes the swap visible everywhere without each
+ * view needing to re-subscribe to anything.
+ *
+ * @param {object[]} sites
+ */
+export function replaceSites(sites) {
+  state.sites.splice(0, state.sites.length, ...sites);
+}
+
 export function save(){
   localStorage.setItem("repellent-ops",JSON.stringify(state));
   const persistableState = structuredClone(state);

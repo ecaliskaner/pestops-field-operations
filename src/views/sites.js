@@ -4,8 +4,8 @@ import { $ } from '../core/dom.js';
 import { recalculateSiteStats, state, visibleSites } from '../core/state.js';
 import { stateLabel } from '../data/catalog.js';
 import { toast } from '../core/dom.js';
-import { save } from '../core/state.js';
 import { modal } from '../ui/modal.js';
+import { createSite } from '../data/repo/sites.js';
 
 export function renderSites(){
   const query=$('#siteSearch')?.value.toLocaleLowerCase('tr')||'';
@@ -59,79 +59,53 @@ export function createSiteSubmit(e) {
     if(e.target.id==='createSite'){
       e.preventDefault();
       const f=new FormData(e.target);
-      
-      const company = f.get('company');
-      const siteName = f.get('siteName');
-      const city = f.get('city');
-      const contactName = f.get('contactName');
-      const contactPhone = f.get('contactPhone');
-      const contactEmail = f.get('contactEmail');
-      const contractPeriod = f.get('contractPeriod');
-      const serviceFrequency = f.get('serviceFrequency');
-      const address = f.get('address');
-      const taxOffice = f.get('taxOffice');
-      const taxNo = f.get('taxNo');
-      
-      const annualPrice = parseFloat(f.get('annualPrice')) || 0;
-      const monthlyPrice = parseFloat(f.get('monthlyPrice')) || 0;
-      const extraVisitPrice = parseFloat(f.get('extraVisitPrice')) || 0;
-      const emergencyCallPrice = parseFloat(f.get('emergencyCallPrice')) || 0;
-      
-      const freqOutdoorRodent = parseFloat(f.get('freqOutdoorRodent')) || 0;
-      const freqIndoorRodent = parseFloat(f.get('freqIndoorRodent')) || 0;
-      const freqCrawlingPest = parseFloat(f.get('freqCrawlingPest')) || 0;
-      const freqFlyingPest = parseFloat(f.get('freqFlyingPest')) || 0;
-      const freqStoragePest = parseFloat(f.get('freqStoragePest')) || 0;
-      
-      const newSite = {
-        id:Date.now()+'',
-        company: company,
-        name: siteName,
-        city: city,
-        score: 100,
-        state: 'healthy',
-        issues: 0,
-        last: 'Henüz servis yok',
-        next: 'Planlanacak',
-        color: '#d8e9e4',
-        sector: "Üretim / Gıda Sanayii",
-        address: address,
-        serviceFrequency: serviceFrequency,
-        contact: { name: contactName, phone: contactPhone, email: contactEmail },
-        contract: {
-          period: contractPeriod,
-          taxOffice: taxOffice,
-          taxNo: taxNo,
-          annualPrice: annualPrice,
-          monthlyPrice: monthlyPrice,
-          extraVisitPrice: extraVisitPrice,
-          emergencyCallPrice: emergencyCallPrice
-        },
+      const form = e.target;
+      const button = form.querySelector('button[type="submit"]');
+      const orgId = state.currentUser?.orgId;
+      if (!orgId) {
+        toast('Kuruma bağlı bir hesapla giriş yapmalısınız.');
+        return true;
+      }
+
+      const input = {
+        orgId,
+        company: f.get('company'),
+        siteName: f.get('siteName'),
+        city: f.get('city'),
+        address: f.get('address'),
+        contactName: f.get('contactName'),
+        contactPhone: f.get('contactPhone'),
+        contactEmail: f.get('contactEmail'),
+        contractPeriod: f.get('contractPeriod'),
+        taxOffice: f.get('taxOffice'),
+        taxNo: f.get('taxNo'),
+        annualPrice: parseFloat(f.get('annualPrice')) || 0,
+        monthlyPrice: parseFloat(f.get('monthlyPrice')) || 0,
+        extraVisitPrice: parseFloat(f.get('extraVisitPrice')) || 0,
+        emergencyCallPrice: parseFloat(f.get('emergencyCallPrice')) || 0,
         serviceScope: {
-          outdoorRodent: { frequency: freqOutdoorRodent, unit: 'ay' },
-          indoorRodent: { frequency: freqIndoorRodent, unit: 'ay' },
-          crawlingPest: { frequency: freqCrawlingPest, unit: 'ay' },
-          flyingPest: { frequency: freqFlyingPest, unit: 'ay' },
-          storagePest: { frequency: freqStoragePest, unit: 'ay' }
-        },
-        chemicalsUsed: [],
-        methods: [
-          { name: "Kemirgen İstasyon Kontrolü", desc: "Kilitli dış çevre yemleme istasyonları.", active: true },
-          { name: "Yürüyen Haşere İzleme", desc: "Yapışkan pheromone monitörleri.", active: true }
-        ],
-        files: [],
-        stations: [
-          { code:"R-01", type:"rodent_bait", x:20, y:20, checked:false, status:"unchecked", baitStatus:"intact", pestType:"none", pestCount:0, notes:"" },
-          { code:"R-02", type:"rodent_bait", x:80, y:20, checked:false, status:"unchecked", baitStatus:"intact", pestType:"none", pestCount:0, notes:"" },
-          { code:"BD-01", type:"insect_detector", x:20, y:80, checked:false, status:"unchecked", baitStatus:"intact", pestType:"none", pestCount:0, notes:"" },
-          { code:"BD-02", type:"insect_detector", x:80, y:80, checked:false, status:"unchecked", baitStatus:"intact", pestType:"none", pestCount:0, notes:"" }
-        ]
+          outdoorRodent: { frequency: parseFloat(f.get('freqOutdoorRodent')) || 0, unit: 'ay' },
+          indoorRodent: { frequency: parseFloat(f.get('freqIndoorRodent')) || 0, unit: 'ay' },
+          crawlingPest: { frequency: parseFloat(f.get('freqCrawlingPest')) || 0, unit: 'ay' },
+          flyingPest: { frequency: parseFloat(f.get('freqFlyingPest')) || 0, unit: 'ay' },
+          storagePest: { frequency: parseFloat(f.get('freqStoragePest')) || 0, unit: 'ay' }
+        }
       };
-      state.sites.push(newSite);
-      save();
-      $('#modal').classList.add('hidden');
-      renderSites();
-      toast('Yeni Tesis ve Hizmet Sözleşmesi başarıyla portföye eklendi.');
+
+      if (button) { button.disabled = true; button.textContent = 'Kaydediliyor…'; }
+      createSite(input)
+        .then((newSite) => {
+          state.sites.push(newSite);
+          $('#modal').classList.add('hidden');
+          renderSites();
+          toast('Yeni Tesis ve Hizmet Sözleşmesi başarıyla portföye eklendi.');
+        })
+        .catch((err) => {
+          toast(err.message || 'Tesis kaydedilemedi.');
+        })
+        .finally(() => {
+          if (button) { button.disabled = false; button.textContent = '＋ Tesis Kaydet'; }
+        });
     }
   return false;
 }

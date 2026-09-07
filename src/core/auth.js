@@ -13,10 +13,11 @@
 // says why.
 
 import { supabase, run, errorMessage, isConfigured } from './supabase.js';
-import { state } from './state.js';
+import { state, replaceSites } from './state.js';
 import { toast } from './dom.js';
 import { checkSession } from './roles.js';
 import { render } from './router.js';
+import { fetchSites } from '../data/repo/sites.js';
 
 const USER_CACHE_KEY = 'repellent-user';
 
@@ -78,6 +79,23 @@ function applyUser(user) {
   // actual credential, so editing this in devtools grants nothing.
   localStorage.setItem(USER_CACHE_KEY, JSON.stringify(user));
   checkSession();
+  loadRealSites();
+}
+
+// Replaces the seeded demo portfolio with the signed-in org's real sites.
+// Fire-and-forget from applyUser: login must not block on this, and a
+// fresh org legitimately has zero sites — an empty list is the correct
+// result, not a failure. Errors are logged, not surfaced, so a transient
+// query failure doesn't block getting into the app; the sites view's own
+// empty-state (or a stale seed list) is the visible fallback.
+async function loadRealSites() {
+  try {
+    const sites = await fetchSites();
+    replaceSites(sites);
+    render();
+  } catch (err) {
+    console.error('[repellent] sahalar yuklenemedi', err);
+  }
 }
 
 function clearUser() {
