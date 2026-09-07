@@ -11,7 +11,12 @@ supabase/
 # Demo/seed runtime state — not meant to be served as a static file at all;
 # the app reads it through server.js's /state.js route in dev, and production
 # reads live data from Supabase instead.
-data/
+#
+# Anchored with a leading slash: "data/" with no anchor matches a directory
+# named data/ AT ANY DEPTH (same rule as .gitignore), which silently deployed
+# a build that excluded src/data/ too — the app's actual seed/catalog/history
+# modules — and broke every view. This bit exactly once; keep the slash.
+/data/
 
 # The Flutter app's full source tree (large, and irrelevant to what Vercel
 # serves — the built output lives in technician/, which IS deployed).
