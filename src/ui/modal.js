@@ -7,6 +7,7 @@ import { ui } from '../core/session.js';
 import { renderDashboard } from '../views/dashboard.js';
 import { renderWork } from '../views/work.js';
 import { renderCalendarGrid } from '../ui/calendar.js';
+import { supabase } from '../core/supabase.js';
 
 export function modal(type, siteId = null) {
   const content = $('#modalContent');
@@ -331,6 +332,71 @@ export function modal(type, siteId = null) {
         resultsDiv.innerHTML = html || '<p class="text-muted" style="font-size:11px; text-align:center; padding:10px;">Eşleşen sonuç bulunamadı.</p>';
       });
     }, 100);
+  } else if (type === 'inviteTechnician') {
+    content.innerHTML = `
+      <h2>Teknisyen Davet Et</h2>
+      <p class="text-muted" style="margin-bottom:12px;">
+        Girdiğiniz e-postaya Supabase üzerinden bir davet gönderilir; teknisyen
+        kendi şifresini kendisi belirler, siz görmezsiniz.
+      </p>
+      <form class="form-grid" id="inviteTechnicianForm" style="display:grid; gap:12px;">
+        <label class="form-label">
+          Ad Soyad
+          <input required type="text" name="fullName" placeholder="Örn: Ayşe Demir" class="form-input">
+        </label>
+        <label class="form-label">
+          E-Posta Adresi
+          <input required type="email" name="email" placeholder="Örn: ayse@repellent.com" class="form-input">
+        </label>
+        <label class="form-label">
+          Telefon (opsiyonel)
+          <input type="text" name="phone" placeholder="Örn: +90 532 000 0000" class="form-input">
+        </label>
+        <button type="submit" class="primary-btn" style="width:100%; justify-content:center; margin-top:6px; height:38px;">📨 Davet Gönder</button>
+      </form>
+    `;
+    modalEl.classList.remove('hidden');
+
+    const form = $('#inviteTechnicianForm');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const button = form.querySelector('button[type="submit"]');
+      const fullName = form.fullName.value.trim();
+      const email = form.email.value.trim();
+      const phone = form.phone.value.trim();
+
+      button.disabled = true;
+      button.textContent = 'Gönderiliyor…';
+      try {
+        const { data, error } = await supabase.functions.invoke('admin-invite-technician', {
+          body: { email, full_name: fullName, phone: phone || undefined }
+        });
+        if (error) throw error;
+        if (data?.error) throw new Error(data.message || data.error);
+
+        modalEl.classList.add('hidden');
+        toast(`${fullName} davet edildi ✓ — kendi şifresini belirlemesi için ${email} adresine e-posta gönderildi.`);
+      } catch (err) {
+        // FunctionsHttpError carries the function's JSON body as a Response on
+        // `context`. clone() matters: supabase-js's own error-construction
+        // already reads the body once, so a second .json() on the same
+        // Response throws "body stream already read" — clone() gives us a
+        // fresh, unread copy to parse.
+        let msg = err?.message || 'Davet gönderilemedi.';
+        try {
+          const body = await err?.context?.clone?.().json();
+          if (body?.message) msg = body.message;
+          else if (body?.error === 'email_already_registered') msg = 'Bu e-posta zaten kayıtlı.';
+          else if (body?.error === 'forbidden') msg = 'Bu işlem için yönetici yetkisi gerekiyor.';
+          else if (body?.error === 'invalid_session') msg = 'Oturumunuz geçersiz — lütfen tekrar giriş yapın.';
+        } catch { /* keep the fallback message */ }
+        toast(msg);
+      } finally {
+        button.disabled = false;
+        button.textContent = '📨 Davet Gönder';
+      }
+    });
+    return;
   }
   // NOTE: the old type === 'notifications' branch was removed in Wave 4. The
   // bell now opens the notification centre owned by ui/demo.js instead, so

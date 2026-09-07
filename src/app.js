@@ -176,7 +176,8 @@ export function modalOpenerClicks(e) {
       }
     }
     if(e.target.closest('#createReport')) modal('report');
-    
+    if(e.target.closest('#btnInviteTechnician')) modal('inviteTechnician');
+
     if(e.target.closest('.modal-close')||e.target.id==='modal') $('#modal').classList.add('hidden');
     
     if(e.target.closest('#optionalDownload')){
