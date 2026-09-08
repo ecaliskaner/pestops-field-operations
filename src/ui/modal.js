@@ -208,6 +208,12 @@ export function modal(type, siteId = null) {
     `;
   } else if (type === 'work') {
     const siteOptions = state.sites.map(s => `<option value="${esc(s.name)}">${esc(s.company)} - ${esc(s.name)}</option>`).join('');
+    // Real technicians only — no more hardcoded demo names. An org that
+    // hasn't invited anyone yet gets a disabled placeholder instead of a
+    // silently-fake roster (see src/data/repo/technicians.js).
+    const techOptions = state.technicians.length
+      ? state.technicians.map(t => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('')
+      : `<option value="" disabled selected>Önce Ekip sayfasından teknisyen davet edin</option>`;
     content.innerHTML = `
       <h2>Yeni İş Emri Oluştur</h2>
       <p class="text-muted">Teknisyenler için periyodik veya acil servis ziyareti planlayın.</p>
@@ -237,12 +243,7 @@ export function modal(type, siteId = null) {
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
           <label class="form-label">
             Görevlendirilecek Teknisyen
-            <select name="tech" class="form-select" style="height:37px; padding:0 8px; font-size:12px; border:1px solid var(--line); border-radius:7px;">
-              <option value="Ayşe Demir">Ayşe Demir (Baş Teknisyen)</option>
-              <option value="Mert Kaya">Mert Kaya (Teknisyen)</option>
-              <option value="Ece Yılmaz">Ece Yılmaz (Dezenfeksiyon Uzmanı)</option>
-              <option value="Can Öztürk">Can Öztürk (Saha Ekibi)</option>
-            </select>
+            <select required name="tech" class="form-select" style="height:37px; padding:0 8px; font-size:12px; border:1px solid var(--line); border-radius:7px;">${techOptions}</select>
           </label>
           <label class="form-label">
             Ziyaret Türü

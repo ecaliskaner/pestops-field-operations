@@ -13,11 +13,13 @@
 // says why.
 
 import { supabase, run, errorMessage, isConfigured } from './supabase.js';
-import { state, replaceSites } from './state.js';
+import { state, replaceSites, replaceWork, replaceTechnicians } from './state.js';
 import { toast } from './dom.js';
 import { checkSession } from './roles.js';
 import { render } from './router.js';
 import { fetchSites } from '../data/repo/sites.js';
+import { fetchWorkOrders } from '../data/repo/work.js';
+import { fetchTechnicians } from '../data/repo/technicians.js';
 
 const USER_CACHE_KEY = 'repellent-user';
 
@@ -80,6 +82,8 @@ function applyUser(user) {
   localStorage.setItem(USER_CACHE_KEY, JSON.stringify(user));
   checkSession();
   loadRealSites();
+  loadRealWork();
+  loadRealTechnicians();
 }
 
 // Replaces the seeded demo portfolio with the signed-in org's real sites.
@@ -95,6 +99,31 @@ async function loadRealSites() {
     render();
   } catch (err) {
     console.error('[repellent] sahalar yuklenemedi', err);
+  }
+}
+
+// Same reasoning as loadRealSites() above, for the work-order board. A fresh
+// org legitimately has zero work orders — the empty list is correct, not an
+// error state; src/views/work.js already renders that gracefully.
+async function loadRealWork() {
+  try {
+    const work = await fetchWorkOrders();
+    replaceWork(work);
+    render();
+  } catch (err) {
+    console.error('[repellent] is emirleri yuklenemedi', err);
+  }
+}
+
+// Feeds the technician picker in the "Yeni İş Emri" form (src/ui/modal.js) —
+// not the Ekip (team) page, which keeps its own seeded simulation. Zero
+// technicians is a real, valid state until the admin invites some.
+async function loadRealTechnicians() {
+  try {
+    const technicians = await fetchTechnicians();
+    replaceTechnicians(technicians);
+  } catch (err) {
+    console.error('[repellent] teknisyenler yuklenemedi', err);
   }
 }
 

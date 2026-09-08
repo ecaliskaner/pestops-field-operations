@@ -11,6 +11,7 @@ import { modal } from '../ui/modal.js';
 import { renderDashboard } from '../views/dashboard.js';
 import { deductStock, renderInventory } from '../views/inventory.js';
 import { getVisits } from '../data/history.js';
+import { createWorkOrder } from '../data/repo/work.js';
 
 // ===== Audit warnings (task 3-6) =====
 //
@@ -386,46 +387,61 @@ export function createWorkSubmit(e) {
     if(e.target.id==='createWork'){
       e.preventDefault();
       const f = new FormData(e.target);
+      const form = e.target;
+      const button = form.querySelector('button[type="submit"]');
+
       const title = f.get('title') || 'Planlı saha kontrolü';
       const siteVal = f.get('site');
-      const priority = f.get('priority') || 'Normal';
-      const techVal = f.get('tech') || 'Ayşe Demir';
+      const priorityLabel = f.get('priority') || 'Normal';
+      const technicianId = f.get('tech');
       const dateVal = f.get('dueDate');
-      
-      // Find site
-      const siteObj = state.sites.find(s => s.name === siteVal) || state.sites[0];
-      
-      let formattedDue = 'Bugün, 18:00';
-      if (dateVal) {
-        const dt = new Date(dateVal);
-        const day = dt.getDate();
-        const monthStr = dt.toLocaleDateString('tr-TR', { month: 'short' });
-        const timeStr = dt.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
-        formattedDue = `${day} ${monthStr}, ${timeStr}`;
-      }
-      
       const visitType = f.get('visitType') || 'RZ';
-      const newWo = {
-        id: `WO-${Math.floor(2000 + Math.random() * 1000)}`,
+
+      const siteObj = state.sites.find(s => s.name === siteVal);
+      const orgId = state.currentUser?.orgId;
+
+      if (!orgId) {
+        toast('Kuruma bağlı bir hesapla giriş yapmalısınız.');
+        return true;
+      }
+      if (!siteObj) {
+        toast('Lütfen bir tesis seçin.');
+        return true;
+      }
+      if (!technicianId) {
+        toast('Görevlendirilecek teknisyen bulunamadı. Önce Ekip sayfasından teknisyen davet edin.');
+        return true;
+      }
+
+      const input = {
+        orgId,
         siteId: siteObj.id,
-        title: title,
-        site: `${siteObj.company} · ${siteObj.name}`,
-        priority: priority === 'Kritik' ? 'critical' : (priority === 'Yüksek' ? 'high' : 'normal'),
-        type: 'Planlı servis',
-        visitType: visitType,
-        due: formattedDue,
-        tech: techVal,
-        description: 'Periyodik istasyon kontrolü ve genel pest control denetimi.'
+        technicianId,
+        title,
+        description: 'Periyodik istasyon kontrolü ve genel pest control denetimi.',
+        priority: priorityLabel === 'Kritik' ? 'critical' : (priorityLabel === 'Yüksek' ? 'high' : 'normal'),
+        visitType,
+        dueAt: dateVal ? new Date(dateVal).toISOString() : null,
+        createdBy: state.currentUser?.id
       };
-      
-      state.work.push(newWo);
-      save();
-      $('#modal').classList.add('hidden');
-      renderWork();
-      renderDashboard();
-      toast(`İş emri oluşturuldu ve ${techVal} teknisyenine atandı.`);
+
+      if (button) { button.disabled = true; button.textContent = 'Kaydediliyor…'; }
+      createWorkOrder(input)
+        .then((newWo) => {
+          state.work.push(newWo);
+          $('#modal').classList.add('hidden');
+          renderWork();
+          renderDashboard();
+          toast(`İş emri oluşturuldu ve ${newWo.tech} teknisyenine atandı.`);
+        })
+        .catch((err) => {
+          toast(err.message || 'İş emri oluşturulamadı.');
+        })
+        .finally(() => {
+          if (button) { button.disabled = false; button.textContent = '＋ İş Emri Planla'; }
+        });
     }
-    
+
     // Tesis & Sözleşme Düzenleme Formu
   return false;
 }

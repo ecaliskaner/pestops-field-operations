@@ -98,6 +98,32 @@ export function replaceSites(sites) {
   state.sites.splice(0, state.sites.length, ...sites);
 }
 
+/**
+ * Replace the demo work-order board with real orders loaded from Supabase, in
+ * place — same reasoning as replaceSites() above: every view holds
+ * `state.work` by reference.
+ *
+ * @param {object[]} work
+ */
+export function replaceWork(work) {
+  state.work.splice(0, state.work.length, ...work);
+}
+
+// Real technicians loaded from Supabase for pickers outside the Ekip (team)
+// page — see src/data/repo/technicians.js for why the team simulation itself
+// is not wired here. The seed has no equivalent array, so this starts empty
+// rather than being backfilled by load()'s seed-reconciliation logic.
+if (!state.technicians) state.technicians = [];
+
+/**
+ * Replace the real-technician list in place — same pattern as replaceSites().
+ *
+ * @param {object[]} technicians
+ */
+export function replaceTechnicians(technicians) {
+  state.technicians.splice(0, state.technicians.length, ...technicians);
+}
+
 export function save(){
   localStorage.setItem("repellent-ops",JSON.stringify(state));
   const persistableState = structuredClone(state);
