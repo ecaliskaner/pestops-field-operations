@@ -16,9 +16,23 @@
 import { supabase, run } from '../../core/supabase.js';
 
 const WORK_SELECT = `
-  id, code, title, description, priority, visit_type, status, due_at,
+  id, code, title, description, priority, visit_type, status, due_at, completed_at,
   site:sites(id, name, customer:customers(name)),
   technician:technicians(id, full_name)
+`;
+
+// The audit trail the dashboard's activity feed reads. Written only by the
+// SECURITY DEFINER RPCs the technician app calls (wo_depart / wo_arrive /
+// wo_scan_qr / save_inspection / wo_complete), and append-only by RLS
+// construction — there is no update or delete policy on this table for any
+// role, admin included.
+const EVENT_SELECT = `
+  id, event_type, event_time, station_code, distance_m, radius_m,
+  work_order:work_orders(
+    code,
+    site:sites(id, name, customer:customers(name)),
+    technician:technicians(full_name)
+  )
 `;
 
 // "13 Tem, 18:00" — matches the format the seed and the old local-only
@@ -54,6 +68,10 @@ export function mapWorkOrderRow(row) {
     type: 'Planlı servis',
     visitType: row.visit_type,
     due: formatDue(row.due_at),
+    // Raw timestamps alongside the display string: the dashboard filters by
+    // real dates (today / this week / this month) and cannot parse "13 Tem".
+    dueAt: row.due_at,
+    completedAt: row.completed_at,
     tech: row.technician?.full_name || 'Atanmadı',
     description: row.description || '',
     completed: row.status === 'completed'
@@ -71,6 +89,60 @@ export async function fetchWorkOrders() {
     supabase.from('work_orders').select(WORK_SELECT).order('due_at', { ascending: true, nullsFirst: false })
   );
   return rows.map(mapWorkOrderRow);
+}
+
+// How each audit event reads in the office activity feed. `kind` maps onto the
+// existing .feed-icon classes ('done' green, 'alert' red, '' blue).
+const EVENT_LABELS = {
+  departed:           { kind: '',      icon: '→', label: 'Teknisyen yola çıktı' },
+  arrived_gps:        { kind: '',      icon: '⌖', label: 'Teknisyen tesise ulaştı' },
+  gps_mismatch:       { kind: 'alert', icon: '!', label: 'GPS uyuşmazlığı — tesis sınırı dışında' },
+  first_qr_scanned:   { kind: 'done',  icon: '⚑', label: 'İlk QR okutuldu — iş başladı' },
+  station_qr_scanned: { kind: '',      icon: '⌗', label: 'İstasyon okutuldu' },
+  inspection_saved:   { kind: '',      icon: '✎', label: 'Denetim formu kaydedildi' },
+  completed:          { kind: 'done',  icon: '✓', label: 'Servis tamamlandı' }
+};
+
+// entered_geofence is written alongside every in-fence arrival_gps as the
+// audit counterpart of gps_mismatch. Showing both would double every arrival
+// in the feed, so the feed reads arrived_gps and lets entered_geofence stay in
+// the trail for the audit view.
+const FEED_HIDDEN_EVENTS = new Set(['entered_geofence']);
+
+function mapEventRow(row) {
+  const meta = EVENT_LABELS[row.event_type] || { kind: '', icon: '•', label: row.event_type };
+  const wo = row.work_order || {};
+  const time = new Date(row.event_time);
+  return {
+    id: row.id,
+    kind: meta.kind,
+    icon: meta.icon,
+    title: row.station_code ? `${meta.label} — ${row.station_code}` : meta.label,
+    tech: wo.technician?.full_name || '',
+    siteId: wo.site?.id || '',
+    where: `${wo.site?.customer?.name || ''} · ${wo.site?.name || ''}`,
+    time: time.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
+    at: row.event_time
+  };
+}
+
+/**
+ * The most recent audit events across the org, newest first — the real source
+ * for the dashboard activity feed. A fresh org has none, and an empty feed is
+ * the correct answer rather than an error.
+ *
+ * @param {number} limit
+ * @returns {Promise<object[]>}
+ */
+export async function fetchRecentEvents(limit = 12) {
+  const rows = await run(
+    supabase
+      .from('work_order_events')
+      .select(EVENT_SELECT)
+      .order('event_time', { ascending: false })
+      .limit(limit)
+  );
+  return rows.filter((r) => !FEED_HIDDEN_EVENTS.has(r.event_type)).map(mapEventRow);
 }
 
 function generateCode() {

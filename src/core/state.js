@@ -115,6 +115,20 @@ export function replaceWork(work) {
 // rather than being backfilled by load()'s seed-reconciliation logic.
 if (!state.technicians) state.technicians = [];
 
+// The real work_order_events audit trail behind the dashboard activity feed.
+// Like `technicians` above, the seed has no equivalent — the feed used to be a
+// hardcoded four-row array in views/dashboard.js.
+if (!state.activity) state.activity = [];
+
+/**
+ * Replace the activity feed in place — same pattern as replaceSites().
+ *
+ * @param {object[]} events
+ */
+export function replaceActivity(events) {
+  state.activity.splice(0, state.activity.length, ...events);
+}
+
 /**
  * Replace the real-technician list in place — same pattern as replaceSites().
  *

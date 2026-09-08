@@ -13,19 +13,20 @@
 // says why.
 
 import { supabase, run, errorMessage, isConfigured } from './supabase.js';
-import { state, replaceSites, replaceWork, replaceTechnicians } from './state.js';
+import { state, replaceSites, replaceWork, replaceTechnicians, replaceActivity } from './state.js';
 import { toast } from './dom.js';
 import { checkSession } from './roles.js';
 import { render } from './router.js';
 import { fetchSites } from '../data/repo/sites.js';
-import { fetchWorkOrders } from '../data/repo/work.js';
+import { fetchWorkOrders, fetchRecentEvents } from '../data/repo/work.js';
 import { fetchTechnicians } from '../data/repo/technicians.js';
 
 const USER_CACHE_KEY = 'repellent-user';
 
 // The columns every screen needs to render the signed-in identity. The joined
 // customer name is what the customer portal shows as the company header.
-const PROFILE_SELECT = 'id, role, full_name, title, org_id, customer_id, is_active, customers(name)';
+const PROFILE_SELECT =
+  'id, role, full_name, title, org_id, customer_id, is_active, customers(name), organizations(name)';
 
 function initials(name) {
   return String(name || '')
@@ -54,7 +55,11 @@ export function profileToUser(profile, authUser) {
     avatar: initials(profile.full_name),
     orgId: profile.org_id,
     customerId: profile.customer_id,
-    company: profile.customers?.name || null
+    company: profile.customers?.name || null,
+    // The operating company's own name. The shell used to hard-code
+    // "Apex Operations" in index.html; it now shows whoever actually owns
+    // this account.
+    orgName: profile.organizations?.name || ''
   };
 }
 
@@ -84,6 +89,7 @@ function applyUser(user) {
   loadRealSites();
   loadRealWork();
   loadRealTechnicians();
+  loadRealActivity();
 }
 
 // Replaces the seeded demo portfolio with the signed-in org's real sites.
@@ -112,6 +118,19 @@ async function loadRealWork() {
     render();
   } catch (err) {
     console.error('[repellent] is emirleri yuklenemedi', err);
+  }
+}
+
+// The dashboard activity feed. Separate from loadRealWork() because it reads a
+// different table (work_order_events) and a failure in one should not blank
+// the other.
+async function loadRealActivity() {
+  try {
+    const events = await fetchRecentEvents();
+    replaceActivity(events);
+    render();
+  } catch (err) {
+    console.error('[repellent] aktivite akisi yuklenemedi', err);
   }
 }
 
