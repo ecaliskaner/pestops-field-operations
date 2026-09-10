@@ -3777,3 +3777,22 @@ button:focus-visible, a:focus-visible, .nav-item:focus-visible, input:focus-visi
 .tt-cred.expired .tt-cred-state { color: var(--red); font-weight: 700; }
 .tt-cred-note { font-size: 10px; color: var(--muted); margin: 10px 0 0; line-height: 1.5; }
 .tt-empty-text { font-size: 12px; color: var(--muted); margin: 8px 0 0; line-height: 1.6; }
+
+/* ---- Ekip: empty states ----
+   The Ekip page no longer falls back to a simulation when there is nothing to
+   show, so every panel needs a readable "nothing yet, and here is why" state.
+   Same visual language as .geo-empty above. */
+.live-gps-empty,
+.route-empty,
+.prod-empty,
+.cred-empty {
+  display: block;
+  margin: 0;
+  padding: 12px;
+  font-size: 11px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+.live-gps-empty { padding: 8px 2px; }
+.route-empty, .prod-empty { text-align: center; }
+#btnRouteOptimize:disabled { opacity: .45; cursor: not-allowed; }

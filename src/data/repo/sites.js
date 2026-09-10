@@ -20,6 +20,7 @@ import { supabase, run } from '../../core/supabase.js';
 
 const SITE_SELECT = `
   id, name, city, address, sector, color,
+  lat, lng, geofence_radius_m,
   contact_name, contact_phone, contact_email, service_scope,
   customer:customers(name),
   stations(code, type, pos_x, pos_y, last_status, last_bait_status, notes)
@@ -64,6 +65,13 @@ export function mapSiteRow(row) {
     next: 'Planlanacak',
     color: row.color || '#e8e0f5',
     sector: row.sector || '',
+    // Real WGS84 coordinates + the site's own geofence. The Ekip map used to
+    // plot a hardcoded table of İstanbul coordinates for the six seeded
+    // facilities; it now plots whatever the org actually recorded, and a site
+    // with no coordinate yet is simply not on the map.
+    lat: row.lat === null || row.lat === undefined ? null : Number(row.lat),
+    lng: row.lng === null || row.lng === undefined ? null : Number(row.lng),
+    geofenceRadiusM: row.geofence_radius_m || 150,
     address: row.address || '',
     contact: {
       name: row.contact_name || '',

@@ -178,3 +178,98 @@ export async function createWorkOrder(input) {
   );
   return mapWorkOrderRow(row);
 }
+
+/**
+ * Real per-technician field statistics, derived from the work order's own
+ * audit timestamps rather than a synthetic history generator:
+ *
+ *   travel  = departed_at        -> arrived_gps_at
+ *   on-site = real_work_started_at -> completed_at
+ *
+ * real_work_started_at is the column only the first QR scan may write (see
+ * the RLS note in 20260905000002_rls.sql), so "on-site time" here is the
+ * product's evidentiary claim, not an estimate. A completed job missing a
+ * timestamp pair simply does not contribute to that half of the average.
+ *
+ * @returns {Promise<object[]>} one row per technician with real work
+ */
+export async function fetchTechnicianStats() {
+  const rows = await run(
+    supabase
+      .from('work_orders')
+      .select('technician_id, departed_at, arrived_gps_at, real_work_started_at, completed_at, technician:technicians(full_name)')
+      .eq('status', 'completed')
+  );
+
+  const minutes = (from, to) => {
+    if (!from || !to) return null;
+    const ms = new Date(to) - new Date(from);
+    return ms > 0 ? Math.round(ms / 60000) : null;
+  };
+
+  const byTech = new Map();
+  for (const row of rows) {
+    if (!row.technician_id) continue;
+    const entry = byTech.get(row.technician_id) || {
+      technicianId: row.technician_id,
+      tech: row.technician?.full_name || '',
+      visits: 0, onSiteMin: 0, travelMin: 0, onSiteSamples: 0, travelSamples: 0
+    };
+    entry.visits += 1;
+    const onSite = minutes(row.real_work_started_at, row.completed_at);
+    if (onSite !== null) { entry.onSiteMin += onSite; entry.onSiteSamples += 1; }
+    const travel = minutes(row.departed_at, row.arrived_gps_at);
+    if (travel !== null) { entry.travelMin += travel; entry.travelSamples += 1; }
+    byTech.set(row.technician_id, entry);
+  }
+
+  return [...byTech.values()].map((e) => ({
+    ...e,
+    avgOnSiteMin: e.onSiteSamples ? Math.round(e.onSiteMin / e.onSiteSamples) : 0,
+    avgTravelMin: e.travelSamples ? Math.round(e.travelMin / e.travelSamples) : 0
+  }));
+}
+
+// The arrival-related slice of the audit trail, for the Ekip page's geofence
+// feed. Kept separate from fetchRecentEvents() so the dashboard feed and this
+// one can filter independently.
+const GEOFENCE_EVENT_TYPES = ['arrived_gps', 'gps_mismatch'];
+
+/**
+ * Recent geofence arrivals and mismatches, newest first.
+ *
+ * @param {number} limit
+ * @returns {Promise<object[]>}
+ */
+export async function fetchGeofenceEvents(limit = 18) {
+  const rows = await run(
+    supabase
+      .from('work_order_events')
+      .select(`
+        id, event_type, event_time, distance_m, radius_m,
+        work_order:work_orders(
+          code,
+          site:sites(id, name, customer:customers(name)),
+          technician:technicians(full_name)
+        )
+      `)
+      .in('event_type', GEOFENCE_EVENT_TYPES)
+      .order('event_time', { ascending: false })
+      .limit(limit)
+  );
+  return rows.map((row) => {
+    const wo = row.work_order || {};
+    return {
+      id: row.id,
+      type: row.event_type,
+      mismatch: row.event_type === 'gps_mismatch',
+      tech: wo.technician?.full_name || '',
+      siteId: wo.site?.id || '',
+      siteName: wo.site?.name || '',
+      company: wo.site?.customer?.name || '',
+      distanceM: row.distance_m === null ? null : Number(row.distance_m),
+      radiusM: row.radius_m === null ? null : Number(row.radius_m),
+      time: new Date(row.event_time).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
+    };
+  });
+}

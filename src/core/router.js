@@ -8,7 +8,7 @@ import { applyRoleAccess } from '../core/roles.js';
 import { renderDashboard } from '../views/dashboard.js';
 import { renderSites } from '../views/sites.js';
 import { renderWork } from '../views/work.js';
-import { renderTeam, startFieldSimulation } from '../views/team.js';
+import { renderTeam, startFieldTracking, stopFieldTracking } from '../views/team.js';
 import { renderAiPredictions, renderInsights } from '../views/insights.js';
 import { renderReports } from '../views/reports.js';
 import { renderInventory } from '../views/inventory.js';
@@ -46,8 +46,13 @@ export function setView(view){
   } else if (view === 'team') {
     // The map is built once during the initial render() while #team is hidden
     // (zero size). Re-entering the view must re-measure it, or the tiles render
-    // grey. startFieldSimulation() is idempotent and calls invalidateSize().
-    startFieldSimulation();
+    // grey. startFieldTracking() is idempotent and calls invalidateSize().
+    startFieldTracking();
+  } else {
+    // Leaving Ekip stops the live_positions() poll. Without this it keeps
+    // querying every 15 seconds for the rest of the session while nobody is
+    // looking at the map.
+    stopFieldTracking();
   }
 }
 
