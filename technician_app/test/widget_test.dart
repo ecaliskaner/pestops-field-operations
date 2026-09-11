@@ -19,7 +19,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     await Supabase.initialize(
       url: 'https://test.supabase.co',
-      anonKey: 'test-anon-key',
+      publishableKey: 'test-anon-key',
       debug: false,
     );
   });

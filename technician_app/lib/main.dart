@@ -23,7 +23,9 @@ Future<void> main() async {
 
   await Supabase.initialize(
     url: Config.supabaseUrl,
-    anonKey: Config.supabaseAnonKey,
+    // Supabase renamed this: `anonKey` is deprecated and goes away in the next
+    // major version. Same value, current parameter name.
+    publishableKey: Config.supabaseAnonKey,
   );
   runApp(const TechnicianApp());
 }
