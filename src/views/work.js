@@ -10,79 +10,51 @@ import { renderCalendarGrid } from '../ui/calendar.js';
 import { modal } from '../ui/modal.js';
 import { renderDashboard } from '../views/dashboard.js';
 import { deductStock, renderInventory } from '../views/inventory.js';
-import { getVisits } from '../data/history.js';
-import { createWorkOrder } from '../data/repo/work.js';
+import { createWorkOrder, fetchAuditWarnings } from '../data/repo/work.js';
 
-// ===== Audit warnings (task 3-6) =====
+// ===== Audit warnings =====
 //
-// The first-QR lock and GPS trail are our differentiator (docs/COMPETITOR.md),
-// so this surfaces the anomalies that trail catches: GPS arrival logged but no
-// first QR, a QR scanned while GPS sat outside the fence, and a visit too short
-// to be plausible. Historical anomalies are derived deterministically from the
-// seeded visit history; live ones are read from the current work orders, so a
-// technician who taps "arrived" but never scans shows up immediately.
-
-const SHORT_VISIT_RATIO = 0.8;   // below this fraction of the site's own average
-
-// Stable small hash so the same visit is always flagged the same way — no
-// demo-day surprises.
-function hashId(str) {
-  let h = 0;
-  for (let i = 0; i < str.length; i++) h = (Math.imul(h, 31) + str.charCodeAt(i)) | 0;
-  return Math.abs(h);
-}
+// The first-QR lock and the GPS trail are the product's differentiator, so
+// this panel has to be beyond reproach. It used to be fabricated: a hash of
+// each synthetic visit id decided which visits were accused of a falsified
+// arrival (`hashId(v.id) % 47 === 0`). It now renders only what the audit
+// trail actually caught — see fetchAuditWarnings() in data/repo/work.js for
+// how each of the three findings is derived.
 
 const WARNING_META = {
-  qr_outside_fence: { severity: 'critical', chip: 'critical', icon: '🛰', title: 'QR geofence dışında okundu', order: 0 },
-  gps_no_qr:        { severity: 'high',     chip: 'warning',  icon: '📍', title: 'GPS varış var, ilk QR yok',   order: 1 },
-  short_visit:      { severity: 'medium',   chip: 'warning',  icon: '⏱', title: 'Şüpheli kısa ziyaret',        order: 2 }
+  gps_mismatch: { severity: 'critical', chip: 'critical', icon: '🛰', title: 'Varış geofence dışından bildirildi', order: 0 },
+  gps_no_qr:    { severity: 'high',     chip: 'warning',  icon: '📍', title: 'GPS varış var, ilk QR yok',          order: 1 },
+  short_visit:  { severity: 'medium',   chip: 'warning',  icon: '⏱', title: 'Şüpheli kısa ziyaret',               order: 2 }
 };
 
+let auditRows = [];
+let auditLoaded = false;
+
 export function auditWarnings() {
-  const visits = getVisits();
-  const out = [];
-
-  // Per-site average on-site minutes, so "short" is judged against the site's
-  // own norm rather than a flat number.
-  const bySite = {};
-  visits.forEach((v) => { (bySite[v.siteId] ||= []).push(v.onSiteMin); });
-  const avg = {};
-  Object.entries(bySite).forEach(([id, arr]) => { avg[id] = arr.reduce((a, b) => a + b, 0) / arr.length; });
-
-  visits.forEach((v) => {
-    const h = hashId(v.id);
-    if (h % 47 === 0) {
-      out.push(mkWarning('qr_outside_fence', v, `GPS ${38 + (h % 55)} m sınır dışında iken QR okutulmuş.`));
-    } else if (h % 29 === 0) {
-      out.push(mkWarning('gps_no_qr', v, 'Tesise varış işaretlendi, ancak ilk QR taraması kaydı yok.'));
-    }
-    if (v.onSiteMin < SHORT_VISIT_RATIO * (avg[v.siteId] || v.onSiteMin)) {
-      out.push(mkWarning('short_visit', v, `Sahada ${v.onSiteMin} dk — tesis ortalaması ${Math.round(avg[v.siteId])} dk.`));
-    }
-  });
-
-  // Live work orders: arrived by GPS but not started by first QR.
-  (state.work || []).forEach((w) => {
-    if (w.status === 'arrived_gps') {
-      out.push({
-        type: 'gps_no_qr', live: true, workId: w.id,
-        siteId: w.siteId, siteName: w.site, tech: w.tech, date: w.due,
-        detail: 'Açık iş emri: teknisyen tesise vardı, ilk QR henüz okutulmadı.'
-      });
-    }
-  });
-
-  return out.sort((a, b) => WARNING_META[a.type].order - WARNING_META[b.type].order);
+  return auditRows;
 }
 
-function mkWarning(type, v, detail) {
-  return { type, live: false, siteId: v.siteId, siteName: `${v.company} · ${v.siteName}`, tech: v.tech, date: v.date, detail };
+// Loaded on the first İş Emirleri render. A failure leaves the panel in its
+// empty state rather than falling back to invented rows.
+async function loadAuditWarnings() {
+  if (auditLoaded) return;
+  auditLoaded = true;
+  try {
+    auditRows = await fetchAuditWarnings();
+  } catch (err) {
+    console.error('[repellent] denetim uyarilari yuklenemedi', err);
+    return;
+  }
+  renderAuditWarnings();
 }
 
 export function renderAuditWarnings() {
   const body = $('#auditWarningsBody');
   if (!body) return;
-  const warnings = auditWarnings();
+  loadAuditWarnings();
+  const warnings = auditWarnings().slice().sort(
+    (a, b) => WARNING_META[a.type].order - WARNING_META[b.type].order
+  );
 
   const countEl = $('#auditWarningCount');
   if (countEl) countEl.textContent = warnings.length;
@@ -103,12 +75,12 @@ export function renderAuditWarnings() {
   body.innerHTML = warnings.slice(0, 8).map((w) => {
     const m = WARNING_META[w.type];
     return `
-      <div class="audit-row ${m.severity}${w.live ? ' live' : ''}"${w.live ? ` data-work="${w.workId}"` : ''} ${w.live ? 'style="cursor:pointer;"' : ''}>
+      <div class="audit-row ${m.severity}${w.live ? ' live' : ''}"${w.live ? ` data-work="${esc(w.workId)}"` : ''} ${w.live ? 'style="cursor:pointer;"' : ''}>
         <span class="audit-icon">${m.icon}</span>
         <div class="audit-main">
           <b>${m.title}${w.live ? ' <span class="audit-live">CANLI</span>' : ''}</b>
-          <p>${w.detail}</p>
-          <small>${w.siteName} · ${w.tech} · ${w.date}</small>
+          <p>${esc(w.detail)}</p>
+          <small>${esc(w.siteName)} · ${esc(w.tech)} · ${esc(w.date)}</small>
         </div>
         <span class="status-chip ${m.chip}">${m.severity === 'critical' ? 'Kritik' : m.severity === 'high' ? 'Yüksek' : 'Orta'}</span>
       </div>`;
@@ -144,12 +116,12 @@ export function renderWork(filter='all'){
   $('#workListTitle').textContent={all:'Açık iş emirleri',critical:'Kritik öncelikli işler',scheduled:'Bugün planlanan servisler',completed:'Tamamlanan işler'}[filter];
   
   $('#workList').innerHTML=list.map(w=>`
-    <div class="work-item" data-work="${w.id}">
-      <span class="work-priority ${w.priority}"></span>
-      <div class="work-main"><b>${w.title}</b><p>${w.site} · ${w.id}</p></div>
+    <div class="work-item" data-work="${esc(w.id)}">
+      <span class="work-priority ${esc(w.priority)}"></span>
+      <div class="work-main"><b>${esc(w.title)}</b><p>${esc(w.site)} · ${esc(w.id)}</p></div>
       <div class="work-meta">
-        <span class="status-chip ${w.completed?'healthy':w.priority}">${w.completed?'Tamamlandı':w.type}</span>
-        ${w.visitType ? `<span class="visit-type-chip" style="display:inline-block; font-size:9px; padding:2px 6px; border-radius:4px; font-weight:700; background:#f0f4ff; color:#4361a8; border:1px solid #d8e2f8; margin-left:6px;">${(visitTypes.find(v=>v.code===w.visitType)||{}).name || w.visitType}</span>` : ''}
+        <span class="status-chip ${esc(w.completed?'healthy':w.priority)}">${esc(w.completed?'Tamamlandı':w.type)}</span>
+        ${w.visitType ? `<span class="visit-type-chip" style="display:inline-block; font-size:9px; padding:2px 6px; border-radius:4px; font-weight:700; background:#f0f4ff; color:#4361a8; border:1px solid #d8e2f8; margin-left:6px;">${esc((visitTypes.find(v=>v.code===w.visitType)||{}).name || w.visitType)}</span>` : ''}
         <small>${w.due}</small>
       </div>
     </div>

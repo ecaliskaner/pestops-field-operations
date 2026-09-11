@@ -72,6 +72,10 @@ export function mapWorkOrderRow(row) {
     // real dates (today / this week / this month) and cannot parse "13 Tem".
     dueAt: row.due_at,
     completedAt: row.completed_at,
+    // The real lifecycle status (scheduled / on_the_way / arrived_gps /
+    // started_by_first_qr / in_progress / completed / cancelled). The audit
+    // panel keys off this; `completed` below stays for the list renderers.
+    status: row.status,
     tech: row.technician?.full_name || 'Atanmadı',
     description: row.description || '',
     completed: row.status === 'completed'
@@ -272,4 +276,130 @@ export async function fetchGeofenceEvents(limit = 18) {
       time: new Date(row.event_time).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
     };
   });
+}
+
+// ---- audit warnings -----------------------------------------------------
+//
+// The first-QR lock and the GPS trail are the product's differentiator, so
+// this is the panel that has to be beyond reproach. It used to be generated:
+// a hash of each synthetic visit id decided which visits got a
+// "QR outside the fence" or a "GPS arrival with no QR" warning
+// (`hashId(v.id) % 47 === 0`), and "short visit" was measured against a
+// fabricated per-site average. Accusing a named technician of falsifying an
+// arrival on the strength of `id % 47` is the worst thing this codebase did.
+//
+// All three findings are now derived from the audit trail itself:
+//
+//   gps_mismatch      a real gps_mismatch event — the phone reported arrival
+//                     while its own fix sat outside the site geofence
+//   gps_no_qr         arrived_gps_at is set but real_work_started_at is not,
+//                     so no first QR was ever scanned at the site
+//   short_visit       a completed visit whose real on-site span is well under
+//                     that site's own average, computed from its other visits
+
+const SHORT_VISIT_RATIO = 0.8;   // below this fraction of the site's own average
+const SHORT_VISIT_MIN_SAMPLES = 3; // an "average" from fewer visits means nothing
+
+const AUDIT_WO_SELECT = `
+  id, code, status, arrived_gps_at, real_work_started_at, completed_at,
+  site:sites(id, name, customer:customers(name)),
+  technician:technicians(full_name)
+`;
+
+const shortDate = (iso) =>
+  iso ? new Date(iso).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' }) : '';
+
+function minutesBetween(from, to) {
+  if (!from || !to) return null;
+  const ms = new Date(to) - new Date(from);
+  return ms > 0 ? Math.round(ms / 60000) : null;
+}
+
+/**
+ * Every audit anomaly the GPS + QR trail actually caught, newest first.
+ *
+ * @returns {Promise<object[]>}
+ */
+export async function fetchAuditWarnings() {
+  const [orders, mismatches] = await Promise.all([
+    run(supabase.from('work_orders').select(AUDIT_WO_SELECT).order('due_at', { ascending: false })),
+    run(
+      supabase
+        .from('work_order_events')
+        .select('id, event_time, distance_m, radius_m, work_order:work_orders(code, site:sites(id, name, customer:customers(name)), technician:technicians(full_name))')
+        .eq('event_type', 'gps_mismatch')
+        .order('event_time', { ascending: false })
+        .limit(50)
+    )
+  ]);
+
+  const label = (wo) => `${wo.site?.customer?.name || ''} · ${wo.site?.name || ''}`;
+  const out = [];
+
+  // 1. Arrival reported from outside the site's own geofence.
+  for (const ev of mismatches) {
+    const wo = ev.work_order || {};
+    out.push({
+      type: 'gps_mismatch',
+      workId: wo.code || '',
+      siteId: wo.site?.id || '',
+      siteName: label(wo),
+      tech: wo.technician?.full_name || '',
+      date: shortDate(ev.event_time),
+      at: ev.event_time,
+      detail: ev.distance_m !== null && ev.radius_m !== null
+        ? `Varış bildirildiğinde cihaz konumu tesis sınırının ${ev.distance_m} m dışındaydı (geofence ${ev.radius_m} m).`
+        : 'Varış bildirildiğinde cihaz konumu tesis geofence sınırının dışındaydı.'
+    });
+  }
+
+  // 2. GPS arrival with no first QR — the visit never officially started.
+  for (const wo of orders) {
+    if (!wo.arrived_gps_at || wo.real_work_started_at) continue;
+    out.push({
+      type: 'gps_no_qr',
+      workId: wo.code,
+      live: wo.status !== 'completed' && wo.status !== 'cancelled',
+      siteId: wo.site?.id || '',
+      siteName: label(wo),
+      tech: wo.technician?.full_name || '',
+      date: shortDate(wo.arrived_gps_at),
+      at: wo.arrived_gps_at,
+      detail: wo.status === 'completed'
+        ? 'İş tamamlandı olarak kapatıldı, ancak tesiste hiç ilk QR okutulmamış — servisin gerçekten başladığına dair kanıt yok.'
+        : 'Tesise varış işaretlendi, ancak ilk QR taraması kaydı yok.'
+    });
+  }
+
+  // 3. Visits far shorter than that site's own norm.
+  const bySite = new Map();
+  for (const wo of orders) {
+    const mins = minutesBetween(wo.real_work_started_at, wo.completed_at);
+    if (mins === null) continue;
+    const siteId = wo.site?.id || '';
+    const entry = bySite.get(siteId) || { total: 0, count: 0, rows: [] };
+    entry.total += mins;
+    entry.count += 1;
+    entry.rows.push({ wo, mins });
+    bySite.set(siteId, entry);
+  }
+  for (const entry of bySite.values()) {
+    if (entry.count < SHORT_VISIT_MIN_SAMPLES) continue;
+    const avg = entry.total / entry.count;
+    for (const { wo, mins } of entry.rows) {
+      if (mins >= SHORT_VISIT_RATIO * avg) continue;
+      out.push({
+        type: 'short_visit',
+        workId: wo.code,
+        siteId: wo.site?.id || '',
+        siteName: label(wo),
+        tech: wo.technician?.full_name || '',
+        date: shortDate(wo.completed_at),
+        at: wo.completed_at,
+        detail: `Sahada ${mins} dk — bu tesisin ${entry.count} ziyaretlik ortalaması ${Math.round(avg)} dk.`
+      });
+    }
+  }
+
+  return out.sort((a, b) => new Date(b.at) - new Date(a.at));
 }
