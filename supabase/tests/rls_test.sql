@@ -416,6 +416,70 @@ begin
   perform t_admin_reset();
 end $$;
 
+
+-- ==================== OFIS KAPANIS OVERRIDE'I ==========================
+--
+-- wo_complete() ilk QR olmadan kapatmayi reddediyor (yukarida test edildi).
+-- Ofis icin acilan yol bu reddi asiyor, o yuzden kendi kisitlari test edilir:
+-- yalnizca yonetici, gerekce zorunlu, ve kullanildigi denetim kaydina yaziliyor.
+
+do $$
+declare w work_orders;
+begin
+  perform t_admin_reset();
+
+  insert into work_orders (id, org_id, site_id, technician_id, code, title, priority, visit_type, status)
+  values ('00000000-0000-0000-0000-0000000000f9',
+          '00000000-0000-0000-0000-0000000000a1',
+          '00000000-0000-0000-0000-000000000551',
+          '00000000-0000-0000-0000-0000000000b1',
+          'WO-OFFICE', 'Kagit uzerinden kapanacak is', 'normal', 'RZ', 'scheduled');
+
+  -- A technician may not use the office override.
+  perform t_login('00000000-0000-0000-0000-0000000000e2');
+  perform t_denied(
+    $q$select wo_complete_by_office('00000000-0000-0000-0000-0000000000f9', 'olmaz')$q$,
+    'Teknisyen ofis kapanisini kullanamiyor');
+
+  -- The customer certainly may not.
+  perform t_login('00000000-0000-0000-0000-0000000000e4');
+  perform t_denied(
+    $q$select wo_complete_by_office('00000000-0000-0000-0000-0000000000f9', 'olmaz')$q$,
+    'Musteri ofis kapanisini kullanamiyor');
+
+  -- The admin may, but not without saying why.
+  perform t_login('00000000-0000-0000-0000-0000000000e1');
+  perform t_denied(
+    $q$select wo_complete_by_office('00000000-0000-0000-0000-0000000000f9', '   ')$q$,
+    'Gerekcesiz ofis kapanisi reddediliyor');
+
+  select * into w from wo_complete_by_office(
+    '00000000-0000-0000-0000-0000000000f9', 'Teknisyenin telefonu sahada bozuldu');
+  perform t_ok(w.status = 'completed', 'Yonetici gerekce ile is emrini kapatabiliyor');
+
+  perform t_admin_reset();
+  -- The whole point: using it leaves a mark an auditor can find.
+  perform t_ok(exists (select 1 from work_order_events
+                       where work_order_id = '00000000-0000-0000-0000-0000000000f9'
+                         and event_type = 'completed_without_qr'),
+    'Ofis kapanisi denetim kaydina istisna olarak yaziliyor');
+  perform t_ok((select payload->>'reason' from work_order_events
+                where work_order_id = '00000000-0000-0000-0000-0000000000f9'
+                  and event_type = 'completed_without_qr') = 'Teknisyenin telefonu sahada bozuldu',
+    'Gerekce denetim kaydinda saklaniyor');
+  perform t_ok((select real_work_started_at from work_orders
+                where id = '00000000-0000-0000-0000-0000000000f9') is null,
+    'Ofis kapanisi gercek is baslangicini UYDURMUYOR');
+
+  -- Closing twice would double-count the visit in every report.
+  perform t_login('00000000-0000-0000-0000-0000000000e1');
+  perform t_denied(
+    $q$select wo_complete_by_office('00000000-0000-0000-0000-0000000000f9', 'tekrar')$q$,
+    'Kapatilmis is emri ikinci kez kapatilamiyor');
+
+  perform t_admin_reset();
+end $$;
+
 do $$ begin perform t_admin_reset(); end $$;
 
 rollback;

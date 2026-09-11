@@ -5,12 +5,14 @@ import { state } from '../core/state.js';
 import { chemicalDatabase, visitTypes } from '../data/catalog.js';
 import { $$, toast } from '../core/dom.js';
 import { render, setView } from '../core/router.js';
-import { recalculateSiteStats, save } from '../core/state.js';
+import { save, replaceWork } from '../core/state.js';
 import { renderCalendarGrid } from '../ui/calendar.js';
 import { modal } from '../ui/modal.js';
 import { renderDashboard } from '../views/dashboard.js';
 import { deductStock, renderInventory } from '../views/inventory.js';
-import { createWorkOrder, fetchAuditWarnings } from '../data/repo/work.js';
+import {
+  createWorkOrder, fetchAuditWarnings, fetchWorkOrders, completeWorkOrderByOffice
+} from '../data/repo/work.js';
 
 // ===== Audit warnings =====
 //
@@ -36,6 +38,12 @@ export function auditWarnings() {
 
 // Loaded on the first İş Emirleri render. A failure leaves the panel in its
 // empty state rather than falling back to invented rows.
+// Force a re-read after a write that could create or clear a finding.
+export function reloadAuditWarnings() {
+  auditLoaded = false;
+  loadAuditWarnings();
+}
+
 async function loadAuditWarnings() {
   if (auditLoaded) return;
   auditLoaded = true;
@@ -131,8 +139,18 @@ export function renderWork(filter='all'){
   renderAuditWarnings();
 }
 
+// The work order the task panel is currently showing.
+//
+// renderTask() falls back to the first order when `selectedWork` matches
+// nothing, so a strict lookup elsewhere resolved to a *different* order than
+// the one on screen — the panel showed one job while the complete button
+// silently acted on none. One resolver, so they cannot drift.
+function selectedWorkOrder() {
+  return state.work.find((x) => x.id === state.selectedWork) || state.work[0] || null;
+}
+
 export function renderTask(){
-  const w=state.work.find(x=>x.id===state.selectedWork)||state.work[0];
+  const w = selectedWorkOrder();
   if (!w) {
     $('#taskDetail').innerHTML = '<p class="empty">Seçili iş emri bulunmuyor.</p>';
     return;
@@ -240,68 +258,60 @@ export function workCardClicks(e) {
 }
 
 export function completeWorkClicks(e) {
-    if(e.target.closest('#completeWork')){
-      const w = state.work.find(x => x.id === state.selectedWork);
-      if (w) {
-        state.completed++;
-        w.completed = true;
-        
-        const site = state.sites.find(s => s.id === w.siteId) || null;
-        if (!site) {
-          toast('Bu iş emrinin tesisi yüklenemedi; sayfayı yenileyip tekrar deneyin.');
-          return true;
-        }
-        site.last = `Bugün · ${w.tech}`;
-        
-        // Calculate costs on PC
-        const techRate = state.techRates[w.tech] || 150;
-        const laborCost = Math.round((60 / 60) * techRate); // assume 60 mins default
-        
-        let chemicalCost = 0;
-        const siteChems = site.chemicalsUsed || [];
-        siteChems.forEach(cu => {
-          if (cu.workOrderId === w.id) {
-            const chem = chemicalDatabase.find(c => c.id === cu.chemicalId);
-            if (chem) {
-              const qty = parseFloat(cu.quantity.replace(/[^\d\.]/g, '')) || 0;
-              chemicalCost += Math.round(qty * chem.unitCost);
-            }
-          }
-        });
-        if (chemicalCost === 0) chemicalCost = 150; // default baseline
-        
-        const billingAmount = site.contract ? site.contract.monthlyPrice : 3500;
-        const profit = billingAmount - (laborCost + chemicalCost);
-        const margin = Math.round((profit / billingAmount) * 100);
-        
-        // Generate invoice draft
-        const newInvoice = {
-          id: `INV-${Math.floor(1000 + Math.random() * 9000)}`,
-          siteId: site.id,
-          company: site.company,
-          name: site.name,
-          date: new Date().toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' }),
-          amount: billingAmount,
-          laborCost: laborCost,
-          chemicalCost: chemicalCost,
-          margin: margin,
-          duration: '60 dk',
-          status: 'draft',
-          description: `${w.visitType ? (visitTypes.find(v=>v.code===w.visitType)||{}).name : 'Rutin'} Servis Faturası`
-        };
-        
-        if (!state.invoices) state.invoices = [];
-        state.invoices.unshift(newInvoice);
-        
-        recalculateSiteStats(site);
-        save();
-        render();
-        toast('İş emri tamamlandı; fatura taslağı oluşturuldu.');
-      }
-    }
-    
-    // Back button in company profile
-  return false;
+  if (!e.target.closest('#completeWork')) return false;
+
+  const w = selectedWorkOrder();
+  if (!w) return true;
+  if (!w.dbId) {
+    toast('Bu iş emri henüz kaydedilmemiş.');
+    return true;
+  }
+
+  // Closing a visit from the office is a real exception, not a shortcut.
+  // wo_complete() refuses without the first QR scan because that scan is what
+  // the product claims as the start of a visit, so the office path demands a
+  // written reason and records itself as an auditable exception. Asking for
+  // the reason here — rather than sending a default — is what keeps the audit
+  // trail worth reading.
+  const reason = window.prompt(
+    'Bu iş emri sahada QR okutulmadan kapatılıyor. ' +
+    'Gerekçe (denetim kaydına işlenecek):'
+  );
+  if (reason === null) return true;
+  if (!reason.trim()) {
+    toast('Gerekçe zorunludur.');
+    return true;
+  }
+
+  const button = e.target.closest('#completeWork');
+  if (button) { button.disabled = true; button.textContent = 'Kapatılıyor…'; }
+
+  completeWorkOrderByOffice({ workOrderId: w.dbId, reason: reason.trim() })
+    .then(() => refreshWorkBoard())
+    .then(() => {
+      render();
+      toast('İş emri kapatıldı. QR kanıtı olmadığı için denetim uyarılarında işaretlendi.');
+    })
+    .catch((err) => {
+      toast(err.message || 'İş emri kapatılamadı.');
+    })
+    .finally(() => {
+      if (button) { button.disabled = false; button.textContent = '✓ Tamamlandı olarak işaretle'; }
+    });
+
+  return true;
+}
+
+// Pull the board again after a write, so the list, the task panel and the
+// audit warnings all reflect what the database now holds rather than a local
+// guess at it.
+async function refreshWorkBoard() {
+  try {
+    replaceWork(await fetchWorkOrders());
+  } catch (err) {
+    console.error('[repellent] is emirleri yenilenemedi', err);
+  }
+  reloadAuditWarnings();
 }
 
 export function calendarToggleClicks(e) {
@@ -328,7 +338,7 @@ export function calendarToggleClicks(e) {
 export function taskChemDeleteClicks(e) {
     const deleteTaskChemBtn = e.target.closest('.delete-task-chem-btn');
     if (deleteTaskChemBtn) {
-      const w = state.work.find(x => x.id === state.selectedWork) || state.work[0];
+      const w = selectedWorkOrder();
       if (!w) return true;
       
       const site = state.sites.find(s => s.id === w.siteId);
@@ -430,7 +440,7 @@ export function createWorkSubmit(e) {
 export function taskChemicalSubmit(e) {
     if (e.target.id === 'taskChemicalForm') {
       e.preventDefault();
-      const w = state.work.find(x => x.id === state.selectedWork) || state.work[0];
+      const w = selectedWorkOrder();
       if (!w) return true;
       
       const site = state.sites.find(s => s.id === w.siteId);

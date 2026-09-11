@@ -353,19 +353,25 @@ export async function fetchAuditWarnings() {
     });
   }
 
-  // 2. GPS arrival with no first QR — the visit never officially started.
+  // 2. No first QR — the visit never officially started.
+  //
+  // The arrival is not required for this to matter. A job closed from the
+  // office with no GPS arrival *and* no QR has even less evidence behind it
+  // than one with an arrival, and the earlier version skipped exactly those.
   for (const wo of orders) {
-    if (!wo.arrived_gps_at || wo.real_work_started_at) continue;
+    if (wo.real_work_started_at) continue;
+    const closed = wo.status === 'completed';
+    if (!wo.arrived_gps_at && !closed) continue;
     out.push({
       type: 'gps_no_qr',
       workId: wo.code,
-      live: wo.status !== 'completed' && wo.status !== 'cancelled',
+      live: !closed && wo.status !== 'cancelled',
       siteId: wo.site?.id || '',
       siteName: label(wo),
       tech: wo.technician?.full_name || '',
-      date: shortDate(wo.arrived_gps_at),
-      at: wo.arrived_gps_at,
-      detail: wo.status === 'completed'
+      date: shortDate(wo.arrived_gps_at || wo.completed_at),
+      at: wo.arrived_gps_at || wo.completed_at,
+      detail: closed
         ? 'İş tamamlandı olarak kapatıldı, ancak tesiste hiç ilk QR okutulmamış — servisin gerçekten başladığına dair kanıt yok.'
         : 'Tesise varış işaretlendi, ancak ilk QR taraması kaydı yok.'
     });
@@ -402,4 +408,62 @@ export async function fetchAuditWarnings() {
   }
 
   return out.sort((a, b) => new Date(b.at) - new Date(a.at));
+}
+
+/**
+ * Close a work order from the office, without the first QR scan.
+ *
+ * wo_complete() deliberately refuses this — the first QR is what the product
+ * claims as the real start of a visit — so the office path is a separate,
+ * admin-only RPC that demands a reason and records itself as a distinct
+ * `completed_without_qr` event. fetchAuditWarnings() above then surfaces every
+ * work order closed this way, which is the point: the capability exists, but
+ * never silently.
+ *
+ * @param {{workOrderId: string, reason: string}} input
+ * @returns {Promise<object>}
+ */
+export async function completeWorkOrderByOffice(input) {
+  const row = await run(
+    supabase.rpc('wo_complete_by_office', {
+      p_wo: input.workOrderId,
+      p_reason: input.reason
+    })
+  );
+  const wo = Array.isArray(row) ? row[0] : row;
+  return wo || null;
+}
+
+/**
+ * Record a station inspection against a work order.
+ *
+ * A direct insert, which insp_admin_all already permits for the office. The
+ * technician app takes the other path — save_inspection() — because it also
+ * carries offline idempotency and the QR evidence; this is the office typing
+ * up a visit that was recorded on paper.
+ *
+ * @param {{orgId: string, workOrderId: string, stationId?: string,
+ *   stationCode: string, status: string, baitStatus: string, pestType?: string,
+ *   activityCount?: number, notes?: string, createdBy?: string}} input
+ * @returns {Promise<object>}
+ */
+export async function recordInspection(input) {
+  return run(
+    supabase
+      .from('inspections')
+      .insert({
+        org_id: input.orgId,
+        work_order_id: input.workOrderId,
+        station_id: input.stationId || null,
+        station_code: input.stationCode,
+        status: input.status,
+        bait_status: input.baitStatus,
+        pest_type: input.pestType || 'none',
+        activity_count: input.activityCount || 0,
+        notes: input.notes || null,
+        created_by: input.createdBy || null
+      })
+      .select('id, station_code, status, activity_count')
+      .single()
+  );
 }
