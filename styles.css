@@ -3796,3 +3796,30 @@ button:focus-visible, a:focus-visible, .nav-item:focus-visible, input:focus-visi
 .live-gps-empty { padding: 8px 2px; }
 .route-empty, .prod-empty { text-align: center; }
 #btnRouteOptimize:disabled { opacity: .45; cursor: not-allowed; }
+
+/* ---- Finding evidence photos ----
+   The bucket is private, so a tile paints a placeholder first and is filled in
+   when its signed URL arrives. A finding with no photo says so rather than
+   rendering a generated stand-in. */
+.rec-photo-pending {
+  display: grid;
+  place-items: center;
+  min-height: 110px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  background: var(--soft, #fafafa);
+}
+.rec-photo-missing {
+  display: grid;
+  place-items: center;
+  min-height: 110px;
+  padding: 10px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  text-align: center;
+  background: var(--soft, #fafafa);
+}

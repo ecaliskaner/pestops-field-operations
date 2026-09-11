@@ -314,6 +314,108 @@ do $$ begin
     'Anonim kullanici hicbir is emrini goremiyor');
 end $$;
 
+
+-- ================== MUSTERI TALEBI + KAPALI AKSIYON DONGUSU ==============
+--
+-- Two customer-facing write paths were added, and both deliberately bypass the
+-- read-only client policies through SECURITY DEFINER RPCs. That makes them the
+-- highest-risk surface in the schema: if either forgets its ownership check, a
+-- customer can act on another company's facility. These assert the checks.
+
+do $$
+declare
+  wo_id  uuid;
+  rec_id uuid;
+  st     text;
+begin
+  perform t_admin_reset();
+
+  -- A finding on the client's own site, and one on a site they do not own.
+  insert into recommendations (id, org_id, site_id, description, category, status)
+  values ('00000000-0000-0000-0000-0000000000d1',
+          '00000000-0000-0000-0000-0000000000a1',
+          '00000000-0000-0000-0000-000000000551',
+          'Depo kapi esigi contasi yipranmis', 'BRCGS', 'open'),
+         ('00000000-0000-0000-0000-0000000000d2',
+          '00000000-0000-0000-0000-0000000000a1',
+          '00000000-0000-0000-0000-000000000552',
+          'Baska musterinin bulgusu', 'AIB', 'open');
+
+  -- ---------------------------------------------------------- client steps
+  perform t_login('00000000-0000-0000-0000-0000000000e4');   -- Acme, owns 551
+
+  perform t_ok((select count(*) from recommendations) = 1,
+    'Musteri yalnizca kendi sahasinin bulgusunu goruyor');
+
+  -- Raising a service request on their own site works...
+  select id into wo_id from request_service(
+    '00000000-0000-0000-0000-000000000551', 'AC'::visit_type, 'Kemirgen gordum', 'Bugun icinde');
+  perform t_ok(wo_id is not null, 'Musteri kendi sahasi icin servis talebi acabiliyor');
+
+  perform t_admin_reset();
+  perform t_ok((select requested_by_customer from work_orders where id = wo_id),
+    'Talep musteri kaynakli olarak isaretleniyor');
+  perform t_ok((select status from work_orders where id = wo_id) = 'scheduled',
+    'Talep planlanmayi bekleyen is emri olarak aciliyor');
+  perform t_ok(exists (select 1 from work_order_events
+                       where work_order_id = wo_id and event_type = 'customer_requested'),
+    'Talep denetim kaydina yaziliyor');
+
+  -- ...but not on somebody else's site.
+  perform t_login('00000000-0000-0000-0000-0000000000e4');
+  perform t_denied(
+    $q$select request_service('00000000-0000-0000-0000-000000000552', 'AC'::visit_type, 'x', 'y')$q$,
+    'Musteri baska musterinin sahasi icin talep acamiyor');
+
+  -- The RPC is the only write path; a direct insert must still be refused.
+  perform t_no_effect(
+    $q$insert into work_orders (org_id, site_id, code, title, priority, visit_type)
+       values ('00000000-0000-0000-0000-0000000000a1',
+               '00000000-0000-0000-0000-000000000551', 'WO-HACK', 'sahte', 'critical', 'AC')$q$,
+    'Musteri dogrudan is emri olusturamiyor');
+
+  -- ------------------------------------------------- the action loop steps
+  rec_id := '00000000-0000-0000-0000-0000000000d1';
+
+  perform respond_to_recommendation(rec_id, 'Conta yenilendi', 'org/site/rec/1.jpg');
+  perform t_admin_reset();
+  select status into st from recommendations where id = rec_id;
+  perform t_ok(st = 'in_progress', 'Musteri aksiyonu bulguyu onaya gonderiyor');
+  perform t_ok((select customer_responded_at from recommendations where id = rec_id) is not null,
+    'Musteri yanit zamani kaydediliyor');
+
+  -- The whole point of the approval step: the customer cannot close their own
+  -- finding, by the RPC or by any direct write.
+  perform t_ok(st <> 'done', 'Musteri kendi bulgusunu KAPATAMIYOR (RPC done yazmiyor)');
+  perform t_login('00000000-0000-0000-0000-0000000000e4');
+  perform t_no_effect(
+    format($q$update recommendations set status = 'done' where id = %L$q$, rec_id),
+    'Musteri bulguyu dogrudan kapatamiyor');
+
+  -- A customer must not be able to act on another company's finding either.
+  perform t_denied(
+    $q$select respond_to_recommendation('00000000-0000-0000-0000-0000000000d2', 'x', '')$q$,
+    'Musteri baska musterinin bulgusuna aksiyon bildiremiyor');
+
+  -- ------------------------------------------------------- operator closes
+  perform t_login('00000000-0000-0000-0000-0000000000e1');   -- admin
+  update recommendations
+     set status = 'done', approved_by = '00000000-0000-0000-0000-0000000000e1',
+         approved_at = now(), closed_at = now()
+   where id = rec_id;
+  perform t_admin_reset();
+  perform t_ok((select status from recommendations where id = rec_id) = 'done',
+    'Yonetici bulguyu onaylayip kapatabiliyor');
+
+  -- And once closed it is closed: no further customer action.
+  perform t_login('00000000-0000-0000-0000-0000000000e4');
+  perform t_denied(
+    format($q$select respond_to_recommendation(%L, 'tekrar', '')$q$, rec_id),
+    'Kapatilmis bulguya yeniden aksiyon bildirilemiyor');
+
+  perform t_admin_reset();
+end $$;
+
 do $$ begin perform t_admin_reset(); end $$;
 
 rollback;

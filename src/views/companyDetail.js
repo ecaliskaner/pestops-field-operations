@@ -14,8 +14,12 @@ import { deductStock } from '../views/inventory.js';
 import { renderSites } from '../views/sites.js';
 import {
   barcodeFor, deviceReplacements, pointDeviceSummary, readingsForPoint,
-  recommendationsForSite, replacementReasons, technicianStats
+  replacementReasons, technicianStats
 } from '../data/history.js';
+import {
+  fetchRecommendations, respondToRecommendation, approveRecommendation,
+  rejectRecommendation, uploadRecommendationPhoto, signedPhotoUrl
+} from '../data/repo/customer.js';
 import { credentialDocs, KVKK_NOTICE } from '../data/credentials.js';
 import { renderFloorPlan } from './floorPlan.js';
 import { visitsPerMonth } from '../data/schedule.js';
@@ -286,100 +290,81 @@ export const LOOP_STAGES = {
 // User-driven lifecycle changes live in state (so they survive a reload) and
 // are layered over the generated history when rendering, rather than mutating
 // the history module's cache.
-function lifecycleOverlay() {
-  if (!state.recLifecycle) state.recLifecycle = {};
-  return state.recLifecycle;
+// Real findings for the org, loaded once and refreshed after every loop step.
+//
+// This replaced two fabrications at once: recommendationsForSite() invented
+// findings from the synthetic history, and every lifecycle change the user
+// made was kept in a browser-side `state.recLifecycle` overlay. That overlay
+// meant the customer's response and the operator's approval were visible only
+// in the browser that performed them — a cleared cache destroyed the audit
+// trail of a compliance loop.
+let recommendations = [];
+let recsLoaded = false;
+
+async function loadRecommendations(force = false) {
+  if (recsLoaded && !force) return;
+  recsLoaded = true;
+  try {
+    recommendations = await fetchRecommendations();
+  } catch (err) {
+    console.error('[repellent] bulgular yuklenemedi', err);
+    return;
+  }
+  const site = state.sites.find((x) => x.id === ui.activeSiteId);
+  if (site) {
+    renderCompanyRecommendations(site);
+    if (activeRecId) renderRecLoopDetail(site, activeRecId);
+  }
 }
 
 /**
- * Findings for a site from both sources — the 12-month generated history and
- * any raised by hand during the demo — normalised onto one shape, with the
- * lifecycle overlay applied.
+ * Findings for one site, ordered by where they sit in the loop.
+ *
+ * @param {object} site
+ * @returns {object[]}
  */
 export function loopRecommendations(site) {
-  const overlay = lifecycleOverlay();
-
-  const fromHistory = recommendationsForSite(site.id).map(r => ({
-    id: r.id,
-    source: 'history',
-    desc: r.desc,
-    category: r.category,
-    assignee: r.assignee || 'Tesis Yetkilisi',
-    tech: r.tech,
-    date: r.date,
-    dueDate: r.dueDate,
-    stationCode: r.stationCode,
-    stage: r.stage,
-    status: r.status,
-    photoBefore: r.photoBefore,
-    photoAfter: r.photoAfter,
-    customerNote: r.customerNote,
-    customerRespondedDate: r.customerRespondedDate,
-    approvedBy: r.approvedBy,
-    approvedDate: r.approvedDate,
-    rejectionNote: r.rejectionNote
-  }));
-
-  const fromSite = (site.recommendations || []).map((r, index) => ({
-    id: r.id || `RS-${index}`,
-    source: 'site',
-    siteIndex: index,
-    desc: r.desc,
-    category: r.category,
-    assignee: r.assignee,
-    tech: r.tech || (state.currentUser ? state.currentUser.name : 'Teknisyen'),
-    date: r.date,
-    dueDate: r.due,
-    stationCode: r.stationCode || null,
-    // Hand-raised findings start at the same first step of the loop.
-    stage: r.status === 'resolved' ? 'approved' : 'raised',
-    status: r.status,
-    photoBefore: r.photoBefore || { kind: 'simulated', label: 'Tespit anı', ref: `${r.id || index}-before` },
-    photoAfter: r.photoAfter || null,
-    customerNote: null,
-    customerRespondedDate: null,
-    approvedBy: null,
-    approvedDate: null,
-    rejectionNote: null
-  }));
-
-  return [...fromSite, ...fromHistory]
-    .map(r => ({ ...r, ...(overlay[r.id] || {}) }))
+  return recommendations
+    .filter((r) => r.siteId === site.id)
+    .slice()
     .sort((a, b) => LOOP_STAGES[a.stage].order - LOOP_STAGES[b.stage].order);
 }
 
 // Photos are held as descriptors. A simulated one is drawn as an SVG so the
 // demo always has evidence to show; a real upload carries its own data URL.
-export function recPhotoSrc(photo) {
-  if (!photo) return null;
-  if (photo.kind === 'upload') return photo.dataUrl;
+// Evidence photos live in the private recommendation-photos bucket, so an
+// <img> cannot address them directly. Each tile renders a placeholder and is
+// filled in once its short-lived signed URL comes back.
+//
+// The previous version drew a deterministic SVG for any photo it did not
+// have, which meant a compliance loop could display fabricated evidence.
+const signedUrlCache = new Map();
 
-  // Deterministic tint from the ref, so the same finding always looks the same.
-  let h = 0;
-  for (let i = 0; i < (photo.ref || '').length; i++) h = (h * 31 + photo.ref.charCodeAt(i)) % 360;
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="320" height="200" viewBox="0 0 320 200">
-    <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="hsl(${h},32%,62%)"/><stop offset="1" stop-color="hsl(${(h + 40) % 360},28%,38%)"/>
-    </linearGradient></defs>
-    <rect width="320" height="200" fill="url(#g)"/>
-    <rect x="18" y="18" width="284" height="164" fill="none" stroke="rgba(255,255,255,.45)" stroke-width="2" stroke-dasharray="7 5"/>
-    <circle cx="160" cy="88" r="26" fill="none" stroke="rgba(255,255,255,.75)" stroke-width="3"/>
-    <path d="M147 88h26M160 75v26" stroke="rgba(255,255,255,.75)" stroke-width="3"/>
-    <text x="160" y="140" font-family="DM Sans,sans-serif" font-size="14" font-weight="700" fill="#fff" text-anchor="middle">${photo.label || 'Saha fotoğrafı'}</text>
-    <text x="160" y="160" font-family="DM Sans,sans-serif" font-size="10" fill="rgba(255,255,255,.85)" text-anchor="middle">simüle görsel · ${photo.ref || ''}</text>
-  </svg>`;
-  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+async function fillPhoto(el, path) {
+  if (!el || !path) return;
+  let url = signedUrlCache.get(path);
+  if (!url) {
+    url = await signedPhotoUrl(path);
+    if (url) signedUrlCache.set(path, url);
+  }
+  if (!url) {
+    el.outerHTML = '<div class="rec-photo-missing">Fotoğraf açılamadı</div>';
+    return;
+  }
+  el.innerHTML = `<img src="${url}" alt="" loading="lazy">`;
+  el.classList.remove('rec-photo-pending');
 }
 
-function photoTile(photo, fallbackLabel) {
-  if (!photo) {
-    return `<div class="rec-photo empty"><span>${fallbackLabel}</span></div>`;
-  }
-  const badge = photo.kind === 'upload' ? 'Yüklendi' : 'Simüle';
-  return `<div class="rec-photo">
-      <img src="${recPhotoSrc(photo)}" alt="${photo.label || ''}">
-      <span class="rec-photo-badge">${badge}</span>
-    </div>`;
+// Resolve every pending tile currently on screen.
+function hydratePhotos() {
+  document.querySelectorAll('[data-photo-path]').forEach((el) => {
+    fillPhoto(el, el.dataset.photoPath);
+  });
+}
+
+function photoTile(path, fallbackLabel) {
+  if (!path) return `<div class="rec-photo-missing">${esc(fallbackLabel)}</div>`;
+  return `<div class="rec-photo rec-photo-pending" data-photo-path="${esc(path)}">Yükleniyor…</div>`;
 }
 
 export function renderCompanyRecommendations(site) {
@@ -387,6 +372,7 @@ export function renderCompanyRecommendations(site) {
   if (!tbody) return;
   if (!site.recommendations) site.recommendations = [];
 
+  loadRecommendations();
   const recs = loopRecommendations(site);
   const role = state.currentUser ? state.currentUser.role : 'admin';
 
@@ -399,14 +385,14 @@ export function renderCompanyRecommendations(site) {
     const stage = LOOP_STAGES[r.stage] || LOOP_STAGES.raised;
     const selected = r.id === activeRecId ? ' class="rec-row-selected"' : '';
     return `
-      <tr data-rec-id="${r.id}"${selected} style="cursor:pointer;">
-        <td><b>${r.desc}</b>${r.stationCode ? `<br><small class="text-muted">Nokta: ${r.stationCode}</small>` : ''}</td>
-        <td><span class="status-chip secondary" style="font-size:9px; font-weight:700;">${r.category}</span></td>
-        <td>${r.assignee}</td>
-        <td><small class="text-muted">${r.date}</small></td>
-        <td><small>${r.dueDate || '—'}</small></td>
+      <tr data-rec-id="${esc(r.id)}"${selected} style="cursor:pointer;">
+        <td><b>${esc(r.desc)}</b>${r.stationCode ? `<br><small class="text-muted">Nokta: ${esc(r.stationCode)}</small>` : ''}</td>
+        <td><span class="status-chip secondary" style="font-size:9px; font-weight:700;">${esc(r.category)}</span></td>
+        <td>${esc(r.assignee)}</td>
+        <td><small class="text-muted">${esc(r.date)}</small></td>
+        <td><small>${esc(r.dueDate || '—')}</small></td>
         <td><span class="status-chip ${stage.chip}">${stage.short}</span></td>
-        <td><button class="text-btn rec-open-btn" data-rec-id="${r.id}" style="padding:0; font-size:11px; font-weight:700;">${nextActionLabel(r, role)}</button></td>
+        <td><button class="text-btn rec-open-btn" data-rec-id="${esc(r.id)}" style="padding:0; font-size:11px; font-weight:700;">${nextActionLabel(r, role)}</button></td>
       </tr>`;
   }).join('') || '<tr><td colspan="7" class="empty" style="text-align:center;">Henüz açılmış bir öneri kaydı bulunmuyor.</td></tr>';
 
@@ -455,7 +441,7 @@ export function renderRecLoopDetail(site, recId) {
   const steps = [
     { n: 1, title: 'Teknisyen bulguyu açtı', who: rec.tech, when: rec.date, done: true },
     { n: 2, title: 'Müşteri aksiyon aldı', who: rec.assignee, when: rec.customerRespondedDate, done: !!rec.customerRespondedDate },
-    { n: 3, title: 'Teknisyen onayladı', who: rec.approvedBy, when: rec.approvedDate, done: rec.stage === 'approved' }
+    { n: 3, title: 'Onaylandı', who: rec.approvedDate ? 'Operasyon' : '', when: rec.approvedDate, done: rec.stage === 'approved' }
   ];
 
   const stepper = steps.map(s => `
@@ -482,20 +468,22 @@ export function renderRecLoopDetail(site, recId) {
     <div class="rec-photos">
       <figure>
         <figcaption>ÖNCE — tespit fotoğrafı</figcaption>
-        ${photoTile(rec.photoBefore, 'Fotoğraf yok')}
+        ${photoTile(rec.photoBeforePath, 'Tespit fotoğrafı yok')}
       </figure>
       <figure>
         <figcaption>SONRA — aksiyon fotoğrafı</figcaption>
-        ${photoTile(rec.photoAfter, 'Müşteri henüz yüklemedi')}
+        ${photoTile(rec.photoAfterPath, 'Müşteri henüz yüklemedi')}
       </figure>
     </div>
 
-    ${rec.customerNote ? `<p class="rec-note customer"><b>Müşteri notu:</b> ${rec.customerNote}</p>` : ''}
-    ${rec.rejectionNote ? `<p class="rec-note reject"><b>Onaylanmama nedeni:</b> ${rec.rejectionNote}</p>` : ''}
+    ${rec.customerNote ? `<p class="rec-note customer"><b>Müşteri notu:</b> ${esc(rec.customerNote)}</p>` : ''}
+    ${rec.rejectionNote ? `<p class="rec-note reject"><b>Onaylanmama nedeni:</b> ${esc(rec.rejectionNote)}</p>` : ''}
 
     <p class="rec-waiting-on">⏳ ${esc(stage.actor)}</p>
 
     ${renderRecActions(rec, role)}`;
+
+  hydratePhotos();
 }
 
 // Only the role that owns the current step gets controls; everyone else sees
@@ -504,16 +492,15 @@ function renderRecActions(rec, role) {
   const isTech = role === 'tech' || role === 'admin';
 
   if (rec.stage === 'approved') {
-    return `<div class="rec-actions closed">✓ Bu bulgu ${rec.approvedDate || ''} tarihinde ${rec.approvedBy || 'teknisyen'} tarafından onaylanarak kapatıldı.</div>`;
+    return `<div class="rec-actions closed">✓ Bu bulgu ${esc(rec.approvedDate || '')} tarihinde onaylanarak kapatıldı.</div>`;
   }
 
   if (role === 'client') {
     if (rec.stage === 'raised' || rec.stage === 'rejected') {
       return `
-        <form class="rec-actions rec-customer-form" id="recCustomerForm" data-rec-id="${rec.id}">
+        <form class="rec-actions rec-customer-form" id="recCustomerForm" data-rec-id="${esc(rec.id)}">
           <p class="rec-actions-title">Aksiyonu bildirin — aynı alanın fotoğrafını yükleyin</p>
           <input type="file" accept="image/*" class="form-input rec-file" id="inpRecPhoto">
-          <button type="button" class="secondary-btn rec-sim-photo" id="btnSimulateRecPhoto">📷 Fotoğrafı Simüle Et</button>
           <textarea class="form-textarea" name="customerNote" rows="2" placeholder="Alınan aksiyonu kısaca açıklayın..." required></textarea>
           <div class="rec-photo-preview hidden" id="recPhotoPreview"></div>
           <button type="submit" class="primary-btn">Aksiyonu Gönder →</button>
@@ -1086,7 +1073,14 @@ function showPhotoPreview(photo) {
   const preview = $('#recPhotoPreview');
   if (!preview) return;
   preview.classList.remove('hidden');
-  preview.innerHTML = `<img src="${recPhotoSrc(photo)}" alt="önizleme"><span>Yüklenecek görsel</span>`;
+  preview.innerHTML = '';
+  const img = document.createElement('img');
+  img.alt = 'önizleme';
+  img.src = URL.createObjectURL(photo.blob);
+  img.addEventListener('load', () => URL.revokeObjectURL(img.src), { once: true });
+  const cap = document.createElement('span');
+  cap.textContent = 'Yüklenecek görsel';
+  preview.append(img, cap);
 }
 
 // The app's delegator listens for click and submit only, so the photo input
@@ -1096,13 +1090,16 @@ document.addEventListener('change', async (e) => {
   const file = e.target.files && e.target.files[0];
   if (!file) return;
   try {
+    // Downscaled before upload: a phone camera original is several megabytes
+    // and the bucket caps objects at 10 MB.
     const dataUrl = await readImageDownscaled(file);
-    pendingCustomerPhoto = { kind: 'upload', label: 'Aksiyon sonrası', dataUrl };
+    const blob = await (await fetch(dataUrl)).blob();
+    pendingCustomerPhoto = { blob, ext: (blob.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg') };
     showPhotoPreview(pendingCustomerPhoto);
-    toast('Fotoğraf yüklendi, göndermek için formu tamamlayın.');
+    toast('Fotoğraf hazır, göndermek için formu tamamlayın.');
   } catch (err) {
-    console.warn('photo read failed', err);
-    toast('Fotoğraf okunamadı. Simüle seçeneğini kullanabilirsiniz.');
+    console.error('[repellent] fotograf okunamadi', err);
+    toast('Fotoğraf okunamadı. Lütfen başka bir görsel deneyin.');
   }
 });
 
@@ -1114,18 +1111,6 @@ export function lifecycleClicks(e) {
     }
     if (e.target.id === 'btnCancelDeviceSwap') {
       $('#deviceReplacementForm')?.classList.add('hidden');
-      return true;
-    }
-
-    // Not every demo machine has a photo to hand — offer a simulated capture.
-    if (e.target.id === 'btnSimulateRecPhoto') {
-      pendingCustomerPhoto = {
-        kind: 'simulated',
-        label: 'Aksiyon sonrası',
-        ref: `${activeRecId || 'rec'}-after-${Date.now() % 1000}`
-      };
-      showPhotoPreview(pendingCustomerPhoto);
-      toast('Saha fotoğrafı simüle edildi.');
       return true;
     }
 
@@ -1150,93 +1135,91 @@ export function lifecycleClicks(e) {
 // Step 2 of the loop: the customer reports the action they took, with a photo
 // of the same area.
 export function recCustomerResponseSubmit(e) {
-    if (e.target.id === 'recCustomerForm') {
-      e.preventDefault();
-      const site = state.sites.find(s => s.id === ui.activeSiteId);
-      if (!site) return true;
+  if (e.target.id !== 'recCustomerForm') return false;
+  e.preventDefault();
 
-      const recId = e.target.dataset.recId;
-      const note = (new FormData(e.target).get('customerNote') || '').trim();
-      if (!note) {
-        toast('Alınan aksiyonu kısaca açıklayın.');
-        return true;
-      }
-      if (!pendingCustomerPhoto) {
-        toast('Aksiyon fotoğrafı yüklenmeli — dosya seçin veya simüle edin.');
-        return true;
-      }
+  const site = state.sites.find((s) => s.id === ui.activeSiteId);
+  if (!site) return true;
 
-      const overlay = lifecycleOverlay();
-      overlay[recId] = {
-        ...(overlay[recId] || {}),
-        stage: 'customer_actioned',
-        status: 'open',
-        photoAfter: pendingCustomerPhoto,
-        customerNote: note,
-        customerRespondedDate: new Date().toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' }),
-        // A fresh response clears any previous rejection.
-        rejectionNote: null
-      };
+  const recId = e.target.dataset.recId;
+  const note = String(new FormData(e.target).get('customerNote') || '').trim();
+  if (!note) {
+    toast('Alınan aksiyonu kısaca açıklayın.');
+    return true;
+  }
+  if (!pendingCustomerPhoto || !pendingCustomerPhoto.blob) {
+    toast('Aksiyon fotoğrafı yüklenmeli — cihazınızdan bir fotoğraf seçin.');
+    return true;
+  }
+
+  const orgId = state.currentUser?.orgId;
+  if (!orgId) {
+    toast('Kuruma bağlı bir hesapla giriş yapmalısınız.');
+    return true;
+  }
+
+  const button = e.target.querySelector('button[type="submit"]');
+  if (button) { button.disabled = true; button.textContent = 'Gönderiliyor…'; }
+  const photo = pendingCustomerPhoto;
+
+  uploadRecommendationPhoto({ orgId, siteId: site.id, recId, blob: photo.blob, ext: photo.ext })
+    .then((photoPath) => respondToRecommendation({ recId, note, photoPath }))
+    .then(() => loadRecommendations(true))
+    .then(() => {
       pendingCustomerPhoto = null;
-      save();
+      toast('Aksiyonunuz iletildi. Onay bekleniyor.');
+    })
+    .catch((err) => {
+      toast(err.message || 'Aksiyonunuz gönderilemedi. Lütfen tekrar deneyin.');
+    })
+    .finally(() => {
+      if (button) { button.disabled = false; button.textContent = 'Aksiyonu Gönder →'; }
+    });
 
-      renderCompanyRecommendations(site);
-      renderRecLoopDetail(site, recId);
-      toast('Aksiyonunuz iletildi. Teknisyen onayı bekleniyor.');
-      return true;
-    }
-  return false;
+  return true;
 }
 
-// Step 3: the technician who serves the point decides whether the completed
-// action is adequate. Approval is the only thing that closes the loop.
+// Step 3: the operator decides whether the completed action is adequate.
+// Approval is the only thing that closes the loop, and it is deliberately not
+// something the customer can do to their own finding.
 export function recApprovalSubmit(e) {
-    if (e.target.id === 'recApprovalForm') {
-      e.preventDefault();
-      const site = state.sites.find(s => s.id === ui.activeSiteId);
-      if (!site) return true;
+  if (e.target.id !== 'recApprovalForm') return false;
+  e.preventDefault();
 
-      const recId = e.target.dataset.recId;
-      const note = (new FormData(e.target).get('decisionNote') || '').trim();
-      // Which button submitted the form.
-      const decision = (e.submitter && e.submitter.value) || 'approve';
-      const who = state.currentUser ? state.currentUser.name : 'Teknisyen';
-      const today = new Date().toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' });
+  const site = state.sites.find((s) => s.id === ui.activeSiteId);
+  if (!site) return true;
 
-      const overlay = lifecycleOverlay();
+  const recId = e.target.dataset.recId;
+  const note = String(new FormData(e.target).get('decisionNote') || '').trim();
+  const decision = (e.submitter && e.submitter.value) || 'approve';
 
-      if (decision === 'reject') {
-        if (!note) {
-          toast('Reddetme gerekçesi yazılmalıdır.');
-          return true;
-        }
-        overlay[recId] = {
-          ...(overlay[recId] || {}),
-          stage: 'rejected',
-          status: 'open',
-          rejectionNote: note,
-          approvedBy: null,
-          approvedDate: null
-        };
-        toast('Aksiyon reddedildi. Müşteriden tekrar aksiyon istendi.');
-      } else {
-        overlay[recId] = {
-          ...(overlay[recId] || {}),
-          stage: 'approved',
-          status: 'resolved',
-          approvedBy: who,
-          approvedDate: today,
-          rejectionNote: null
-        };
-        toast('Aksiyon onaylandı — bulgu kapatıldı.');
-      }
+  if (decision === 'reject' && !note) {
+    toast('Reddetme gerekçesi yazılmalıdır.');
+    return true;
+  }
 
-      save();
-      renderCompanyRecommendations(site);
-      renderRecLoopDetail(site, recId);
-      return true;
-    }
-  return false;
+  const buttons = [...e.target.querySelectorAll('button[type="submit"]')];
+  buttons.forEach((b) => { b.disabled = true; });
+
+  const action = decision === 'reject'
+    ? rejectRecommendation({ recId, note })
+    : approveRecommendation({ recId, approverId: state.currentUser?.id });
+
+  action
+    .then(() => loadRecommendations(true))
+    .then(() => {
+      toast(decision === 'reject'
+        ? 'Aksiyon reddedildi. Müşteriden tekrar aksiyon istendi.'
+        : 'Aksiyon onaylandı — bulgu kapatıldı.');
+    })
+    .catch((err) => {
+      toast(err.message || 'İşlem tamamlanamadı.');
+    })
+    .finally(() => {
+      buttons.forEach((b) => { b.disabled = false; });
+    });
+
+  return true;
 }
 
 export function planCanvasClicks(e) {
