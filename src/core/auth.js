@@ -13,7 +13,10 @@
 // says why.
 
 import { supabase, run, errorMessage, isConfigured } from './supabase.js';
-import { state, replaceSites, replaceWork, replaceTechnicians, replaceActivity } from './state.js';
+import {
+  state, replaceSites, replaceWork, replaceTechnicians, replaceActivity,
+  replaceInventory, replaceChemicals
+} from './state.js';
 import { toast } from './dom.js';
 import { checkSession } from './roles.js';
 import { render } from './router.js';
@@ -21,6 +24,7 @@ import { fetchSites } from '../data/repo/sites.js';
 import { fetchWorkOrders, fetchRecentEvents } from '../data/repo/work.js';
 import { fetchTechnicians } from '../data/repo/technicians.js';
 import { fetchVisitHistory } from '../data/repo/visits.js';
+import { fetchInventory, fetchChemicals } from '../data/repo/inventory.js';
 import { fetchRecommendations } from '../data/repo/customer.js';
 import { setVisitHistory } from '../data/history.js';
 
@@ -106,13 +110,17 @@ function applyUser(user) {
 // correct answer rather than a failure; Promise.allSettled means one failing
 // query cannot block the other three.
 async function loadRealData() {
-  const [sites, work, technicians, activity, visitHistory, findings] = await Promise.allSettled([
+  const [
+    sites, work, technicians, activity, visitHistory, findings, inventory, chemicals
+  ] = await Promise.allSettled([
     fetchSites(),
     fetchWorkOrders(),
     fetchTechnicians(),
     fetchRecentEvents(),
     fetchVisitHistory(),
-    fetchRecommendations()
+    fetchRecommendations(),
+    fetchInventory(),
+    fetchChemicals()
   ]);
 
   const apply = (result, label, fn) => {
@@ -124,6 +132,8 @@ async function loadRealData() {
   apply(work, 'is emirleri', replaceWork);
   apply(technicians, 'teknisyenler', replaceTechnicians);
   apply(activity, 'aktivite akisi', replaceActivity);
+  apply(inventory, 'stok', replaceInventory);
+  apply(chemicals, 'kimyasallar', replaceChemicals);
 
   // The reporting layer (reports, insights, finance, the printable bodies)
   // all derive from this one store, so it is installed before the paint.

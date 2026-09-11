@@ -10,7 +10,6 @@ import { renderClientAnalytics } from '../views/insights.js';
 import { toast } from '../core/dom.js';
 import { save } from '../core/state.js';
 import { modal, printQrCodeSticker } from '../ui/modal.js';
-import { deductStock } from '../views/inventory.js';
 import { renderSites } from '../views/sites.js';
 import {
   barcodeFor, deviceReplacements, pointDeviceSummary, readingsForPoint,
@@ -1576,51 +1575,14 @@ export function recommendationSubmit(e) {
 }
 
 export function chemicalUsageSubmit(e) {
-    if (e.target.id === 'companyChemicalForm') {
-      e.preventDefault();
-      if (!ui.activeSiteId) return true;
-      const site = state.sites.find(s => s.id === ui.activeSiteId);
-      if (!site) return true;
-      
-      const inpChemSelect = $('#inpChemicalSelect');
-      const inpChemQty = $('#inpChemicalQty');
-      const inpChemArea = $('#inpChemicalArea');
-      const inpChemNotes = $('#inpChemicalNotes');
-      if (!inpChemSelect || !inpChemQty || !inpChemArea || !inpChemNotes) return true;
-      
-      const chemicalId = inpChemSelect.value;
-      const quantity = inpChemQty.value.trim();
-      const area = inpChemArea.value.trim();
-      const notes = inpChemNotes.value.trim();
-      
-      if (!chemicalId || !quantity || !area) return true;
-      
-      const dateStr = new Date().toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' });
-      const newChemUse = {
-        id: `cu${Date.now()}`,
-        chemicalId: chemicalId,
-        date: dateStr,
-        quantity: quantity,
-        area: area,
-        tech: state.currentUser ? state.currentUser.name : "Operatör",
-        notes: notes
-      };
-      
-      if (!site.chemicalsUsed) site.chemicalsUsed = [];
-      site.chemicalsUsed.unshift(newChemUse);
-      
-      // Auto-deduct stock from inventory
-      deductStock(chemicalId, quantity);
-      
-      save();
-      renderChemicalUsage(site);
-      
-      inpChemSelect.value = '';
-      inpChemQty.value = '';
-      inpChemArea.value = '';
-      inpChemNotes.value = '';
-    }
+  if (e.target.id !== 'companyChemicalForm') return false;
+  e.preventDefault();
 
-    // Stock Refill Form submit
-  return false;
+  // This form recorded an application against the *site* and deducted seeded
+  // stock locally. A real application belongs to a visit: chemical_usages is
+  // what a customer's report prints and what the stock ledger is written from,
+  // and both need the work order it happened on. Rather than invent one, the
+  // entry is directed to the job it belongs to.
+  toast('Kimyasal uygulaması ilgili iş emri üzerinden kaydedilir — İş Emirleri sayfasından ziyareti açın.');
+  return true;
 }

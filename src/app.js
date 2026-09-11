@@ -17,7 +17,7 @@ import { renderSites } from './views/sites.js';
 import { renderInsights } from './views/insights.js';
 import {
   workListClicks, workCardClicks, completeWorkClicks, calendarToggleClicks,
-  taskChemDeleteClicks, createWorkSubmit, taskChemicalSubmit, renderWork
+  createWorkSubmit, taskChemicalSubmit, renderWork
 } from './views/work.js';
 import { teamRosterClicks } from './views/team.js';
 import {
@@ -255,7 +255,6 @@ const CLICK_CHAIN = [
   insightsClicks,
   invoiceActionClicks,
   billingClicks,
-  taskChemDeleteClicks,
   invoiceFilterClicks,
   fileDownloadClicks
 ];

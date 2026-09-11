@@ -51,8 +51,13 @@ const INSPECTION_SELECT = `
 
 const CHEMICAL_USE_SELECT = `
   id, work_order_id, quantity, unit, area_desc, applied_at,
-  chemical:chemicals(id, name, unit, unit_cost)
+  chemical:chemicals(id, name, unit)
 `;
+// chemicals has no unit_cost column - the cost sits on inventory_items,
+// because the same product can be bought at different prices per lot. Asking
+// PostgREST for chemicals.unit_cost fails the whole request, and with no usage
+// rows yet that failure would not have surfaced until the first real chemical
+// was recorded against a visit.
 
 const pad = (n) => String(n).padStart(2, '0');
 const formatDate = (y, m, d) => `${pad(d)} ${MONTH_SHORT[m]} ${y}`;
@@ -89,9 +94,12 @@ function mapReading(row) {
   };
 }
 
-function mapChemicalUse(row, dateStr, tech) {
+function mapChemicalUse(row, dateStr, tech, costByChemical) {
   const qty = Number(row.quantity) || 0;
-  const unitCost = Number(row.chemical?.unit_cost) || 0;
+  // Costed from the stock record for that product, where one exists. A
+  // chemical the org has never taken into stock has no price, and reporting
+  // zero is honest where inventing an average would not be.
+  const unitCost = Number(costByChemical.get(row.chemical?.id)) || 0;
   return {
     chemicalId: row.chemical?.id || '',
     name: row.chemical?.name || '',
@@ -143,10 +151,17 @@ export async function fetchVisitHistory() {
   const ids = orders.map((o) => o.id);
   // Fetched in bulk rather than per visit: one round trip each instead of one
   // per completed job, which on a year of history is hundreds of requests.
-  const [inspections, chemicalUses] = await Promise.all([
+  const [inspections, chemicalUses, stock] = await Promise.all([
     run(supabase.from('inspections').select(INSPECTION_SELECT).in('work_order_id', ids)),
-    run(supabase.from('chemical_usages').select(CHEMICAL_USE_SELECT).in('work_order_id', ids))
+    run(supabase.from('chemical_usages').select(CHEMICAL_USE_SELECT).in('work_order_id', ids)),
+    run(supabase.from('inventory_items').select('chemical_id, unit_cost'))
   ]);
+
+  // Latest known unit cost per product.
+  const costByChemical = new Map();
+  for (const item of stock) {
+    if (item.unit_cost !== null) costByChemical.set(item.chemical_id, item.unit_cost);
+  }
 
   const readingsByWo = new Map();
   for (const row of inspections) {
@@ -196,7 +211,7 @@ export async function fetchVisitHistory() {
       onSiteMin: minutesBetween(wo.real_work_started_at, wo.completed_at),
       readings,
       totals: totalsOf(readings),
-      chemicals: (chemsByWo.get(wo.id) || []).map((row) => mapChemicalUse(row, dateStr, tech)),
+      chemicals: (chemsByWo.get(wo.id) || []).map((row) => mapChemicalUse(row, dateStr, tech, costByChemical)),
       // Findings are loaded separately (repo/customer.js) and linked back by
       // work order there; the report bodies read them from that list.
       recommendationsRaised: [],

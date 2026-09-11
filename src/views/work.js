@@ -2,14 +2,15 @@
 
 import { $, esc } from '../core/dom.js';
 import { state } from '../core/state.js';
-import { chemicalDatabase, visitTypes } from '../data/catalog.js';
+import { visitTypes } from '../data/catalog.js';
 import { $$, toast } from '../core/dom.js';
 import { render, setView } from '../core/router.js';
 import { save, replaceWork } from '../core/state.js';
 import { renderCalendarGrid } from '../ui/calendar.js';
 import { modal } from '../ui/modal.js';
 import { renderDashboard } from '../views/dashboard.js';
-import { deductStock, renderInventory } from '../views/inventory.js';
+import { refreshStock } from '../views/inventory.js';
+import { recordChemicalUsage, fetchUsageForWorkOrder } from '../data/repo/inventory.js';
 import {
   createWorkOrder, fetchAuditWarnings, fetchWorkOrders, completeWorkOrderByOffice
 } from '../data/repo/work.js';
@@ -145,6 +146,21 @@ export function renderWork(filter='all'){
 // nothing, so a strict lookup elsewhere resolved to a *different* order than
 // the one on screen — the panel showed one job while the complete button
 // silently acted on none. One resolver, so they cannot drift.
+// Applications recorded against the job the task panel is showing.
+let taskUsages = [];
+let usageWorkOrderId = null;
+
+async function loadUsageFor(workOrderId) {
+  usageWorkOrderId = workOrderId;
+  try {
+    taskUsages = await fetchUsageForWorkOrder(workOrderId);
+  } catch (err) {
+    console.error('[repellent] kimyasal kullanimlari yuklenemedi', err);
+    taskUsages = [];
+  }
+  renderTask();
+}
+
 function selectedWorkOrder() {
   return state.work.find((x) => x.id === state.selectedWork) || state.work[0] || null;
 }
@@ -162,18 +178,20 @@ export function renderTask(){
   // half-painted and unresponsive. A work order whose site is not loaded yet
   // renders without the site-scoped sections instead.
   const site = state.sites.find(s => s.id === w.siteId) || null;
-  const visitChems = ((site && site.chemicalsUsed) || []).filter(cu => cu.workOrderId === w.id);
+  // Real applications for this job. Loaded per work order because the
+  // completed-visit history does not cover a job still in progress.
+  if (w.dbId && usageWorkOrderId !== w.dbId) loadUsageFor(w.dbId);
+  const visitChems = usageWorkOrderId === w.dbId ? taskUsages : [];
   
-  const chemsListHtml = visitChems.map((cu, idx) => {
-    const chem = chemicalDatabase.find(c => c.id === cu.chemicalId);
-    const chemName = chem ? chem.name : 'Kimyasal';
+  const chemsListHtml = visitChems.map((cu) => {
+    const chemName = cu.name || 'Kimyasal';
     return `
       <div style="display:flex; justify-content:space-between; align-items:center; background:var(--soft); border:1px solid var(--line); border-radius:6px; padding:6px 10px; margin-bottom:6px; font-size:12px;">
         <div>
           <b>${esc(chemName)}</b><br>
-          <small class="text-muted">Miktar: ${esc(cu.quantity)} · Alan: ${esc(cu.area)} ${cu.notes ? `· ${esc(cu.notes)}` : ''}</small>
+          <small class="text-muted">Miktar: ${esc(cu.quantity)} ${esc(cu.unit)} · Alan: ${esc(cu.area || '—')} ${cu.notes ? `· ${esc(cu.notes)}` : ''}</small>
         </div>
-        ${w.completed ? '' : `<button class="text-btn delete-task-chem-btn" data-chem-index="${idx}" style="color:var(--red); font-size:16px; font-weight:700; border:none; background:none; cursor:pointer;">×</button>`}
+
       </div>
     `;
   }).join('') || '<p class="text-muted" style="font-size:11px; margin-bottom:12px;">Bu ziyarette henüz kullanılan kimyasal girilmedi.</p>';
@@ -184,7 +202,7 @@ export function renderTask(){
       <div style="display:grid; gap:8px;">
         <select required id="taskChemSelect" class="form-select" style="height:32px; font-size:12px; padding:0 6px;">
           <option value="">-- Kimyasal Seçin --</option>
-          ${chemicalDatabase.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
+          ${(state.chemicals || []).map(c => `<option value="${esc(c.id)}"${c.licenseExpired ? ' disabled' : ''}>${esc(c.name)}${c.licenseExpired ? ' — ruhsat süresi dolmuş' : ''}</option>`).join('')}
         </select>
         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
           <input required type="text" id="taskChemQty" placeholder="Miktar (Örn: 100 ml)" class="form-input" style="height:32px; font-size:12px;">
@@ -335,44 +353,14 @@ export function calendarToggleClicks(e) {
   return false;
 }
 
-export function taskChemDeleteClicks(e) {
-    const deleteTaskChemBtn = e.target.closest('.delete-task-chem-btn');
-    if (deleteTaskChemBtn) {
-      const w = selectedWorkOrder();
-      if (!w) return true;
-      
-      const site = state.sites.find(s => s.id === w.siteId);
-      if (!site) return true;
-      
-      const idx = parseInt(deleteTaskChemBtn.dataset.chemIndex);
-      const visitChems = site.chemicalsUsed.filter(cu => cu.workOrderId === w.id);
-      const targetChemUse = visitChems[idx];
-      
-      if (targetChemUse) {
-        // Restore stock
-        const numVal = parseFloat(targetChemUse.quantity.replace(/[^\d\.]/g, '')) || 0;
-        const invItem = state.inventory.find(i => i.chemicalId === targetChemUse.chemicalId);
-        if (invItem && numVal > 0) {
-          invItem.qty = Math.round((invItem.qty + numVal) * 10) / 10;
-        }
-        
-        // Remove from list
-        const mainIdx = site.chemicalsUsed.indexOf(targetChemUse);
-        if (mainIdx > -1) {
-          site.chemicalsUsed.splice(mainIdx, 1);
-        }
-        
-        save();
-        renderTask();
-        renderInventory();
-        toast('Kimyasal kullanımı silindi ve stok iade edildi.');
-      }
-      return true;
-    }
-
-    // Invoice status filters
-  return false;
-}
+// taskChemDeleteClicks() used to live here. It removed a chemical application
+// from the local array and "returned" the quantity to the seeded stock.
+//
+// A recorded pesticide application is a regulatory fact, not a draft: deleting
+// it from the office and silently crediting stock back is the kind of quiet
+// rewrite this codebase was full of. Correcting a mis-entry needs a real
+// reversal — a compensating stock movement and a retained record of the
+// original — which is its own piece of work, not something to fake here.
 
 export function createWorkSubmit(e) {
     if(e.target.id==='createWork'){
@@ -438,55 +426,56 @@ export function createWorkSubmit(e) {
 }
 
 export function taskChemicalSubmit(e) {
-    if (e.target.id === 'taskChemicalForm') {
-      e.preventDefault();
-      const w = selectedWorkOrder();
-      if (!w) return true;
-      
-      const site = state.sites.find(s => s.id === w.siteId);
-      if (!site) return true;
-      
-      const inpChemSelect = $('#taskChemSelect');
-      const inpChemQty = $('#taskChemQty');
-      const inpChemArea = $('#taskChemArea');
-      const inpChemNotes = $('#taskChemNotes');
-      if (!inpChemSelect || !inpChemQty || !inpChemArea || !inpChemNotes) return true;
-      
-      const chemicalId = inpChemSelect.value;
-      const quantity = inpChemQty.value.trim();
-      const area = inpChemArea.value.trim();
-      const notes = inpChemNotes.value.trim();
-      
-      if (!chemicalId || !quantity || !area) return true;
-      
-      const dateStr = new Date().toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' });
-      const newChemUse = {
-        id: `cu${Date.now()}`,
-        workOrderId: w.id,
-        chemicalId: chemicalId,
-        date: dateStr,
-        quantity: quantity,
-        area: area,
-        tech: w.tech,
-        notes: notes || 'Ziyaret uygulaması'
-      };
-      
-      if (!site.chemicalsUsed) site.chemicalsUsed = [];
-      site.chemicalsUsed.unshift(newChemUse);
-      
-      // Auto-deduct stock
-      deductStock(chemicalId, quantity);
-      
-      save();
-      renderTask();
-      
-      inpChemSelect.value = '';
-      inpChemQty.value = '';
-      inpChemArea.value = '';
-      inpChemNotes.value = '';
-      toast('Kimyasal başarıyla eklendi.');
-    }
+  if (e.target.id !== 'taskChemicalForm') return false;
+  e.preventDefault();
 
-    // Mobile Chemical Form submit
-  return false;
+  const w = selectedWorkOrder();
+  if (!w) return true;
+  if (!w.dbId) { toast('Bu iş emri henüz kaydedilmemiş.'); return true; }
+
+  const select = $('#taskChemSelect');
+  const qtyInput = $('#taskChemQty');
+  const areaInput = $('#taskChemArea');
+  const notesInput = $('#taskChemNotes');
+  if (!select || !qtyInput || !areaInput) return true;
+
+  const chemicalId = select.value;
+  if (!chemicalId) { toast('Kimyasal seçin.'); return true; }
+
+  // The quantity box is free text ("100 ml"), but a stock ledger needs a
+  // number and a unit. The number is parsed here and the unit comes from the
+  // product itself, so the two can never disagree.
+  const quantity = parseFloat(String(qtyInput.value).replace(',', '.').replace(/[^\d.]/g, ''));
+  if (!quantity || quantity <= 0) { toast('Geçerli bir miktar girin.'); return true; }
+
+  const chem = (state.chemicals || []).find((c) => c.id === chemicalId);
+  if (chem && chem.licenseExpired) {
+    toast(`${chem.name} ürününün ruhsatı dolmuş; uygulama kaydedilemez.`);
+    return true;
+  }
+
+  const button = e.target.querySelector('button[type="submit"]');
+  if (button) button.disabled = true;
+
+  recordChemicalUsage({
+    workOrderId: w.dbId,
+    chemicalId,
+    quantity,
+    unit: (chem && chem.unit) || 'lt',
+    area: String(areaInput.value || '').trim(),
+    notes: String((notesInput && notesInput.value) || '').trim()
+  })
+    .then(() => Promise.all([refreshStock(), loadUsageFor(w.dbId)]))
+    .then(() => {
+      select.value = '';
+      qtyInput.value = '';
+      areaInput.value = '';
+      if (notesInput) notesInput.value = '';
+      renderTask();
+      toast('Kimyasal uygulaması kaydedildi ve stoktan düşüldü.');
+    })
+    .catch((err) => toast(err.message || 'Kimyasal uygulaması kaydedilemedi.'))
+    .finally(() => { if (button) button.disabled = false; });
+
+  return true;
 }

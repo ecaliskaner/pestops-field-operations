@@ -1,7 +1,8 @@
 // Extracted from app.js (Phase 0a-3).
 
 import { $, toast } from '../core/dom.js';
-import { save, state } from '../core/state.js';
+import { state, replaceInventory } from '../core/state.js';
+import { fetchInventory, addStock } from '../data/repo/inventory.js';
 import { chemicalDatabase } from '../data/catalog.js';
 
 export function renderInventory() {
@@ -81,89 +82,54 @@ export function renderInventory() {
   }
 }
 
-export function deductStock(chemicalId, amountStr) {
-  if (!state.inventory) state.inventory = [];
-  if (!state.inventoryTransactions) state.inventoryTransactions = [];
-
-  const item = state.inventory.find(i => i.chemicalId === chemicalId);
-  if (!item) return;
-
-  const numVal = parseFloat(amountStr.replace(/[^\d\.]/g, '')) || 0;
-  if (numVal <= 0) return;
-
-  item.qty = Math.round((item.qty - numVal) * 10) / 10;
-  
-  const dateStr = new Date().toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' });
-  state.inventoryTransactions.unshift({
-    id: `tx${Date.now()}`,
-    chemicalId: chemicalId,
-    type: 'deduct',
-    qty: numVal,
-    unit: item.unit,
-    date: dateStr,
-    notes: 'Saha uygulaması düşüşü'
-  });
-
-  save();
-  renderInventory();
-
-  // Alert if drops below warning threshold
-  if (item.qty <= item.minQty) {
-    toast(`UYARI: ${item.name} stok seviyesi kritik sınırın altına düştü!`);
-  }
-}
-
+// deductStock() used to live here: it decremented a seeded array and pushed a
+// fake movement row. Deduction is now part of record_chemical_usage(), which
+// writes the application, the stock movement and the new balance in one
+// transaction — a half-written stock ledger is the one outcome worth paying an
+// RPC to avoid.
 
 export function stockRefillSubmit(e) {
-    if (e.target.id === 'invRefillForm') {
-      e.preventDefault();
-      const f = new FormData(e.target);
-      const chemicalId = f.get('chemicalId');
-      const quantity = parseFloat(f.get('quantity')) || 0;
-      const lotNo = f.get('lotNo').trim();
-      const notes = f.get('notes').trim() || 'Depo stok girişi';
-      
-      if (!chemicalId || quantity <= 0 || !lotNo) return true;
-      
-      if (!state.inventory) state.inventory = [];
-      if (!state.inventoryTransactions) state.inventoryTransactions = [];
-      
-      const item = state.inventory.find(i => i.chemicalId === chemicalId);
-      if (item) {
-        item.qty = Math.round((item.qty + quantity) * 10) / 10;
-        item.lotNo = lotNo;
-      } else {
-        const chemInfo = chemicalDatabase.find(c => c.id === chemicalId);
-        state.inventory.push({
-          id: `stock${Date.now()}`,
-          chemicalId: chemicalId,
-          name: chemInfo ? chemInfo.name : 'Yeni Kimyasal',
-          lotNo: lotNo,
-          qty: quantity,
-          unit: chemInfo ? chemInfo.unit : 'kg',
-          minQty: 5.0,
-          unitCost: chemInfo ? chemInfo.unitCost : 100
-        });
-      }
-      
-      const dateStr = new Date().toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' });
-      state.inventoryTransactions.unshift({
-        id: `tx${Date.now()}`,
-        chemicalId: chemicalId,
-        type: 'refill',
-        qty: quantity,
-        unit: (chemicalDatabase.find(c => c.id === chemicalId) || {}).unit || 'lt',
-        date: dateStr,
-        notes: notes
-      });
-      
-      save();
-      renderInventory();
-      
-      e.target.reset();
-      toast('Stok girişi başarıyla tamamlandı.');
-    }
+  if (e.target.id !== 'invRefillForm') return false;
+  e.preventDefault();
 
-    // Desktop Task Chemical Form submit
-  return false;
+  const f = new FormData(e.target);
+  const chemicalId = String(f.get('chemicalId') || '');
+  const quantity = parseFloat(f.get('quantity')) || 0;
+  const lotNo = String(f.get('lotNo') || '').trim();
+  const notes = String(f.get('notes') || '').trim() || 'Depo stok girişi';
+  const orgId = state.currentUser?.orgId;
+
+  if (!chemicalId) { toast('Kimyasal seçin.'); return true; }
+  if (quantity <= 0) { toast('Miktar sıfırdan büyük olmalıdır.'); return true; }
+  if (!lotNo) { toast('Lot numarası zorunludur.'); return true; }
+  if (!orgId) { toast('Kuruma bağlı bir hesapla giriş yapmalısınız.'); return true; }
+
+  const chem = (state.chemicals || []).find((c) => c.id === chemicalId);
+  const button = e.target.querySelector('button[type="submit"]');
+  if (button) button.disabled = true;
+
+  addStock({
+    orgId, chemicalId, lotNo, qty: quantity,
+    unit: (chem && chem.unit) || 'lt', notes
+  })
+    .then(() => refreshStock())
+    .then(() => {
+      e.target.reset();
+      toast(`${quantity} birim stok girişi kaydedildi.`);
+    })
+    .catch((err) => toast(err.message || 'Stok girişi kaydedilemedi.'))
+    .finally(() => { if (button) button.disabled = false; });
+
+  return true;
+}
+
+// Re-read stock after any write, so the table shows the database's balance
+// rather than a local guess at it.
+export async function refreshStock() {
+  try {
+    replaceInventory(await fetchInventory());
+  } catch (err) {
+    console.error('[repellent] stok yenilenemedi', err);
+  }
+  renderInventory();
 }

@@ -141,6 +141,22 @@ export function replaceTechnicians(technicians) {
   state.technicians.splice(0, state.technicians.length, ...technicians);
 }
 
+// Real stock and the org's licensed product list. The seed shipped five
+// invented products; `chemicals` starts empty because a company's licensed
+// range is its own, not a catalogue we can guess at.
+if (!state.chemicals) state.chemicals = [];
+
+/** Replace stock on hand in place — same pattern as replaceSites(). */
+export function replaceInventory(items) {
+  if (!state.inventory) state.inventory = [];
+  state.inventory.splice(0, state.inventory.length, ...items);
+}
+
+/** Replace the licensed product list in place. */
+export function replaceChemicals(chemicals) {
+  state.chemicals.splice(0, state.chemicals.length, ...chemicals);
+}
+
 export function save(){
   localStorage.setItem("repellent-ops",JSON.stringify(state));
   const persistableState = structuredClone(state);

@@ -480,6 +480,72 @@ begin
   perform t_admin_reset();
 end $$;
 
+
+-- ============== KIMYASAL UYGULAMA + STOK MUHASEBESI =====================
+--
+-- record_chemical_usage() tek islemde uc sey yazar: uygulama, stok hareketi ve
+-- yeni bakiye. Yaridan bolunmus bir stok defteri, eski davranistan daha kotudur.
+
+do $$
+declare
+  chem_id uuid := '00000000-0000-0000-0000-0000000000c9';
+  stock_item uuid := '00000000-0000-0000-0000-0000000000d9';
+  before_qty numeric;
+  after_qty  numeric;
+begin
+  perform t_admin_reset();
+
+  insert into chemicals (id, org_id, name, unit, license_no, is_active)
+  values (chem_id, '00000000-0000-0000-0000-0000000000a1', 'Test Biyosidal', 'gr', 'R-TEST', true);
+  insert into inventory_items (id, org_id, chemical_id, lot_no, qty, unit, min_qty, unit_cost)
+  values (stock_item, '00000000-0000-0000-0000-0000000000a1', chem_id, 'LOT-T1', 100, 'gr', 10, 3);
+
+  select qty into before_qty from inventory_items where id = stock_item;
+
+  -- The customer must not be able to record an application at all.
+  perform t_login('00000000-0000-0000-0000-0000000000e4');
+  perform t_denied(
+    format($q$select record_chemical_usage('00000000-0000-0000-0000-0000000000f1', %L, 10, 'gr', 'depo', '')$q$, chem_id),
+    'Musteri kimyasal uygulamasi kaydedemiyor');
+
+  -- The technician who owns the job can.
+  perform t_login('00000000-0000-0000-0000-0000000000e2');
+  perform record_chemical_usage('00000000-0000-0000-0000-0000000000f1', chem_id, 25, 'gr', 'Depo', 'test');
+
+  perform t_admin_reset();
+  select qty into after_qty from inventory_items where id = stock_item;
+  perform t_ok(after_qty = before_qty - 25, 'Uygulama stoktan dusuluyor (100 -> 75)');
+  perform t_ok(exists (select 1 from chemical_usages
+                       where chemical_id = chem_id and quantity = 25),
+    'Uygulama kimyasal kullanim kaydina yaziliyor');
+  perform t_ok(exists (select 1 from inventory_transactions
+                       where item_id = stock_item and type = 'consume' and qty = 25),
+    'Stok hareketi ayni islemde yaziliyor');
+
+  -- A zero or negative quantity would corrupt the ledger.
+  perform t_login('00000000-0000-0000-0000-0000000000e2');
+  perform t_denied(
+    format($q$select record_chemical_usage('00000000-0000-0000-0000-0000000000f1', %L, 0, 'gr', 'x', '')$q$, chem_id),
+    'Sifir miktarli uygulama reddediliyor');
+
+  -- Restock is an admin action.
+  perform t_login('00000000-0000-0000-0000-0000000000e2');
+  perform t_denied(
+    format($q$select restock_inventory(%L, 50, 'giris')$q$, stock_item),
+    'Teknisyen stok girisi yapamiyor');
+
+  perform t_login('00000000-0000-0000-0000-0000000000e1');
+  perform restock_inventory(stock_item, 50, 'Depo girisi');
+  perform t_admin_reset();
+  perform t_ok((select qty from inventory_items where id = stock_item) = 125,
+    'Yonetici stok girisi bakiyeyi artiriyor (75 -> 125)');
+  perform t_ok(exists (select 1 from inventory_transactions
+                       where item_id = stock_item and type = 'refill' and qty = 50),
+    'Stok girisi hareket olarak kaydediliyor');
+
+  perform t_admin_reset();
+end $$;
+
 do $$ begin perform t_admin_reset(); end $$;
 
 rollback;
