@@ -86,64 +86,41 @@ function applyUser(user) {
   // actual credential, so editing this in devtools grants nothing.
   localStorage.setItem(USER_CACHE_KEY, JSON.stringify(user));
   checkSession();
-  loadRealSites();
-  loadRealWork();
-  loadRealTechnicians();
-  loadRealActivity();
+  loadRealData();
 }
 
-// Replaces the seeded demo portfolio with the signed-in org's real sites.
-// Fire-and-forget from applyUser: login must not block on this, and a
-// fresh org legitimately has zero sites — an empty list is the correct
-// result, not a failure. Errors are logged, not surfaced, so a transient
-// query failure doesn't block getting into the app; the sites view's own
-// empty-state (or a stale seed list) is the visible fallback.
-async function loadRealSites() {
-  try {
-    const sites = await fetchSites();
-    replaceSites(sites);
-    render();
-  } catch (err) {
-    console.error('[repellent] sahalar yuklenemedi', err);
-  }
-}
+// Replaces the seeded demo data with the signed-in org's real records.
+//
+// These used to be four independent fire-and-forget loaders, each calling
+// render() as it finished. That produced inconsistent intermediate states:
+// on a real account the sites query returned an empty list and re-rendered
+// while state.work still held the seeded demo work orders, and a work order
+// pointing at a site that no longer existed crashed the render outright. The
+// app froze on a half-painted dashboard.
+//
+// Loading them together and painting once removes that window entirely. A
+// fresh org legitimately has zero of everything, so an empty result is the
+// correct answer rather than a failure; Promise.allSettled means one failing
+// query cannot block the other three.
+async function loadRealData() {
+  const [sites, work, technicians, activity] = await Promise.allSettled([
+    fetchSites(),
+    fetchWorkOrders(),
+    fetchTechnicians(),
+    fetchRecentEvents()
+  ]);
 
-// Same reasoning as loadRealSites() above, for the work-order board. A fresh
-// org legitimately has zero work orders — the empty list is correct, not an
-// error state; src/views/work.js already renders that gracefully.
-async function loadRealWork() {
-  try {
-    const work = await fetchWorkOrders();
-    replaceWork(work);
-    render();
-  } catch (err) {
-    console.error('[repellent] is emirleri yuklenemedi', err);
-  }
-}
+  const apply = (result, label, fn) => {
+    if (result.status === 'fulfilled') fn(result.value);
+    else console.error(`[repellent] ${label} yuklenemedi`, result.reason);
+  };
 
-// The dashboard activity feed. Separate from loadRealWork() because it reads a
-// different table (work_order_events) and a failure in one should not blank
-// the other.
-async function loadRealActivity() {
-  try {
-    const events = await fetchRecentEvents();
-    replaceActivity(events);
-    render();
-  } catch (err) {
-    console.error('[repellent] aktivite akisi yuklenemedi', err);
-  }
-}
+  apply(sites, 'sahalar', replaceSites);
+  apply(work, 'is emirleri', replaceWork);
+  apply(technicians, 'teknisyenler', replaceTechnicians);
+  apply(activity, 'aktivite akisi', replaceActivity);
 
-// Feeds the technician picker in the "Yeni İş Emri" form (src/ui/modal.js) —
-// not the Ekip (team) page, which keeps its own seeded simulation. Zero
-// technicians is a real, valid state until the admin invites some.
-async function loadRealTechnicians() {
-  try {
-    const technicians = await fetchTechnicians();
-    replaceTechnicians(technicians);
-  } catch (err) {
-    console.error('[repellent] teknisyenler yuklenemedi', err);
-  }
+  render();
 }
 
 function clearUser() {

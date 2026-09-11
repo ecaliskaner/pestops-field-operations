@@ -56,21 +56,39 @@ export function setView(view){
   }
 }
 
+// One panel must never be able to take the application down with it.
+//
+// render() paints every view in turn, so an exception in any one of them used
+// to abort the whole pass: the screens after it never painted and the shell
+// was left half-drawn and unresponsive. That is exactly what a real account
+// hit on its first load — an empty site list made renderWork() throw, and the
+// app froze on a partly-rendered dashboard.
+//
+// Each panel is now isolated. A failure is logged loudly (it is still a bug to
+// fix, not something to swallow quietly) but the rest of the app still paints.
+function paint(name, fn) {
+  try {
+    fn();
+  } catch (err) {
+    console.error(`[repellent] ${name} cizilemedi`, err);
+  }
+}
+
 export function render(){
-  renderDashboard();
-  renderSites();
-  renderWork();
-  renderTeam();
-  renderInsights();
-  renderReports();
-  renderAiPredictions();
-  renderInventory();
-  renderFinance();
-  renderVisitReports();
-  renderCustomerHome();
-  renderTechToday();
-  setView(state.view);
-  applyRoleAccess();
+  paint('dashboard', renderDashboard);
+  paint('sites', renderSites);
+  paint('work', renderWork);
+  paint('team', renderTeam);
+  paint('insights', renderInsights);
+  paint('reports', renderReports);
+  paint('aiPredictions', renderAiPredictions);
+  paint('inventory', renderInventory);
+  paint('finance', renderFinance);
+  paint('visitReports', renderVisitReports);
+  paint('customerHome', renderCustomerHome);
+  paint('techToday', renderTechToday);
+  paint('view', () => setView(state.view));
+  paint('roleAccess', applyRoleAccess);
 }
 
 // Company Detail Page & Tabs Management

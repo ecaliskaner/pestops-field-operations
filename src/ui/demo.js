@@ -210,7 +210,10 @@ export function openNotificationCenter() {
 // The simulated Stage-2 "report emailed to customer" event (task 4-4).
 function simulateReportEmail() {
   // Prefer the site the presenter is currently viewing; fall back to the first.
-  const site = state.sites.find(s => s.id === ui.activeSiteId) || state.sites[0];
+  // Not `|| state.sites[0]`: that index is undefined while the real site list
+  // is still loading, and reading through it crashed the caller.
+  const site = state.sites.find(s => s.id === ui.activeSiteId) || null;
+  if (!site) return;
   const to = site.contact?.email || 'müşteri temsilcisi';
   window.__DEMO_NOTIFS__.unshift({
     title: 'Rapor müşteriye e-postalandı',

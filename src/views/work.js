@@ -138,8 +138,13 @@ export function renderTask(){
     return;
   }
   
-  const site = state.sites.find(s => s.id === w.siteId) || state.sites[0];
-  const visitChems = (site.chemicalsUsed || []).filter(cu => cu.workOrderId === w.id);
+  // `|| state.sites[0]` used to stand in here. On a real account whose site
+  // list is still loading — or simply empty — that index is undefined, and
+  // reading through it threw straight out of render(), leaving the whole app
+  // half-painted and unresponsive. A work order whose site is not loaded yet
+  // renders without the site-scoped sections instead.
+  const site = state.sites.find(s => s.id === w.siteId) || null;
+  const visitChems = ((site && site.chemicalsUsed) || []).filter(cu => cu.workOrderId === w.id);
   
   const chemsListHtml = visitChems.map((cu, idx) => {
     const chem = chemicalDatabase.find(c => c.id === cu.chemicalId);
@@ -182,7 +187,7 @@ export function renderTask(){
     <h2>${esc(w.title)}</h2>
     <p>${esc(w.description)}</p>
     <div class="detail-list" style="margin-bottom:14px;">
-      <div><span>Tesis</span><b>${w.site.split(' · ')[1]}</b></div>
+      <div><span>Tesis</span><b>${esc(String(w.site).split(' · ')[1] || w.site)}</b></div>
       <div><span>Ziyaret Türü</span><b>${(visitTypes.find(v=>v.code===w.visitType)||{}).name || 'Belirtilmedi'}</b></div>
       <div><span>Atanan teknisyen</span><b>${esc(w.tech)}</b></div>
       <div><span>Hedef zaman</span><b>${esc(w.due)}</b></div>
@@ -241,7 +246,11 @@ export function completeWorkClicks(e) {
         state.completed++;
         w.completed = true;
         
-        const site = state.sites.find(s => s.id === w.siteId) || state.sites[0];
+        const site = state.sites.find(s => s.id === w.siteId) || null;
+        if (!site) {
+          toast('Bu iş emrinin tesisi yüklenemedi; sayfayı yenileyip tekrar deneyin.');
+          return true;
+        }
         site.last = `Bugün · ${w.tech}`;
         
         // Calculate costs on PC
