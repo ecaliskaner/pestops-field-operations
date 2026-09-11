@@ -6,21 +6,13 @@ export const initial = {
   // Assignments dispatched to technicians' phones (core/notify.js). Empty at
   // seed: the demo shows them arriving when the planner publishes a day.
   techNotifications: [],
-  inventory: [
-    { id: 'stock1', chemicalId: 'ch1', name: 'K-Othrine SC 25', lotNo: 'LOT-2026-A1', qty: 25.5, unit: 'lt', minQty: 5.0, unitCost: 350 },
-    { id: 'stock2', chemicalId: 'ch2', name: 'Goliath Gel', lotNo: 'LOT-2026-G9', qty: 120, unit: 'tüp', minQty: 20, unitCost: 450 },
-    { id: 'stock3', chemicalId: 'ch3', name: 'Racumin Paste', lotNo: 'LOT-2025-R4', qty: 85.0, unit: 'kg', minQty: 15.0, unitCost: 180 },
-    { id: 'stock4', chemicalId: 'ch4', name: 'Storm Secure', lotNo: 'LOT-2026-S2', qty: 60.0, unit: 'kg', minQty: 10.0, unitCost: 220 },
-    { id: 'stock5', chemicalId: 'ch5', name: 'Aqua K-Othrine EW 20', lotNo: 'LOT-2026-EW', qty: 40.0, unit: 'lt', minQty: 8.0, unitCost: 380 },
-    { id: 'stock6', chemicalId: 'ch6', name: 'Icon 10 CS', lotNo: 'LOT-2026-I1', qty: 15.0, unit: 'lt', minQty: 3.0, unitCost: 410 },
-    { id: 'stock7', chemicalId: 'ch7', name: 'Maxforce White IC', lotNo: 'LOT-2026-M4', qty: 90, unit: 'tüp', minQty: 15, unitCost: 390 },
-    { id: 'stock8', chemicalId: 'ch8', name: 'Cislin 2.5 UL', lotNo: 'LOT-2026-C2', qty: 30.0, unit: 'lt', minQty: 5.0, unitCost: 520 },
-    { id: 'stock9', chemicalId: 'ch9', name: 'Steri-Fab', lotNo: 'LOT-2026-SF', qty: 50.0, unit: 'lt', minQty: 10.0, unitCost: 290 }
-  ],
-  inventoryTransactions: [
-    { id: 'tx1', chemicalId: 'ch1', type: 'refill', qty: 10, unit: 'lt', date: '01 Tem 2026', notes: 'Merkez depo ikmali' },
-    { id: 'tx2', chemicalId: 'ch3', type: 'refill', qty: 25, unit: 'kg', date: '05 Tem 2026', notes: 'Toplu alım girişi' }
-  ],
+  // Stock and its movement log are loaded from Supabase (repo/inventory.js).
+  // Nine invented products with invented lot numbers, prices and two frozen
+  // movements used to sit here. They were replaced at runtime, but a slow or
+  // failed load left the fabrication on screen as if it were this company's
+  // warehouse — which is exactly the failure mode worth removing at source.
+  inventory: [],
+  inventoryTransactions: [],
   invoices: [
     { id: 'INV-1001', siteId: 's1', company: 'Acme Foods', name: 'Gebze Üretim Tesisi', date: '01 Tem 2026', amount: 4000, laborCost: 720, chemicalCost: 380, margin: 72.5, duration: '240 dk', status: 'paid', description: 'Temmuz 2026 Periyodik Hizmet Bedeli' },
     { id: 'INV-1002', siteId: 's2', company: 'Kuzey Lojistik', name: 'Hadımköy Dağıtım Merkezi', date: '05 Tem 2026', amount: 4800, laborCost: 900, chemicalCost: 550, margin: 69.8, duration: '360 dk', status: 'sent', description: 'Sözleşme Kapsamı Rutin Ziyaret' }

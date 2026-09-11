@@ -217,3 +217,92 @@ export async function fetchUsageForWorkOrder(workOrderId) {
     at: row.applied_at
   }));
 }
+
+/**
+ * Register a product the org is licensed to apply.
+ *
+ * No RPC here: `chem_admin_write` already restricts this to an admin of the
+ * owning org, so a plain insert is checked by the same policy an RPC would
+ * have had to re-implement. The guard the RPCs exist for — several writes that
+ * must succeed or fail together — does not apply to a single row.
+ *
+ * @param {{orgId: string, name: string, activeIngredient?: string,
+ *   licenseNo?: string, licenseUntil?: string, targetPests?: string[],
+ *   unit?: string}} input
+ * @returns {Promise<object>}
+ */
+export async function createChemical(input) {
+  const row = await run(
+    supabase
+      .from('chemicals')
+      .insert({
+        org_id: input.orgId,
+        name: input.name,
+        active_ingredient: input.activeIngredient || null,
+        license_no: input.licenseNo || null,
+        // An empty date input must become NULL, not ''. Postgres rejects ''
+        // for a date column, and the error it returns names the column rather
+        // than the field the operator left blank.
+        license_until: input.licenseUntil || null,
+        target_pests: input.targetPests && input.targetPests.length ? input.targetPests : null,
+        unit: input.unit || 'lt'
+      })
+      .select(CHEMICAL_SELECT)
+      .single()
+  );
+  return row;
+}
+
+/**
+ * Retire a product from the picker without deleting it.
+ *
+ * Deleting is wrong: `chemical_usages` references the product, and those rows
+ * are the biyosidal record of what was applied on a customer's premises. The
+ * flag takes it out of circulation and leaves the history intact.
+ *
+ * @param {string} chemicalId
+ * @returns {Promise<void>}
+ */
+export async function deactivateChemical(chemicalId) {
+  await run(supabase.from('chemicals').update({ is_active: false }).eq('id', chemicalId));
+}
+
+/**
+ * Chemical applications recorded at one facility, newest first.
+ *
+ * The facility page used to read `site.chemicalsUsed`, a per-site array that
+ * only ever held seeded rows. Applications are recorded against a work order,
+ * and the work order carries the site, so the facility's own record is a
+ * query — not a second copy that has to be kept in step.
+ *
+ * @param {string} siteId
+ * @returns {Promise<object[]>}
+ */
+export async function fetchUsageForSite(siteId) {
+  const rows = await run(
+    supabase
+      .from('chemical_usages')
+      .select(`
+        id, quantity, unit, area_desc, applied_at, notes,
+        chemical:chemicals(id, name, active_ingredient, license_no),
+        technician:technicians(full_name),
+        work_order:work_orders(code)
+      `)
+      .eq('site_id', siteId)
+      .order('applied_at', { ascending: false })
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    chemicalId: row.chemical?.id || '',
+    name: row.chemical?.name || '',
+    activeIngredient: row.chemical?.active_ingredient || '',
+    licenseNo: row.chemical?.license_no || '',
+    quantity: num(row.quantity),
+    unit: row.unit || '',
+    area: row.area_desc || '',
+    notes: row.notes || '',
+    tech: row.technician?.full_name || '',
+    workOrderCode: row.work_order?.code || '',
+    at: row.applied_at
+  }));
+}

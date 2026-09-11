@@ -23,14 +23,14 @@ import { teamRosterClicks } from './views/team.js';
 import {
   siteCardClicks, backNavClicks, planToolbarClicks, planCanvasClicks,
   companyTabClicks, fileDownloadClicks, editSiteSubmit, adminInspectionSubmit,
-  fileUploadSubmit, recommendationSubmit, chemicalUsageSubmit, placementSubmit,
+  fileUploadSubmit, recommendationSubmit, placementSubmit,
   deviceReplacementSubmit, lifecycleClicks, recCustomerResponseSubmit, recApprovalSubmit,
   showStationDetail, switchCompanyTab, showCompanyDetail
 } from './views/companyDetail.js';
 import { reportCardClicks, reportModalClicks, generateReportSubmit } from './views/reports.js';
 import { insightsClicks } from './views/insights.js';
 import { invoiceActionClicks, invoiceFilterClicks, billingClicks } from './views/finance.js';
-import { stockRefillSubmit } from './views/inventory.js';
+import { stockRefillSubmit, chemicalDefineSubmit } from './views/inventory.js';
 import { createSiteSubmit } from './views/sites.js';
 import { demoClicks, openNotificationCenter, updateNotifBadge, mountPresenterBar } from './ui/demo.js';
 import { visitReportClicks, bindVisitReportFilters } from './views/visitReports.js';
@@ -274,8 +274,8 @@ const SUBMIT_CHAIN = [
   adminInspectionSubmit,
   fileUploadSubmit,
   recommendationSubmit,
-  chemicalUsageSubmit,
   stockRefillSubmit,
+  chemicalDefineSubmit,
   taskChemicalSubmit
 ];
 

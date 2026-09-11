@@ -440,11 +440,11 @@
           <div class="metric-grid" style="margin-bottom:16px;">
             <div class="metric-card">
               <div class="metric-icon blue">📦</div>
-              <div><span>Toplam Ürün Türü</span><strong id="invTotalProducts">0</strong></div>
+              <div><span>Ruhsatlı Ürün</span><strong id="invTotalProducts">0</strong></div>
             </div>
             <div class="metric-card">
-              <div class="metric-icon green">✓</div>
-              <div><span>Kritik Eşik Üstü</span><strong id="invHealthyStock">0</strong></div>
+              <div class="metric-icon red">⛔</div>
+              <div><span>Ruhsatı Dolan Ürün</span><strong id="invExpiredLicenses">0</strong></div>
             </div>
             <div class="metric-card">
               <div class="metric-icon amber">⚠</div>
@@ -452,11 +452,34 @@
             </div>
             <div class="metric-card">
               <div class="metric-icon violet">⇅</div>
-              <div><span>Son Hareket</span><strong style="font-size:12px;" id="invLastTransaction">Refill (10 lt)</strong></div>
+              <div><span>Son Hareket</span><strong style="font-size:12px;" id="invLastTransaction">—</strong></div>
             </div>
           </div>
 
           <div style="display:grid; grid-template-columns: 1.5fr 1fr; gap:16px;">
+            <div style="display:grid; gap:16px;">
+            <!-- Licensed products: what this org may legally apply -->
+            <article class="panel">
+              <p class="overline">RUHSATLI ÜRÜNLER</p>
+              <div class="table-panel" style="margin-top:10px; border:1px solid var(--line); border-radius:8px; max-height:260px; overflow:auto;">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Ürün Adı</th>
+                      <th>Etkin Madde</th>
+                      <th>Ruhsat No</th>
+                      <th>Ruhsat Bitişi</th>
+                      <th>Birim</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="invChemicalTableBody">
+                    <!-- Dynamically populated -->
+                  </tbody>
+                </table>
+              </div>
+            </article>
+
             <!-- Stock Levels Table -->
             <article class="panel">
               <p class="overline">GÜNCEL STOK SEVİYELERİ</p>
@@ -478,9 +501,53 @@
                 </table>
               </div>
             </article>
+            </div>
 
             <!-- Refill & Logs Panel -->
             <div style="display:grid; gap:16px;">
+              <article class="panel">
+                <p class="overline">YENİ ÜRÜN TANIMLA</p>
+                <p class="text-muted" style="font-size:11px; margin:4px 0 0;">Bir ürünü stoka alabilmek ve uygulamada seçebilmek için önce biyosidal ruhsat bilgisiyle tanımlayın.</p>
+                <form class="form-grid" id="invChemicalForm" style="margin-top:10px;">
+                  <label class="form-label">
+                    Ürün Adı
+                    <input required type="text" name="name" placeholder="Örn: K-Othrine SC 25" class="form-input">
+                  </label>
+                  <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                    <label class="form-label">
+                      Etkin Madde
+                      <input type="text" name="activeIngredient" placeholder="Örn: Deltamethrin" class="form-input">
+                    </label>
+                    <label class="form-label">
+                      Birim
+                      <select name="unit" class="form-select">
+                        <option value="lt">lt</option>
+                        <option value="ml">ml</option>
+                        <option value="kg">kg</option>
+                        <option value="gr">gr</option>
+                        <option value="tüp">tüp</option>
+                        <option value="adet">adet</option>
+                      </select>
+                    </label>
+                  </div>
+                  <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                    <label class="form-label">
+                      Ruhsat No
+                      <input type="text" name="licenseNo" placeholder="Biyosidal ruhsat no" class="form-input">
+                    </label>
+                    <label class="form-label">
+                      Ruhsat Bitiş Tarihi
+                      <input type="date" name="licenseUntil" class="form-input">
+                    </label>
+                  </div>
+                  <label class="form-label">
+                    Hedef Zararlılar
+                    <input type="text" name="targetPests" placeholder="Virgülle ayrın: Hamamböceği, Karınca" class="form-input">
+                  </label>
+                  <button type="submit" class="primary-btn" style="justify-content:center; width:100%;">＋ Ürünü Tanımla</button>
+                </form>
+              </article>
+
               <article class="panel">
                 <p class="overline">STOK EKLE / REFILL</p>
                 <form class="form-grid" id="invRefillForm">
@@ -1171,17 +1238,17 @@
               <div class="tab-pane hidden" id="paneCompChemicals">
                 <article class="panel" style="margin-bottom:16px;">
                   <h2>Kimyasal Kullanım Kayıtları</h2>
-                  <p class="text-muted" style="font-size:12px; margin-bottom:20px;">Ziyaretlerde kullanılan pestisit ve biyosidal ürünlerin uygulama kayıtları, dozaj hesaplamaları ve sorumlu teknisyen bilgileri.</p>
+                  <p class="text-muted" style="font-size:12px; margin-bottom:20px;">Ziyaretlerde kullanılan pestisit ve biyosidal ürünlerin uygulama kayıtları, bağlı oldukları iş emri ve sorumlu teknisyen bilgileri.</p>
                   
                   <div class="table-panel" style="border:1px solid var(--line); border-radius:8px; margin-bottom:20px; overflow:auto;">
                     <table>
                       <thead>
                         <tr>
                           <th>Kimyasal / Etken Madde</th>
-                          <th>Kategori</th>
+                          <th>Ruhsat No</th>
                           <th>Kullanım Miktarı</th>
                           <th>Uygulama Alanı</th>
-                          <th>Referans Dozaj</th>
+                          <th>İş Emri</th>
                           <th>Uygulayan</th>
                           <th>Tarih</th>
                         </tr>
@@ -1195,39 +1262,12 @@
 
                 <article class="panel">
                   <p class="overline">YENİ KİMYASAL KULLANIM KAYDI</p>
-                  <form class="form-grid" id="companyChemicalForm" style="grid-template-columns: 1.5fr 1fr 1fr 1fr auto; align-items: end; gap:12px; margin-top:8px;">
-                    <label class="form-label" style="margin-bottom:0;">
-                      Kimyasal Seçin
-                      <select required id="inpChemicalSelect" class="form-select" style="margin-top:4px; height:37px; padding:0 8px; font-size:12px;">
-                        <option value="">-- Kimyasal seçin --</option>
-                        <option value="ch1">K-Othrine SC 25 (Deltamethrin)</option>
-                        <option value="ch2">Goliath Gel (Fipronil)</option>
-                        <option value="ch3">Racumin Paste (Coumatetralyl)</option>
-                        <option value="ch4">Storm Secure (Flocoumafen)</option>
-                        <option value="ch5">Aqua K-Othrine EW 20 (Deltamethrin)</option>
-                        <option value="ch6">Icon 10 CS (Lambda-cyhalothrin)</option>
-                        <option value="ch7">Maxforce White IC (Imidacloprid)</option>
-                        <option value="ch8">Cislin 2.5 UL (Deltamethrin)</option>
-                        <option value="ch9">Steri-Fab (İzopropil Alkol)</option>
-                        <option value="ch10">Actellic 50 EC (Pirimiphos-methyl)</option>
-                        <option value="ch11">Demand CS (Lambda-cyhalothrin)</option>
-                        <option value="ch12">Responsar SC (Alfasipermetrin)</option>
-                      </select>
-                    </label>
-                    <label class="form-label" style="margin-bottom:0;">
-                      Kullanım Miktarı
-                      <input required type="text" id="inpChemicalQty" placeholder="Örn: 250 ml" class="form-input" style="margin-top:4px;">
-                    </label>
-                    <label class="form-label" style="margin-bottom:0;">
-                      Uygulama Alanı
-                      <input required type="text" id="inpChemicalArea" placeholder="Örn: 500 m²" class="form-input" style="margin-top:4px;">
-                    </label>
-                    <label class="form-label" style="margin-bottom:0;">
-                      Açıklama
-                      <input type="text" id="inpChemicalNotes" placeholder="Uygulama notu" class="form-input" style="margin-top:4px;">
-                    </label>
-                    <button type="submit" class="primary-btn" style="height:37px; padding:0 20px;">💊 Kaydet</button>
-                  </form>
+                  <p class="text-muted" style="font-size:12px; margin-top:8px;">
+                    Kimyasal uygulaması bir ziyarete bağlı olarak kaydedilir: müşteri raporuna
+                    basilan kayıt da, stoktan düşen miktar da uygulamanın hangi iş emrinde
+                    yapıldığını gerektirir. Kaydı <b>İş Emirleri</b> sayfasından ilgili ziyareti
+                    açarak girin.
+                  </p>
                 </article>
 
                 <!-- Roadmap §9: the automatic usage report depends on every
@@ -1236,11 +1276,11 @@
                   <div class="panel-header" style="margin-bottom:6px;">
                     <div>
                       <p class="overline">KİMYASAL BELGE KÜTÜPHANESİ</p>
-                      <h2>MSDS · Etiket Örneği · Bakanlık İzinleri</h2>
+                      <h2>Ruhsatlı Ürünler ve Belge Durumu</h2>
                     </div>
                     <span class="status-chip healthy" id="compChemDocsCount">0 ürün</span>
                   </div>
-                  <p class="text-muted" style="font-size:12px; margin-bottom:16px;">Kullanılan her biyosidal ürün için güvenlik bilgi formu, onaylı etiket örneği ve T.C. Sağlık Bakanlığı ruhsatı sistemde tutulur. Bu kayıtlar Repellent yöneticileri tarafından güncellenebilir.</p>
+                  <p class="text-muted" style="font-size:12px; margin-bottom:16px;">Kurumunuzun tanımlı biyosidal ürünleri, ruhsat numaraları ve geçerlilik tarihleri. Bu tesiste uygulanan ürünler işaretlenir. Ürünler Stok &amp; Envanter sayfasından tanımlanır.</p>
                   <div class="chem-doc-grid" id="compChemDocsGrid">
                     <!-- Dynamically populated -->
                   </div>

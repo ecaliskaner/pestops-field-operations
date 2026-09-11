@@ -6,7 +6,6 @@
 
 import { initial } from './seed.js';
 import { allSites } from '../core/state.js';
-import { chemicalDatabase, pestDatabase } from './catalog.js';
 
 const SEED = 0x1adb69;
 const MONTH_SHORT = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];

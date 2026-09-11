@@ -4,7 +4,7 @@
 import { $, $$, esc } from '../core/dom.js';
 import { recalculateSiteStats, state } from '../core/state.js';
 import { ui } from '../core/session.js';
-import { chemicalDatabase, equipmentStatusCodes, equipmentTypes, getChemicalDocuments, getPlacementSchema, getStationArea, pestDatabase, placementSummary, stationAreaName, stateLabel } from '../data/catalog.js';
+import { equipmentStatusCodes, equipmentTypes, getPlacementSchema, getStationArea, pestDatabase, placementSummary, stationAreaName, stateLabel } from '../data/catalog.js';
 import { setView } from '../core/router.js';
 import { renderClientAnalytics } from '../views/insights.js';
 import { toast } from '../core/dom.js';
@@ -15,6 +15,7 @@ import {
   barcodeFor, deviceReplacements, pointDeviceSummary, readingsForPoint,
   replacementReasons, technicianStats
 } from '../data/history.js';
+import { fetchUsageForSite } from '../data/repo/inventory.js';
 import {
   fetchRecommendations, respondToRecommendation, approveRecommendation,
   rejectRecommendation, uploadRecommendationPhoto, signedPhotoUrl
@@ -24,6 +25,9 @@ import { renderFloorPlan } from './floorPlan.js';
 import { visitsPerMonth } from '../data/schedule.js';
 import { demoToday } from '../data/history.js';
 import { techData } from '../data/seed.js';
+
+// Shared by the chemical-usage table and the licensed-product library below.
+const DAY_FMT = { day: '2-digit', month: 'short', year: 'numeric' };
 
 // Human-readable service cadence, derived from the contracted scope rather
 // than stored as prose — so it can never disagree with the visit plan.
@@ -885,66 +889,100 @@ export function renderPlacementForm(station) {
 
 // Mobile App Workflow
 
+// Chemical applications recorded at this facility.
+//
+// This used to read `site.chemicalsUsed` and resolve product names against
+// data/catalog.js. Neither survives contact with a real account: the array is
+// always empty (repo/sites.js), and the catalogue is a static list of brands
+// this company may not be licensed to apply. Applications are recorded against
+// a work order, so the facility's own record is a query over those rather than
+// a second copy that has to be kept in step.
 export function renderChemicalUsage(site) {
   const tbody = $('#compChemicalsTableBody');
   if (!tbody) return;
-  if (!site.chemicalsUsed) site.chemicalsUsed = [];
-  
-  const countLabel = $('#compChemicalsCount');
-  if (countLabel) countLabel.textContent = site.chemicalsUsed.length;
-  
-  tbody.innerHTML = site.chemicalsUsed.map((cu, index) => {
-    const chem = chemicalDatabase.find(c => c.id === cu.chemicalId);
-    const chemName = chem ? chem.name : 'Bilinmeyen Kimyasal';
-    const chemIngredient = chem ? chem.activeIngredient : '—';
-    const chemCategory = chem ? chem.category : '—';
-    const chemDosage = chem ? chem.dosagePerM2 : '—';
-    
-    return `
+
+  const paint = (rows) => {
+    const countLabel = $('#compChemicalsCount');
+    if (countLabel) countLabel.textContent = rows.length;
+    tbody.innerHTML = rows.map((cu) => `
       <tr>
-        <td><b>${chemName}</b><br><small class="text-muted">${chemIngredient}</small></td>
-        <td><span class="status-chip secondary" style="font-size:9px; font-weight:700;">${chemCategory}</span></td>
-        <td>${cu.quantity}</td>
-        <td>${cu.area}</td>
-        <td><small class="text-muted">${chemDosage}</small></td>
-        <td>${cu.tech}</td>
-        <td><small>${cu.date}</small></td>
+        <td><b>${esc(cu.name)}</b><br><small class="text-muted">${esc(cu.activeIngredient) || '—'}</small></td>
+        <td><code style="font-size:10px;">${esc(cu.licenseNo) || '—'}</code></td>
+        <td>${cu.quantity} ${esc(cu.unit)}</td>
+        <td>${esc(cu.area) || '—'}</td>
+        <td><small class="text-muted">${esc(cu.workOrderCode) || '—'}</small></td>
+        <td>${esc(cu.tech) || '—'}</td>
+        <td><small>${cu.at ? new Date(cu.at).toLocaleDateString('tr-TR', DAY_FMT) : '—'}</small></td>
       </tr>
-    `;
-  }).join('') || '<tr><td colspan="7" class="empty" style="text-align:center;">Henüz kimyasal kullanım kaydı bulunmuyor.</td></tr>';
+    `).join('') || '<tr><td colspan="7" class="empty" style="text-align:center;">Bu tesiste henüz kimyasal kullanım kaydı bulunmuyor.</td></tr>';
+  };
+
+  // A facility created in the browser has no database row yet, so there is
+  // nothing to ask for; painting the empty state is the honest answer.
+  if (!site.dbId) { paint([]); return; }
+
+  tbody.innerHTML = '<tr><td colspan="7" class="empty" style="text-align:center;">Yükleniyor…</td></tr>';
+  fetchUsageForSite(site.dbId)
+    .then(paint)
+    .catch((err) => {
+      console.error('[repellent] kimyasal kullanimlari yuklenemedi', err);
+      tbody.innerHTML = '<tr><td colspan="7" class="empty" style="text-align:center;">Kullanım kayıtları yüklenemedi.</td></tr>';
+    });
 }
 
-// Document library for every product in the catalog. Products actually used at
-// this facility are flagged, so an auditor can see the paperwork behind each
-// application record in the table above.
+// The org's licensed products, and whether this facility has seen them.
+//
+// What stood here was the heaviest fabrication in the app: a document library
+// listing twelve catalogue products, each with an invented "T.C. Sağlık Bak.
+// Ruhsat No", an invented file size and an invented date, under a heading
+// offering MSDS sheets and ministry permits. A "Görüntüle" button sat beside
+// every row with no handler behind it. This is a screen a BRCGS or IFS auditor
+// is shown, so inventing its contents is not a cosmetic problem.
+//
+// It now lists what the org actually registered, with the ruhsat number it
+// entered. MSDS upload does not exist yet, and a product without one says so
+// rather than displaying a reference that was never filed.
 export function renderChemicalDocLibrary(site) {
   const grid = $('#compChemDocsGrid');
   if (!grid) return;
 
-  const usedIds = new Set((site.chemicalsUsed || []).map(cu => cu.chemicalId));
+  const chemicals = state.chemicals || [];
+  const today = new Date();
 
-  grid.innerHTML = chemicalDatabase.map(chem => {
-    const docs = getChemicalDocuments(chem.id);
-    const used = usedIds.has(chem.id);
-    return `
+  const paint = (usedIds) => {
+    grid.innerHTML = chemicals.map((chem) => {
+      const used = usedIds.has(chem.id);
+      const expired = !!chem.licenseUntil && new Date(chem.licenseUntil) < today;
+      const until = chem.licenseUntil
+        ? new Date(chem.licenseUntil).toLocaleDateString('tr-TR', DAY_FMT)
+        : null;
+      return `
       <div class="chem-doc-card">
-        <h4>${chem.name} ${used ? '<span class="status-chip healthy" style="font-size:8px; font-weight:700;">BU TESİSTE KULLANILDI</span>' : ''}</h4>
-        <p class="chem-doc-sub">${chem.activeIngredient} · ${chem.concentration} · ${chem.category}</p>
-        ${docs.length ? docs.map(d => `
-          <div class="chem-doc-row">
-            <span>${d.icon}</span>
-            <span>
-              <b>${d.label}</b>
-              <span class="chem-doc-meta">${d.ref} · ${d.size} · ${d.date}</span>
-            </span>
-            <button type="button" class="text-btn chem-doc-btn" data-chem-doc="${chem.id}:${d.kind}">Görüntüle ↗</button>
-          </div>`).join('')
-        : '<div class="chem-doc-row"><span class="chem-doc-missing">⚠ Belge eksik — kullanım raporu üretilemez.</span></div>'}
+        <h4>${esc(chem.name)} ${used ? '<span class="status-chip healthy" style="font-size:8px; font-weight:700;">BU TESİSTE KULLANILDI</span>' : ''}</h4>
+        <p class="chem-doc-sub">${esc(chem.activeIngredient) || 'Etkin madde girilmemiş'}${chem.unit ? ' · ' + esc(chem.unit) : ''}</p>
+        <div class="chem-doc-row">
+          <span>📜</span>
+          <span>
+            <b>Biyosidal Ruhsat</b>
+            <span class="chem-doc-meta">${esc(chem.licenseNo) || 'Ruhsat no girilmemiş'}${until ? ' · geçerlilik ' + until : ''}</span>
+          </span>
+          ${expired ? '<span class="status-chip critical" style="font-size:8px;">SÜRESİ DOLDU</span>' : ''}
+        </div>
+        <div class="chem-doc-row">
+          <span class="chem-doc-missing">⚠ MSDS / güvenlik bilgi formu henüz yüklenmedi.</span>
+        </div>
       </div>`;
-  }).join('');
+    }).join('') ||
+      '<p class="text-muted" style="font-size:12px;">Henüz ruhsatlı ürün tanımlanmamış. Stok &amp; Envanter sayfasından ekleyin.</p>';
 
-  const count = $('#compChemDocsCount');
-  if (count) count.textContent = `${chemicalDatabase.length} ürün · ${chemicalDatabase.length * 3} belge`;
+    const count = $('#compChemDocsCount');
+    if (count) count.textContent = `${chemicals.length} ürün`;
+  };
+
+  if (!site.dbId) { paint(new Set()); return; }
+  fetchUsageForSite(site.dbId)
+    .then((rows) => paint(new Set(rows.map((r) => r.chemicalId))))
+    .catch(() => paint(new Set()));
 }
 
 export function renderServiceScope(site) {
@@ -1574,15 +1612,14 @@ export function recommendationSubmit(e) {
   return false;
 }
 
-export function chemicalUsageSubmit(e) {
-  if (e.target.id !== 'companyChemicalForm') return false;
-  e.preventDefault();
-
-  // This form recorded an application against the *site* and deducted seeded
-  // stock locally. A real application belongs to a visit: chemical_usages is
-  // what a customer's report prints and what the stock ledger is written from,
-  // and both need the work order it happened on. Rather than invent one, the
-  // entry is directed to the job it belongs to.
-  toast('Kimyasal uygulaması ilgili iş emri üzerinden kaydedilir — İş Emirleri sayfasından ziyareti açın.');
-  return true;
-}
+// chemicalUsageSubmit() used to live here. The facility page carried a form
+// that recorded an application against the *site* and deducted seeded stock in
+// the browser, backed by a hardcoded twelve-product picker in index.html. An
+// application belongs to a visit — chemical_usages is what the customer report
+// prints and what the stock ledger is written from, and both need the work
+// order it happened on — so the form was left refusing every submission with a
+// pointer to the work order flow.
+//
+// A form that looks usable and always refuses is worse than no form, so the
+// markup and this handler are both gone; the panel now just says where the
+// entry is made.

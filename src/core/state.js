@@ -51,6 +51,13 @@ export function load(){
         if (site[key] === undefined) site[key] = structuredClone(value);
       }
     }
+    // Stock and its movement log are owned by the server. A session saved
+    // while the old seed shipped nine invented products would otherwise keep
+    // showing them in this browser forever, and a failed load would leave
+    // that fabrication on screen. Dropping the persisted copy means the
+    // warehouse is either the database's answer or visibly empty.
+    merged.inventory = [];
+    merged.inventoryTransactions = [];
     return merged;
   } catch { return structuredClone(initial); }
 }
@@ -155,6 +162,19 @@ export function replaceInventory(items) {
 /** Replace the licensed product list in place. */
 export function replaceChemicals(chemicals) {
   state.chemicals.splice(0, state.chemicals.length, ...chemicals);
+}
+
+/**
+ * Replace the stock movement log in place.
+ *
+ * The seed shipped two invented movements that nothing ever appended to, so
+ * the log was frozen fiction. Real movements are written by
+ * record_chemical_usage() and restock_inventory(); this installs what the
+ * database actually holds.
+ */
+export function replaceStockTransactions(txs) {
+  if (!state.inventoryTransactions) state.inventoryTransactions = [];
+  state.inventoryTransactions.splice(0, state.inventoryTransactions.length, ...txs);
 }
 
 export function save(){

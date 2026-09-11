@@ -546,6 +546,71 @@ begin
   perform t_admin_reset();
 end $$;
 
+-- ============== RUHSATLI URUN TANIMLAMA ================================
+--
+-- Urun tanimlama RPC uzerinden degil, dogrudan insert ile yapilir: chemicals
+-- uzerindeki chem_admin_write policy'si zaten org + yonetici kontrolunu
+-- yapiyor, bir RPC ayni kontrolu tekrar yazmaktan baska is gormezdi. Bu
+-- testler, o policy'nin gercekten tek koruma oldugunu dogruluyor.
+
+do $$
+declare
+  new_chem uuid := '00000000-0000-0000-0000-0000000000ca';
+begin
+  perform t_admin_reset();
+
+  -- A technician may read the range but must not extend it: which products the
+  -- company is licensed to apply is not a field decision.
+  perform t_login('00000000-0000-0000-0000-0000000000e2');
+  perform t_denied(
+    $q$insert into chemicals (org_id, name, unit)
+       values ('00000000-0000-0000-0000-0000000000a1', 'Teknisyen Urunu', 'lt')$q$,
+    'Teknisyen ruhsatli urun tanimlayamiyor');
+
+  -- Nor may a customer.
+  perform t_login('00000000-0000-0000-0000-0000000000e4');
+  perform t_denied(
+    $q$insert into chemicals (org_id, name, unit)
+       values ('00000000-0000-0000-0000-0000000000a1', 'Musteri Urunu', 'lt')$q$,
+    'Musteri ruhsatli urun tanimlayamiyor');
+
+  -- The admin may, for their own org.
+  perform t_login('00000000-0000-0000-0000-0000000000e1');
+  insert into chemicals (id, org_id, name, active_ingredient, license_no, license_until, unit)
+  values (new_chem, '00000000-0000-0000-0000-0000000000a1',
+          'Yeni Biyosidal', 'Deltamethrin', 'R-2026-01', '2027-01-01', 'lt');
+
+  perform t_admin_reset();
+  perform t_ok(exists (select 1 from chemicals where id = new_chem and license_no = 'R-2026-01'),
+    'Yonetici ruhsatli urun tanimlayabiliyor');
+
+  -- An admin of another org must not be able to file a product against this
+  -- one. The rival admin is created here rather than in the shared fixtures,
+  -- so no earlier row-count assertion shifts underneath this test.
+  perform t_admin_reset();
+  insert into auth.users (id, email)
+  values ('00000000-0000-0000-0000-0000000000e5', 'rakip@example.test');
+  update profiles set org_id = '00000000-0000-0000-0000-0000000000a2',
+                      role = 'admin', full_name = 'Rakip Yoneticisi'
+   where id = '00000000-0000-0000-0000-0000000000e5';
+  perform t_login('00000000-0000-0000-0000-0000000000e5');
+  perform t_denied(
+    $q$insert into chemicals (org_id, name, unit)
+       values ('00000000-0000-0000-0000-0000000000a1', 'Yabanci Urun', 'lt')$q$,
+    'Baska kurumun yoneticisi bu kuruma urun tanimlayamiyor');
+
+  -- Retiring a product is a flag, never a delete: chemical_usages references it
+  -- and those rows are the record of what was applied on a customer's premises.
+  perform t_login('00000000-0000-0000-0000-0000000000e1');
+  update chemicals set is_active = false where id = new_chem;
+  perform t_admin_reset();
+  perform t_ok((select is_active from chemicals where id = new_chem) = false,
+    'Urun silinmeden kullanim disi birakilabiliyor');
+
+  perform t_admin_reset();
+end $$;
+
+
 do $$ begin perform t_admin_reset(); end $$;
 
 rollback;

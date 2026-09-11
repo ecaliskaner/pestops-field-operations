@@ -15,7 +15,7 @@
 import { supabase, run, errorMessage, isConfigured } from './supabase.js';
 import {
   state, replaceSites, replaceWork, replaceTechnicians, replaceActivity,
-  replaceInventory, replaceChemicals
+  replaceInventory, replaceChemicals, replaceStockTransactions
 } from './state.js';
 import { toast } from './dom.js';
 import { checkSession } from './roles.js';
@@ -24,7 +24,7 @@ import { fetchSites } from '../data/repo/sites.js';
 import { fetchWorkOrders, fetchRecentEvents } from '../data/repo/work.js';
 import { fetchTechnicians } from '../data/repo/technicians.js';
 import { fetchVisitHistory } from '../data/repo/visits.js';
-import { fetchInventory, fetchChemicals } from '../data/repo/inventory.js';
+import { fetchInventory, fetchChemicals, fetchStockTransactions } from '../data/repo/inventory.js';
 import { fetchRecommendations } from '../data/repo/customer.js';
 import { setVisitHistory } from '../data/history.js';
 
@@ -111,7 +111,8 @@ function applyUser(user) {
 // query cannot block the other three.
 async function loadRealData() {
   const [
-    sites, work, technicians, activity, visitHistory, findings, inventory, chemicals
+    sites, work, technicians, activity, visitHistory, findings, inventory, chemicals,
+    stockTransactions
   ] = await Promise.allSettled([
     fetchSites(),
     fetchWorkOrders(),
@@ -120,7 +121,8 @@ async function loadRealData() {
     fetchVisitHistory(),
     fetchRecommendations(),
     fetchInventory(),
-    fetchChemicals()
+    fetchChemicals(),
+    fetchStockTransactions()
   ]);
 
   const apply = (result, label, fn) => {
@@ -134,6 +136,7 @@ async function loadRealData() {
   apply(activity, 'aktivite akisi', replaceActivity);
   apply(inventory, 'stok', replaceInventory);
   apply(chemicals, 'kimyasallar', replaceChemicals);
+  apply(stockTransactions, 'stok hareketleri', replaceStockTransactions);
 
   // The reporting layer (reports, insights, finance, the printable bodies)
   // all derive from this one store, so it is installed before the paint.
