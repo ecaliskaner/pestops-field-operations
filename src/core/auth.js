@@ -20,6 +20,9 @@ import { render } from './router.js';
 import { fetchSites } from '../data/repo/sites.js';
 import { fetchWorkOrders, fetchRecentEvents } from '../data/repo/work.js';
 import { fetchTechnicians } from '../data/repo/technicians.js';
+import { fetchVisitHistory } from '../data/repo/visits.js';
+import { fetchRecommendations } from '../data/repo/customer.js';
+import { setVisitHistory } from '../data/history.js';
 
 const USER_CACHE_KEY = 'repellent-user';
 
@@ -103,11 +106,13 @@ function applyUser(user) {
 // correct answer rather than a failure; Promise.allSettled means one failing
 // query cannot block the other three.
 async function loadRealData() {
-  const [sites, work, technicians, activity] = await Promise.allSettled([
+  const [sites, work, technicians, activity, visitHistory, findings] = await Promise.allSettled([
     fetchSites(),
     fetchWorkOrders(),
     fetchTechnicians(),
-    fetchRecentEvents()
+    fetchRecentEvents(),
+    fetchVisitHistory(),
+    fetchRecommendations()
   ]);
 
   const apply = (result, label, fn) => {
@@ -119,6 +124,19 @@ async function loadRealData() {
   apply(work, 'is emirleri', replaceWork);
   apply(technicians, 'teknisyenler', replaceTechnicians);
   apply(activity, 'aktivite akisi', replaceActivity);
+
+  // The reporting layer (reports, insights, finance, the printable bodies)
+  // all derive from this one store, so it is installed before the paint.
+  // Findings ride along because the report bodies count them per site.
+  if (visitHistory.status === 'fulfilled') {
+    setVisitHistory({
+      months: visitHistory.value.months,
+      visits: visitHistory.value.visits,
+      recommendations: findings.status === 'fulfilled' ? findings.value : []
+    });
+  } else {
+    console.error('[repellent] ziyaret gecmisi yuklenemedi', visitHistory.reason);
+  }
 
   render();
 }

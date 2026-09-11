@@ -67,10 +67,13 @@ export const state = load();
  * product (it appeared in the sites list but had no plan, no report scope and no
  * ranking row).
  *
- * Falls back to the seed if state is somehow empty, so a lookup never returns
- * an empty portfolio.
+ * There is deliberately no fallback to the seed. It used to return
+ * `initial.sites` whenever the live list was empty, which on a real account
+ * with no facilities yet meant the seeded demo customers (Acme Foods, Kuzey
+ * Lojistik...) leaked into the site ranking, the report scopes and the
+ * insights charts. An empty portfolio is a real state and must render as one.
  */
-export const allSites = () => (state.sites && state.sites.length ? state.sites : initial.sites);
+export const allSites = () => state.sites || [];
 
 // Sites the current user is allowed to see. A customer (client role) is scoped
 // to their own company's locations only — the roadmap (§11) is explicit that a
