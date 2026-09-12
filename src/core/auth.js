@@ -28,7 +28,8 @@ import { fetchVisitHistory } from '../data/repo/visits.js';
 import { fetchInventory, fetchChemicals, fetchStockTransactions } from '../data/repo/inventory.js';
 import { fetchRecommendations, fetchContracts } from '../data/repo/customer.js';
 import { fetchInvoices, fetchOrganization, fetchTechnicianRates } from '../data/repo/billing.js';
-import { setVisitHistory } from '../data/history.js';
+import { setVisitHistory, setStationReplacements } from '../data/history.js';
+import { fetchAllReplacements } from '../data/repo/stations.js';
 
 const USER_CACHE_KEY = 'repellent-user';
 
@@ -115,7 +116,7 @@ async function loadRealData() {
   const [
     sites, work, technicians, activity, visitHistory, findings, inventory, chemicals,
     stockTransactions, contracts, invoices, organization,
-    techRates
+    techRates, replacements
   ] = await Promise.allSettled([
     fetchSites(),
     fetchWorkOrders(),
@@ -129,7 +130,8 @@ async function loadRealData() {
     fetchContracts(),
     fetchInvoices(),
     fetchOrganization(),
-    fetchTechnicianRates()
+    fetchTechnicianRates(),
+    fetchAllReplacements()
   ]);
 
   const apply = (result, label, fn) => {
@@ -161,6 +163,7 @@ async function loadRealData() {
   apply(invoices, 'faturalar', replaceInvoices);
   apply(organization, 'kurum bilgisi', setOrganization);
   apply(techRates, 'teknisyen ucretleri', setTechRates);
+  apply(replacements, 'cihaz degisimleri', setStationReplacements);
 
   // The reporting layer (reports, insights, finance, the printable bodies)
   // all derive from this one store, so it is installed before the paint.

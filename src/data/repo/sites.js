@@ -22,14 +22,20 @@ const SITE_SELECT = `
   id, name, city, address, sector, color,
   lat, lng, geofence_radius_m,
   contact_name, contact_phone, contact_email, service_scope,
-  customer:customers(name),
-  stations(code, type, pos_x, pos_y, last_status, last_bait_status, notes)
+  customer:customers(id, name),
+  stations(id, code, type, pos_x, pos_y, last_status, last_bait_status, notes, device_barcode)
 `;
 
 function mapStation(row) {
   return {
+    // The uuid is what writes address: a reading, a device replacement and a
+    // QR scan all reference the station row, not its per-site code.
+    dbId: row.id,
     code: row.code,
     type: row.type,
+    // The barcode physically on the device. Blank until the org records one;
+    // it used to be generated from a hash of the site id and point code.
+    deviceBarcode: row.device_barcode || '',
     x: row.pos_x === null ? 0 : Number(row.pos_x),
     y: row.pos_y === null ? 0 : Number(row.pos_y),
     checked: row.last_status !== 'unchecked',
@@ -55,6 +61,9 @@ export function mapSiteRow(row) {
   return {
     id: row.id,
     company: row.customer?.name || '',
+    // Needed to write the contact record back; the form edits the customer's
+    // details, not the site's.
+    customerId: row.customer?.id || '',
     name: row.name,
     city: row.city || '',
     // Recomputed from stations on every render — see file header.
@@ -104,7 +113,13 @@ export async function fetchSites() {
 // doesn't parse. The contract form still collects this as free text (matching
 // the rest of the app's date style), but the contracts table needs real
 // date columns, so the one form on the free-text -> date boundary lives here.
-function parseContractPeriod(text) {
+/**
+ * Parse `01.01.2026 - 31.12.2026` into two ISO dates, or null.
+ *
+ * Exported because the facility edit form collects the period the same way
+ * the create form does, and two copies of this regex would drift.
+ */
+export function parseContractPeriod(text) {
   const m = String(text || '').match(
     /(\d{1,2})\.(\d{1,2})\.(\d{4})\s*-\s*(\d{1,2})\.(\d{1,2})\.(\d{4})/
   );
@@ -176,4 +191,44 @@ export async function createSite(input) {
   }
 
   return mapSiteRow(row);
+}
+
+/**
+ * Update a facility's own details and its customer's contact record.
+ *
+ * The edit form wrote all of this to browser state and called save(), so a
+ * corrected phone number or address survived only in the browser it was typed
+ * in. Two tables are involved because the form mixes them: the address belongs
+ * to the site, the contact to the customer.
+ *
+ * @param {{siteId: string, customerId?: string, address?: string,
+ *   contactName?: string, contactPhone?: string, contactEmail?: string}} input
+ * @returns {Promise<void>}
+ */
+export async function updateSite(input) {
+  const siteRows = await run(
+    supabase
+      .from('sites')
+      .update({ address: input.address || null })
+      .eq('id', input.siteId)
+      .select('id')
+  );
+  // RLS filters an UPDATE to zero rows without raising; a silent no-op here
+  // would show the operator a success toast for a write that never happened.
+  if (!siteRows.length) {
+    throw new Error('Tesis güncellenemedi — yönetici yetkisi gerekiyor.');
+  }
+
+  if (!input.customerId) return;
+  await run(
+    supabase
+      .from('customers')
+      .update({
+        contact_name: input.contactName || null,
+        contact_phone: input.contactPhone || null,
+        contact_email: input.contactEmail || null
+      })
+      .eq('id', input.customerId)
+      .select('id')
+  );
 }

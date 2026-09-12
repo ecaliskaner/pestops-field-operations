@@ -13,6 +13,7 @@ import { renderAiPredictions, renderInsights } from '../views/insights.js';
 import { renderReports } from '../views/reports.js';
 import { renderInventory } from '../views/inventory.js';
 import { renderFinance } from '../views/finance.js';
+import { renderSettings } from '../views/settings.js';
 import { renderVisitReports } from '../views/visitReports.js';
 import { renderCustomerHome } from '../views/customerHome.js';
 import { renderTechToday } from '../views/techToday.js';
@@ -87,6 +88,7 @@ export function render(){
   paint('visitReports', renderVisitReports);
   paint('customerHome', renderCustomerHome);
   paint('techToday', renderTechToday);
+  paint('settings', renderSettings);
   paint('view', () => setView(state.view));
   paint('roleAccess', applyRoleAccess);
 }

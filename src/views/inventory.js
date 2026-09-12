@@ -16,7 +16,8 @@
 import { $, toast } from '../core/dom.js';
 import { state, replaceInventory, replaceChemicals, replaceStockTransactions } from '../core/state.js';
 import {
-  fetchInventory, fetchChemicals, fetchStockTransactions, addStock, createChemical
+  fetchInventory, fetchChemicals, fetchStockTransactions, addStock, createChemical,
+  uploadMsds, signedMsdsUrl
 } from '../data/repo/inventory.js';
 
 // Everything below goes into innerHTML. Product names, lot numbers and free-
@@ -57,10 +58,14 @@ function renderChemicals() {
         <td><small>${shortDate(c.licenseUntil)}</small></td>
         <td><small>${esc(c.unit)}</small></td>
         <td>${badge}</td>
+        <td>${c.msdsPath
+          ? `<button type="button" class="text-btn msds-open-btn" data-chem="${esc(c.id)}" style="padding:0; font-size:10px; font-weight:700; color:var(--violet);">MSDS ↗</button>`
+          : '<span style="color:var(--muted); font-size:10px;">yüklenmedi</span>'}
+          <button type="button" class="text-btn msds-upload-btn" data-chem="${esc(c.id)}" style="padding:0 0 0 6px; font-size:10px; font-weight:700; color:var(--blue);">${c.msdsPath ? 'değiştir' : 'yükle'}</button></td>
       </tr>
     `;
   }).join('') ||
-    '<tr><td colspan="6" class="empty" style="text-align:center;">Henüz ruhsatlı ürün tanımlanmamış. Sağdaki formdan ekleyin.</td></tr>';
+    '<tr><td colspan="7" class="empty" style="text-align:center;">Henüz ruhsatlı ürün tanımlanmamış. Sağdaki formdan ekleyin.</td></tr>';
 }
 
 function renderStock() {
@@ -267,4 +272,50 @@ export async function refreshChemicals() {
     console.error('[repellent] ruhsatli urunler yenilenemedi', err);
   }
   renderInventory();
+}
+
+/* ------------------------------------------------------------------ MSDS */
+//
+// `chemicals.msds_path` existed from the start with no bucket behind it, so the
+// facility document library had nothing to show. The file input is created on
+// demand rather than sitting in the markup, because one hidden input shared by
+// every row would need its value cleared between products anyway.
+
+export function msdsClicks(e) {
+  const open = e.target.closest('.msds-open-btn');
+  if (open) {
+    const chem = (state.chemicals || []).find((c) => c.id === open.dataset.chem);
+    if (!chem?.msdsPath) { toast('Bu ürün için MSDS yüklenmemiş.'); return true; }
+    signedMsdsUrl(chem.msdsPath)
+      .then((url) => {
+        if (url) window.open(url, '_blank', 'noopener');
+        else toast('MSDS bağlantısı alınamadı.');
+      });
+    return true;
+  }
+
+  const upload = e.target.closest('.msds-upload-btn');
+  if (upload) {
+    const chemicalId = upload.dataset.chem;
+    const orgId = state.currentUser?.orgId;
+    if (!orgId) { toast('Kuruma bağlı bir hesapla giriş yapmalısınız.'); return true; }
+
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'application/pdf,image/png,image/jpeg';
+    input.onchange = () => {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      upload.disabled = true;
+      uploadMsds({ orgId, chemicalId, file })
+        .then(() => refreshChemicals())
+        .then(() => toast('MSDS yüklendi.'))
+        .catch((err) => toast(err.message || 'MSDS yüklenemedi.'))
+        .finally(() => { upload.disabled = false; });
+    };
+    input.click();
+    return true;
+  }
+
+  return false;
 }

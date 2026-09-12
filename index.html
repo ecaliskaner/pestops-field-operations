@@ -43,6 +43,7 @@
           <button class="nav-item" data-view="reports"><span>▤</span> Raporlar</button>
           <button class="nav-item" data-view="inventory" id="navInventoryBtn"><span>📦</span> Stok & Envanter</button>
           <button class="nav-item" data-view="finance" id="navFinanceBtn"><span>🧾</span> Finans & Fatura</button>
+          <button class="nav-item" data-view="settings" id="navSettingsBtn"><span>⚙</span> Kurum Ayarları</button>
         </nav>
 
         <div class="sidebar-footer" id="sidebarUserProfileBlock">
@@ -470,7 +471,8 @@
                       <th>Ruhsat No</th>
                       <th>Ruhsat Bitişi</th>
                       <th>Birim</th>
-                      <th></th>
+                      <th>Durum</th>
+                      <th>MSDS</th>
                     </tr>
                   </thead>
                   <tbody id="invChemicalTableBody">
@@ -592,6 +594,64 @@
                 </div>
               </article>
             </div>
+          </div>
+        </section>
+
+        <section id="settings" class="view">
+          <div class="page-heading compact">
+            <div>
+              <p class="overline">KURUM</p>
+              <h1>Kurum Ayarları</h1>
+              <p>Faturada ve sevk irsaliyesinde <b>düzenleyen taraf</b> olarak basilan bilgiler. Boş bırakılan alan belgede boşluk olarak görünür.</p>
+            </div>
+          </div>
+
+          <div style="display:grid; grid-template-columns: 1.2fr 1fr; gap:16px; align-items:start;">
+            <article class="panel">
+              <p class="overline">DÜZENLEYEN BİLGİLERİ</p>
+              <form class="form-grid" id="orgSettingsForm" style="margin-top:10px;">
+                <label class="form-label">
+                  Kurum Unvanı
+                  <input required type="text" name="name" id="inpOrgName" class="form-input" placeholder="Örn: Örnek İlaçlama Ltd. Şti.">
+                </label>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                  <label class="form-label">
+                    Vergi Dairesi
+                    <input type="text" name="taxOffice" id="inpOrgTaxOffice" class="form-input" placeholder="Örn: Gebze VD">
+                  </label>
+                  <label class="form-label">
+                    Vergi Numarası (VKN)
+                    <input type="text" name="taxNo" id="inpOrgTaxNo" class="form-input" inputmode="numeric" placeholder="10 haneli">
+                  </label>
+                </div>
+                <label class="form-label">
+                  Adres
+                  <input type="text" name="address" id="inpOrgAddress" class="form-input" placeholder="Fatura üzerinde görünecek açık adres">
+                </label>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                  <label class="form-label">
+                    Telefon
+                    <input type="text" name="phone" id="inpOrgPhone" class="form-input">
+                  </label>
+                  <label class="form-label">
+                    E-Posta
+                    <input type="email" name="email" id="inpOrgEmail" class="form-input">
+                  </label>
+                </div>
+                <button type="submit" class="primary-btn" style="justify-content:center; width:100%;">Kaydet</button>
+              </form>
+            </article>
+
+            <article class="panel">
+              <p class="overline">BELGEDE NASIL GÖRÜNECEK</p>
+              <p class="text-muted" style="font-size:11px; margin:4px 0 10px;">Fatura ve irsaliyenin “DÜZENLEYEN” köşesinin önizlemesi.</p>
+              <div class="bill-parties" style="grid-template-columns:1fr;">
+                <div id="orgPreview"></div>
+              </div>
+              <p class="text-muted" style="font-size:10px; margin-top:12px;">
+                Vergi bilgisi girilmeden kesilen bir fatura, bu alanları boş basar. Sabit kodlanmış bir unvan ya da VKN kullanılmaz.
+              </p>
+            </article>
           </div>
         </section>
 
@@ -966,9 +1026,9 @@
                           <label class="placement-field">
                             <span class="placement-label">Değişim Nedeni<small>Reason</small></span>
                             <select name="reasonCode" class="form-select" required>
-                              <option value="KI">Kırık (KI — Broken)</option>
-                              <option value="KA">Kayıp (KA — Lost)</option>
-                              <option value="Y">İstasyon Yenilendi (Y — Renewed)</option>
+                              <option value="broken">Kırık</option>
+                              <option value="lost">Kayıp</option>
+                              <option value="renewed">İstasyon Yenilendi</option>
                             </select>
                           </label>
                           <label class="placement-field">
@@ -994,6 +1054,11 @@
                       <hr class="divider" style="margin:10px 0;">
 
                       <form id="adminInspectionForm">
+                        <label class="form-label">
+                          Bağlı Ziyaret (İş Emri)
+                          <select required name="workOrderId" id="inpInspectionWorkOrder" class="form-select"></select>
+                          <small class="text-muted" style="font-size:10px;">Denetim kaydı bir ziyarete bağlanır; müşteri raporu ve denetim izi bunun üzerinden kurulur.</small>
+                        </label>
                         <label class="form-label">
                           Yem Tüketim Durumu
                           <select name="baitStatus" id="inpBaitStatus" class="form-select">

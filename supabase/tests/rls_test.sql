@@ -721,6 +721,59 @@ begin
 end $$;
 
 
+-- ============== CIHAZ DEGISIMI VE NOKTA KIMLIGI ========================
+--
+-- Noktanin kimligi barkod degil, nokta kodudur. Cihaz degistiginde yeni barkod
+-- AYNI noktaya baglanir ve eski okumalar o noktada kalir; bu yuzden degisim
+-- kaydi ile istasyonun uzerindeki barkod tek islemde guncellenir.
+
+do $$
+declare
+  st_id uuid := '00000000-0000-0000-0000-0000000007a1';
+  site_a uuid := '00000000-0000-0000-0000-000000000551';
+  swap station_replacements;
+begin
+  perform t_admin_reset();
+
+  insert into stations (id, org_id, site_id, code, type, device_barcode)
+  values (st_id, '00000000-0000-0000-0000-0000000000a1', site_a,
+          'R-99', 'rodent', 'RP-ESKI-001');
+
+  -- The customer may read replacements at their own site but never record one.
+  perform t_login('00000000-0000-0000-0000-0000000000e4');
+  perform t_denied(
+    format($q$select replace_station_device(%L, 'broken', 'RP-YENI-002', '')$q$, st_id),
+    'Musteri cihaz degisimi kaydedemiyor');
+
+  -- Nor may a technician invent a reason or leave the barcode blank.
+  perform t_login('00000000-0000-0000-0000-0000000000e2');
+  perform t_denied(
+    format($q$select replace_station_device(%L, 'calindi', 'RP-YENI-002', '')$q$, st_id),
+    'Gecersiz degisim nedeni reddediliyor');
+  perform t_denied(
+    format($q$select replace_station_device(%L, 'broken', '   ', '')$q$, st_id),
+    'Bos barkod reddediliyor');
+
+  -- The technician in the field is who actually swaps the box.
+  swap := replace_station_device(st_id, 'broken', 'RP-YENI-002', 'Kapak kirilmis');
+  perform t_admin_reset();
+
+  perform t_ok(swap.old_barcode = 'RP-ESKI-001',
+    'Degisim kaydi eski barkodu saklıyor');
+  perform t_ok(swap.station_code = 'R-99',
+    'Degisim ayni nokta koduna bagli kaliyor');
+  perform t_ok((select device_barcode from stations where id = st_id) = 'RP-YENI-002',
+    'Yeni barkod ayni islemde istasyona tasiniyor');
+
+  -- The customer sees the service record at their own site.
+  perform t_login('00000000-0000-0000-0000-0000000000e4');
+  perform t_ok((select count(*) from station_replacements) = 1,
+    'Musteri kendi sahasinin cihaz degisimini gorebiliyor');
+
+  perform t_admin_reset();
+end $$;
+
+
 do $$ begin perform t_admin_reset(); end $$;
 
 rollback;

@@ -17,7 +17,6 @@ import { $, $$, toast, esc } from '../core/dom.js';
 import { state, save, recalculateSiteStats } from '../core/state.js';
 import { ui } from '../core/session.js';
 import { equipmentTypes, getPlacementSchema } from '../data/catalog.js';
-import { barcodeFor } from '../data/history.js';
 
 const activeSite = () => state.sites.find((s) => s.id === ui.activeSiteId);
 const isAdmin = () => state.currentUser && state.currentUser.role === 'admin';
@@ -245,7 +244,9 @@ export function newStationSubmit(e) {
   $('#btnAddStation')?.classList.remove('active');
 
   refreshPlanViews(site);
-  toast(`${code} eklendi · barkod ${barcodeFor(site.id, code, 1)}`);
+  // No barcode is announced: it is the label on the physical box, recorded
+  // when the device is actually installed, not derived from the point code.
+  toast(`${code} noktası eklendi. Cihaz barkodunu nokta detayından kaydedin.`);
   return true;
 }
 

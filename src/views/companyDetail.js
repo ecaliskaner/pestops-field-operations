@@ -2,7 +2,7 @@
 // Extracted from app.js (Phase 0a-3).
 
 import { $, $$, esc } from '../core/dom.js';
-import { recalculateSiteStats, state } from '../core/state.js';
+import { recalculateSiteStats, replaceSites, state } from '../core/state.js';
 import { ui } from '../core/session.js';
 import { equipmentStatusCodes, equipmentTypes, getPlacementSchema, getStationArea, pestDatabase, placementSummary, stationAreaName, stateLabel } from '../data/catalog.js';
 import { setView } from '../core/router.js';
@@ -11,16 +11,17 @@ import { toast } from '../core/dom.js';
 import { save } from '../core/state.js';
 import { modal, printQrCodeSticker } from '../ui/modal.js';
 import { renderSites } from '../views/sites.js';
-import {
-  barcodeFor, deviceReplacements, pointDeviceSummary, readingsForPoint,
-  replacementReasons, technicianStats
-} from '../data/history.js';
+import { technicianStats } from '../data/history.js';
 import { fetchUsageForSite } from '../data/repo/inventory.js';
+import { parseContractPeriod, updateSite, fetchSites } from '../data/repo/sites.js';
+import { recordInspection } from '../data/repo/work.js';
+import { fetchPointHistory, fetchPointSummary, replaceStationDevice } from '../data/repo/stations.js';
+import { fetchTechnicianCredentials } from '../data/repo/technicians.js';
+import { saveContract } from '../data/repo/customer.js';
 import {
   fetchRecommendations, respondToRecommendation, approveRecommendation,
   rejectRecommendation, uploadRecommendationPhoto, signedPhotoUrl
 } from '../data/repo/customer.js';
-import { credentialDocs, KVKK_NOTICE } from '../data/credentials.js';
 import { renderFloorPlan } from './floorPlan.js';
 import { visitsPerMonth } from '../data/schedule.js';
 import { demoToday } from '../data/history.js';
@@ -141,6 +142,7 @@ export function showCompanyDetail(siteId) {
   // Render chemical usage tab
   renderChemicalUsage(site);
   renderChemicalDocLibrary(site);
+  renderInspectionWorkOrders(site);
   
   // Render service scope in overview
   renderServiceScope(site);
@@ -189,32 +191,66 @@ export function switchCompanyTab(tabId) {
 // and see each one's compliance documents (SGK, iş güvenliği, uygulama izni,
 // portör sağlık raporu). Which technicians serviced this facility is derived
 // from the visit history, so the list is honest — no one who never attended
-// appears. Documents are KVKK-safe placeholders (see data/credentials.js).
+// appears. The documents themselves are technician_credentials rows.
 export function renderCompanyCredentials(site) {
   const host = $('#compCredentialsList');
   if (!host) return;
 
-  const stats = technicianStats(site.id);
-  const techs = stats.length ? stats.map(t => t.tech) : ['Ayşe Demir'];
+  // The four document rows used to come from data/credentials.js: a map of four
+  // demo technician names to invented certificate numbers and expiry dates,
+  // with `getCredential()` falling back to "Ayşe Demir" for anyone unknown — so
+  // a real technician was shown another person's paperwork. The rows are
+  // technician_credentials now, and a technician with nothing on file says so.
+  // Technicians who have actually attended this facility, from the visit
+  // history. Falling back to the whole team when none have yet is deliberate:
+  // a customer opening a new facility should still be able to check the
+  // credentials of whoever is about to be sent.
+  const served = new Set(technicianStats(site.id).map((t) => t.tech));
+  const all = state.technicians || [];
+  const technicians = served.size ? all.filter((t) => served.has(t.name)) : all;
 
-  host.innerHTML = techs.map(tech => {
-    const meta = techData[tech] || [];
-    const initials = meta[0] || tech.slice(0, 2).toUpperCase();
-    const stat = stats.find(s => s.tech === tech);
-    const visitNote = stat ? `Bu tesiste ${stat.visits} ziyaret` : 'Atanmış teknisyen';
-    return `
-      <div class="cred-card panel" style="box-shadow:none; border:1px solid var(--line);">
-        <div class="cred-head">
-          <span class="tech-avatar" style="background:${meta[5] || '#eee'}">${initials}</span>
-          <div><b>${tech}</b><span>${visitNote}</span></div>
-        </div>
-        <div class="cred-docs">
-          ${credentialDocs(tech)}
-        </div>
-      </div>`;
-  }).join('');
+  host.innerHTML = '<p class="text-muted" style="font-size:12px;">Yükleniyor…</p>';
 
-  host.insertAdjacentHTML('beforeend', `<p class="cred-kvkk">${KVKK_NOTICE} Belgeler yalnızca hizmet süresince ve yalnızca ilgili tesise gösterilir.</p>`);
+  fetchTechnicianCredentials()
+    .then((byTech) => {
+      const cards = technicians.map((t) => {
+        const docs = byTech[t.id] || [];
+        const initials = t.initials || (t.name || '??').split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
+        const rows = docs.length
+          ? docs.map((d) => {
+              const expired = d.validUntil && new Date(d.validUntil) < new Date();
+              const ok = d.isValid && !expired;
+              const meta = [
+                d.referenceNo,
+                d.validUntil ? `Geçerlilik: ${new Date(d.validUntil).toLocaleDateString('tr-TR', DAY_FMT)}` : ''
+              ].filter(Boolean).join(' · ');
+              return `
+                <div class="cred-doc">
+                  <span class="cred-doc-icon">📄</span>
+                  <div class="cred-doc-body"><b>${esc(d.title)}</b><small>${esc(meta) || '—'}</small></div>
+                  <span class="cred-doc-status ${ok ? 'ok' : 'warn'}">${ok ? 'Geçerli' : (expired ? 'Süresi doldu' : 'Geçersiz')}</span>
+                </div>`;
+            }).join('')
+          : '<div class="cred-doc"><span class="cred-doc-icon">⚠</span><div class="cred-doc-body"><b>Belge kaydı yok</b><small>Bu teknisyen için yüklenmiş belge bulunmuyor.</small></div></div>';
+
+        return `
+          <div class="cred-card panel" style="box-shadow:none; border:1px solid var(--line);">
+            <div class="cred-head">
+              <span class="tech-avatar" style="background:${esc(t.color)};">${esc(initials)}</span>
+              <div><b>${esc(t.name)}</b><span>${served.has(t.name) ? 'Bu tesiste görev aldı' : 'Ekipte'}</span></div>
+            </div>
+            <div class="cred-docs">${rows}</div>
+          </div>`;
+      }).join('') || '<p class="text-muted" style="font-size:12px;">Kayıtlı teknisyen bulunmuyor.</p>';
+
+      host.innerHTML = cards;
+      host.insertAdjacentHTML('beforeend',
+        '<p class="cred-kvkk">🔒 <b>KVKK:</b> Belgeler yalnızca hizmet süresince ve yalnızca ilgili tesise gösterilir. Kimlik numaraları saklanmaz.</p>');
+    })
+    .catch((err) => {
+      console.error('[repellent] teknisyen belgeleri yuklenemedi', err);
+      host.innerHTML = '<p class="text-muted" style="font-size:12px;">Belgeler yüklenemedi.</p>';
+    });
 }
 
 export function renderCompanyMethods(site) {
@@ -698,41 +734,41 @@ export function showStationDetail(code) {
 // Two sources feed the device log: replacements seeded into the 12-month
 // history, and any swap the user performs during the demo (stored on the
 // station so it survives a reload).
-export function pointDevices(site, station) {
-  const seeded = deviceReplacements(site.id, station.code);
-  const runtime = station.deviceLog || [];
-
-  // Generation 1 is the original install; each replacement adds one.
-  const baseGeneration = seeded.reduce((max, s) => Math.max(max, s.generation), 1);
-  const generation = baseGeneration + runtime.length;
-
-  const swaps = [
-    ...seeded.map(s => ({
-      date: s.date,
-      reasonCode: s.reasonCode,
-      reason: s.reason,
-      oldBarcode: s.oldBarcode,
-      newBarcode: s.newBarcode,
-      generation: s.generation,
-      note: s.note,
-      source: 'history'
-    })),
-    ...runtime
-  ].sort((a, b) => a.generation - b.generation);
-
-  const current = swaps.length
-    ? swaps[swaps.length - 1].newBarcode
-    : barcodeFor(site.id, station.code, 1);
-
-  return { generation, current, swaps, installedGeneration: baseGeneration };
-}
-
-export function renderDeviceBlock(site, station) {
+// The point's device, its replacement history and its readings.
+//
+// All three were generated. The barcode came out of `barcodeFor()`, a hash of
+// the site id and point code; replacements lived partly in the synthetic visit
+// store and partly in a `station.deviceLog` array kept on the browser's copy of
+// the station. They are now `station_replacements` rows and `inspections` rows,
+// joined on the point code — see src/data/repo/stations.js for why the code,
+// and not the barcode, is the identity that history hangs off.
+export async function renderDeviceBlock(site, station) {
   const container = $('#detDeviceCurrent');
   if (!container) return;
 
-  const { generation, current, swaps } = pointDevices(site, station);
-  const summary = pointDeviceSummary(site.id, station.code);
+  if (!station.dbId) {
+    container.innerHTML = '<p class="device-timeline-empty">Bu nokta henüz kaydedilmedi.</p>';
+    return;
+  }
+
+  let summary;
+  let readings;
+  try {
+    [summary, readings] = await Promise.all([
+      fetchPointSummary(site.id, station.code),
+      fetchPointHistory(site.id, station.code)
+    ]);
+  } catch (err) {
+    console.error('[repellent] nokta gecmisi yuklenemedi', err);
+    container.innerHTML = '<p class="device-timeline-empty">Nokta geçmişi yüklenemedi.</p>';
+    return;
+  }
+
+  const swaps = summary.replacements;
+  const generation = swaps.length + 1;
+  // The barcode on the device right now, straight off the station row. Blank
+  // until the org records one — there is no sequence to derive it from.
+  const current = station.deviceBarcode || '';
 
   const genBadge = $('#detDeviceGeneration');
   if (genBadge) genBadge.textContent = `${generation}. cihaz`;
@@ -745,49 +781,51 @@ export function renderDeviceBlock(site, station) {
     </div>
     <div class="device-id-row">
       <span class="device-id-label">Barkod</span>
-      <b class="device-barcode">${esc(current)}</b>
+      <b class="device-barcode">${current ? esc(current) : '<span style="color:var(--muted);">kayıtlı değil</span>'}</b>
     </div>
     <div class="device-id-row">
       <span class="device-id-label">Toplam Okuma</span>
       <b>${esc(summary.totalReadings)} ölçüm · ${esc(summary.totalPests)} adet bulgu</b>
     </div>`;
 
-  // Prefill the swap form with the next barcode in the sequence.
+  // The next barcode is not prefilled any more: it comes off the physical
+  // label on the replacement box, and guessing it is how a made-up barcode got
+  // into the record in the first place.
   const barcodeInput = $('#inpNewBarcode');
-  if (barcodeInput) barcodeInput.value = barcodeFor(site.id, station.code, generation + 1);
+  if (barcodeInput) barcodeInput.value = '';
   const hint = $('#deviceSwapHint');
   if (hint) {
     hint.textContent = `Nokta numarası ${station.code} değişmez. ${summary.totalReadings} geçmiş ölçüm bu noktada kalır ve karşılaştırmada kullanılmaya devam eder.`;
   }
 
-  renderDeviceTimeline(site, station, swaps, summary);
-  renderPointHistory(site, station);
+  renderDeviceTimeline(station, swaps, summary);
+  renderPointHistory(station, readings);
 }
 
-function renderDeviceTimeline(site, station, swaps, summary) {
+function renderDeviceTimeline(station, swaps, summary) {
   const el = $('#detDeviceTimeline');
   if (!el) return;
 
   if (!swaps.length) {
-    el.innerHTML = `<p class="device-timeline-empty">Bu noktada henüz cihaz değişimi yapılmadı — ilk cihaz görevde.</p>`;
+    el.innerHTML = '<p class="device-timeline-empty">Bu noktada henüz cihaz değişimi kaydedilmedi — ilk cihaz görevde.</p>';
     return;
   }
 
-  const genRows = summary.generations.map(g =>
+  const genRows = summary.generations.map((g) =>
     `<li class="device-gen">
-       <span class="device-gen-no">${g.generation}</span>
+       <span class="device-gen-no">${esc(g.generation)}</span>
        <span class="device-gen-body">
-         <b>${g.barcode}</b>
-         <small>${g.firstDate} – ${g.lastDate} · ${g.readings} ölçüm · ${g.totalPests} bulgu</small>
+         <b>${g.barcode ? esc(g.barcode) : '<span style="color:var(--muted);">barkod kayıtlı değil</span>'}</b>
+         <small>${esc(g.firstDate)} – ${esc(g.lastDate)} · ${esc(g.readings)} ölçüm · ${esc(g.totalPests)} bulgu</small>
        </span>
      </li>`).join('');
 
-  const swapRows = swaps.map(s =>
+  const swapRows = swaps.map((sw) =>
     `<li class="device-swap">
        <span class="device-swap-icon">⇄</span>
        <span class="device-gen-body">
-         <b>${esc(s.date)} — ${esc(s.reason)} (${esc(s.reasonCode)})</b>
-         <small>${esc(s.oldBarcode)} → ${esc(s.newBarcode)}${s.note ? ` · ${esc(s.note)}` : ''}</small>
+         <b>${esc(sw.date)} — ${esc(sw.reasonName)}</b>
+         <small>${esc(sw.oldBarcode) || '—'} → ${esc(sw.newBarcode)}${sw.notes ? ` · ${esc(sw.notes)}` : ''}</small>
        </span>
      </li>`).join('');
 
@@ -800,13 +838,12 @@ function renderDeviceTimeline(site, station, swaps, summary) {
 // The point's reading timeline, tagged by the device that was in place. A
 // divider marks each swap, making it obvious that the readings either side
 // belong to the same point.
-function renderPointHistory(site, station) {
+function renderPointHistory(station, readings) {
   const el = $('#detPointHistory');
   if (!el) return;
 
-  const readings = readingsForPoint(site.id, station.code);
   if (!readings.length) {
-    el.innerHTML = `<p class="device-timeline-empty">Bu nokta için geçmiş ölçüm kaydı bulunmuyor.</p>`;
+    el.innerHTML = '<p class="device-timeline-empty">Bu nokta için geçmiş ölçüm kaydı bulunmuyor.</p>';
     return;
   }
 
@@ -828,21 +865,21 @@ function renderPointHistory(site, station) {
 
   const shown = [...perGeneration.keys()]
     .sort((a, b) => b - a)
-    .flatMap(g => perGeneration.get(g));
+    .flatMap((g) => perGeneration.get(g));
 
   let lastGen = null;
-  const rows = shown.map(r => {
+  const rows = shown.map((r) => {
     let divider = '';
     if (lastGen !== null && r.generation !== lastGen) {
-      divider = `<li class="point-history-divider">⇄ cihaz değişimi — nokta ${station.code} aynı kaldı, ölçümler devam ediyor</li>`;
+      divider = `<li class="point-history-divider">⇄ cihaz değişimi — nokta ${esc(station.code)} aynı kaldı, ölçümler devam ediyor</li>`;
     }
     lastGen = r.generation;
     const cls = r.pestCount > 0 ? 'activity' : 'clean';
     return `${divider}
       <li class="point-history-row">
-        <span class="ph-date">${r.date}</span>
-        <span class="ph-gen" title="${r.barcode}">${r.generation}. cihaz</span>
-        <span class="ph-count ${cls}">${r.pestCount > 0 ? `${r.pestCount} adet ${r.pestName}` : 'Aktivite yok'}</span>
+        <span class="ph-date">${esc(r.date)}</span>
+        <span class="ph-gen" title="${esc(r.barcode)}">${esc(r.generation)}. cihaz</span>
+        <span class="ph-count ${cls}">${r.pestCount > 0 ? `${esc(r.pestCount)} adet ${esc(r.pestName)}` : 'Aktivite yok'}</span>
       </li>`;
   }).join('');
 
@@ -1332,53 +1369,96 @@ export function fileDownloadClicks(e) {
   return false;
 }
 
+// Facility and contract details.
+//
+// This wrote every field to browser state and called save(), so a corrected
+// price or phone number survived only in the browser it was typed in. The
+// contract prices matter most: billing.js refuses to invoice a site whose
+// contract has no monthly price, and until now that price could only be set
+// while creating the site — an existing facility's fee could not be corrected
+// from the app at all.
 export function editSiteSubmit(e) {
-    if(e.target.id==='editSiteForm'){
-      e.preventDefault();
-      const siteId = e.target.dataset.siteId;
-      const s = state.sites.find(site => site.id === siteId);
-      if(!s) return true;
-      
-      const f = new FormData(e.target);
-      s.contact = {
-        name: f.get('contactName'),
-        phone: f.get('contactPhone'),
-        email: f.get('contactEmail')
+  if (e.target.id !== 'editSiteForm') return false;
+  e.preventDefault();
+
+  const siteId = e.target.dataset.siteId;
+  const site = state.sites.find((x) => x.id === siteId);
+  if (!site) return true;
+
+  const f = new FormData(e.target);
+  const orgId = state.currentUser?.orgId;
+  if (!orgId) { toast('Kuruma bağlı bir hesapla giriş yapmalısınız.'); return true; }
+
+  const periodText = String(f.get('contractPeriod') || '');
+  const period = parseContractPeriod(periodText);
+  if (!period) {
+    toast('Sözleşme dönemini GG.AA.YYYY - GG.AA.YYYY biçiminde girin.');
+    return true;
+  }
+
+  const num = (key) => {
+    const v = parseFloat(f.get(key));
+    return Number.isFinite(v) ? v : null;
+  };
+
+  const button = e.target.querySelector('button[type="submit"]');
+  if (button) button.disabled = true;
+
+  Promise.all([
+    updateSite({
+      siteId,
+      customerId: site.customerId,
+      address: String(f.get('address') || '').trim(),
+      contactName: String(f.get('contactName') || '').trim(),
+      contactPhone: String(f.get('contactPhone') || '').trim(),
+      contactEmail: String(f.get('contactEmail') || '').trim()
+    }),
+    saveContract({
+      // An existing period is edited; a site with no contract yet opens one.
+      id: site.contract?.id,
+      orgId,
+      siteId,
+      periodStart: period[0],
+      periodEnd: period[1],
+      monthlyPrice: num('monthlyPrice'),
+      annualPrice: num('annualPrice'),
+      extraVisitPrice: num('extraVisitPrice'),
+      emergencyCallPrice: num('emergencyCallPrice'),
+      taxOffice: String(f.get('taxOffice') || '').trim(),
+      taxNo: String(f.get('taxNo') || '').trim()
+    })
+  ])
+    .then(([, contract]) => {
+      // The stored contract is installed on the site so billing.js sees the new
+      // price immediately, rather than the figure that was just typed in.
+      site.contract = contract;
+      site.address = String(f.get('address') || '').trim();
+      site.contact = {
+        name: String(f.get('contactName') || '').trim(),
+        phone: String(f.get('contactPhone') || '').trim(),
+        email: String(f.get('contactEmail') || '').trim()
       };
-      s.address = f.get('address');
-      s.serviceFrequency = f.get('serviceFrequency');
-      
-      const annualPrice = parseFloat(f.get('annualPrice')) || 0;
-      const monthlyPrice = parseFloat(f.get('monthlyPrice')) || 0;
-      const extraVisitPrice = parseFloat(f.get('extraVisitPrice')) || 0;
-      const emergencyCallPrice = parseFloat(f.get('emergencyCallPrice')) || 0;
-      
-      s.contract = {
-        period: f.get('contractPeriod'),
-        taxOffice: f.get('taxOffice'),
-        taxNo: f.get('taxNo'),
-        annualPrice: annualPrice,
-        monthlyPrice: monthlyPrice,
-        extraVisitPrice: extraVisitPrice,
-        emergencyCallPrice: emergencyCallPrice
-      };
-      
-      s.serviceScope = {
+      // The service scope drives the visit plan and has no table of its own
+      // yet; it stays browser-local and is the one part of this form that does.
+      site.serviceFrequency = f.get('serviceFrequency');
+      site.serviceScope = {
         outdoorRodent: { frequency: parseFloat(f.get('freqOutdoorRodent')) || 0, unit: 'ay' },
         indoorRodent: { frequency: parseFloat(f.get('freqIndoorRodent')) || 0, unit: 'ay' },
         crawlingPest: { frequency: parseFloat(f.get('freqCrawlingPest')) || 0, unit: 'ay' },
         flyingPest: { frequency: parseFloat(f.get('freqFlyingPest')) || 0, unit: 'ay' },
         storagePest: { frequency: parseFloat(f.get('freqStoragePest')) || 0, unit: 'ay' }
       };
-      
       save();
+
       $('#modal').classList.add('hidden');
-      
-      showCompanyDetail(s.id);
+      showCompanyDetail(site.id);
       renderSites();
-      toast('Tesis ve sözleşme detayları başarıyla güncellendi.');
-    }
-  return false;
+      toast('Tesis ve sözleşme bilgileri kaydedildi.');
+    })
+    .catch((err) => toast(err.message || 'Kaydedilemedi.'))
+    .finally(() => { if (button) button.disabled = false; });
+
+  return true;
 }
 
 // Records a device swap: the point keeps its code and its whole reading
@@ -1388,52 +1468,44 @@ export function deviceReplacementSubmit(e) {
       e.preventDefault();
       if (!ui.activeSiteId || !ui.activeStationCode) return true;
 
-      const site = state.sites.find(s => s.id === ui.activeSiteId);
+      const site = state.sites.find((x) => x.id === ui.activeSiteId);
       if (!site) return true;
-      const s = site.stations.find(st => st.code === ui.activeStationCode);
-      if (!s) return true;
+      const station = (site.stations || []).find((st) => st.code === ui.activeStationCode);
+      if (!station) return true;
+      if (!station.dbId) { toast('Bu nokta henüz kaydedilmedi.'); return true; }
 
       const f = new FormData(e.target);
-      const reasonCode = f.get('reasonCode');
-      const newBarcode = (f.get('newBarcode') || '').trim();
-      const note = (f.get('note') || '').trim();
-      if (!newBarcode) {
-        toast('Yeni barkod girilmelidir.');
-        return true;
-      }
+      const reason = String(f.get('reasonCode') || '');
+      const newBarcode = String(f.get('newBarcode') || '').trim();
+      const notes = String(f.get('note') || '').trim();
+      if (!newBarcode) { toast('Yeni barkod girilmelidir.'); return true; }
 
-      const before = pointDevices(site, s);
-      const readingsKept = readingsForPoint(site.id, s.code).length;
+      const button = e.target.querySelector('button[type="submit"]');
+      if (button) button.disabled = true;
 
-      if (!s.deviceLog) s.deviceLog = [];
-      s.deviceLog.push({
-        date: new Date().toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' }),
-        reasonCode,
-        reason: (replacementReasons[reasonCode] || {}).name || reasonCode,
-        oldBarcode: before.current,
-        newBarcode,
-        generation: before.generation + 1,
-        note,
-        recordedBy: state.currentUser ? state.currentUser.name : 'Operatör',
-        source: 'runtime'
-      });
+      // The replacement row and the barcode on the station are written together
+      // by replace_station_device(); a record whose station still carries the
+      // old barcode would misreport what is physically at the point.
+      replaceStationDevice({ stationId: station.dbId, reason, newBarcode, notes })
+        .then(() => {
+          station.deviceBarcode = newBarcode;
+          // A replaced device is back in service: clear the lost/broken status
+          // so the point does not keep reporting a fault it no longer has.
+          if (station.status === 'damaged' || station.status === 'missing') {
+            station.status = 'clean';
+            station.checked = true;
+          }
+          recalculateSiteStats(site);
+          e.target.reset();
+          e.target.classList.add('hidden');
+          renderCompanyStationsTable(site);
+          renderStationMarkers(site.stations, $$('[data-station-filter].active')[0]?.dataset.stationFilter || 'all');
+          toast(`${station.code} noktasına yeni cihaz tanımlandı (${newBarcode}). Geçmiş ölçümler bu noktada kaldı.`);
+          return renderDeviceBlock(site, station);
+        })
+        .catch((err) => toast(err.message || 'Cihaz değişimi kaydedilemedi.'))
+        .finally(() => { if (button) button.disabled = false; });
 
-      // A replaced device is back in service: clear the lost/broken status so
-      // the point does not keep reporting a fault it no longer has.
-      if (s.status === 'damaged' || s.status === 'missing') {
-        s.status = 'clean';
-        s.checked = true;
-      }
-
-      recalculateSiteStats(site);
-      save();
-
-      renderDeviceBlock(site, s);
-      renderCompanyStationsTable(site);
-      renderStationMarkers(site.stations, $$('[data-station-filter].active')[0]?.dataset.stationFilter || 'all');
-      e.target.classList.add('hidden');
-
-      toast(`${s.code} noktasına yeni cihaz tanımlandı (${newBarcode}). ${readingsKept} geçmiş ölçüm korundu.`);
       return true;
     }
   return false;
@@ -1467,59 +1539,94 @@ export function placementSubmit(e) {
   return false;
 }
 
+// Office-entered station inspection.
+//
+// This wrote the reading onto the browser's copy of the station and stamped it
+// `controlledBy: "Seda Kaya (Yönetici)"` — a person who does not work at any
+// customer's company. Nothing reached the database, so the reading never
+// appeared in a visit report, a point's history or an audit trail.
+//
+// An inspection belongs to a visit: `inspections.work_order_id` is NOT NULL,
+// and that is the right constraint rather than an obstacle — a station reading
+// with no visit behind it cannot be placed in time or attributed to anyone. So
+// the form asks which visit, and says so when the site has none open.
 export function adminInspectionSubmit(e) {
-    if (e.target.id === 'adminInspectionForm') {
-      e.preventDefault();
-      if (!ui.activeSiteId || !ui.activeStationCode) return true;
-      
-      const site = state.sites.find(s => s.id === ui.activeSiteId);
-      if (!site) return true;
-      const s = site.stations.find(st => st.code === ui.activeStationCode);
-      if (!s) return true;
-      
-      const f = new FormData(e.target);
-      s.checked = true;
-      s.baitStatus = f.get('baitStatus');
-      s.pestType = f.get('pestType');
-      s.pestCount = parseInt(f.get('pestCount')) || 0;
-      s.status = f.get('status');
-      s.notes = f.get('notes');
-      
-      const localPestLabels = { none: 'Yok', mouse: 'Fare', rat: 'Sıçan', cockroach: 'Hamamböceği', fly: 'Sinek', other: 'Diğer' };
-      Object.values(pestDatabase).forEach(category => {
-        category.forEach(p => {
-          localPestLabels[p.code] = p.name;
-        });
-      });
-      
-      if (s.pestType !== 'none' && s.pestCount > 0) {
-        const pestName = localPestLabels[s.pestType] || s.pestType;
-        s.findings = [{
-          pestCode: s.pestType,
-          pestName: pestName,
-          count: s.pestCount
-        }];
-      } else {
-        s.findings = [];
-      }
-      
-      s.controlledBy = "Seda Kaya (Yönetici)";
-      s.lastControl = "Bugün, " + new Date().toLocaleTimeString('tr-TR', {hour: '2-digit', minute:'2-digit'});
-      
-      if (s.pestType !== 'none') {
-        s.status = 'activity';
-      } else if (s.status === 'activity') {
-        s.status = 'clean';
-      }
-      
-      recalculateSiteStats(site);
-      save();
-      showCompanyDetail(ui.activeSiteId);
-      toast(`İstasyon ${s.code} denetimi başarıyla kaydedildi.`);
-    }
+  if (e.target.id !== 'adminInspectionForm') return false;
+  e.preventDefault();
+  if (!ui.activeSiteId || !ui.activeStationCode) return true;
 
-    // Company profile file upload form submit
-  return false;
+  const site = state.sites.find((x) => x.id === ui.activeSiteId);
+  if (!site) return true;
+  const station = (site.stations || []).find((st) => st.code === ui.activeStationCode);
+  if (!station) return true;
+
+  const f = new FormData(e.target);
+  const workOrderId = String(f.get('workOrderId') || '');
+  const orgId = state.currentUser?.orgId;
+  if (!workOrderId) { toast('Denetimin bağlanacağı iş emrini seçin.'); return true; }
+  if (!orgId) { toast('Kuruma bağlı bir hesapla giriş yapmalısınız.'); return true; }
+
+  const pestType = String(f.get('pestType') || 'none');
+  const status = String(f.get('status') || 'clean');
+  const button = e.target.querySelector('button[type="submit"]');
+  if (button) button.disabled = true;
+
+  recordInspection({
+    orgId,
+    workOrderId,
+    stationId: station.dbId || null,
+    stationCode: station.code,
+    // A recorded pest is activity, whatever the status dropdown says; letting
+    // the two disagree is how a site's score drifts away from its readings.
+    status: pestType !== 'none' ? 'activity' : status,
+    baitStatus: String(f.get('baitStatus') || 'intact'),
+    pestType,
+    activityCount: parseInt(f.get('pestCount'), 10) || 0,
+    notes: String(f.get('notes') || '').trim(),
+    createdBy: state.currentUser?.id || null
+  })
+    .then(() => {
+      e.target.reset();
+      toast(`İstasyon ${station.code} denetimi kaydedildi.`);
+      // Re-read rather than patch the local copy: the station's status is
+      // recomputed from its readings, and guessing at it here is what let the
+      // browser and the database disagree in the first place.
+      return refreshSiteStations(site.id);
+    })
+    .catch((err) => toast(err.message || 'Denetim kaydedilemedi.'))
+    .finally(() => { if (button) button.disabled = false; });
+
+  return true;
+}
+
+/**
+ * The visits this station's reading can be attached to.
+ *
+ * Only work orders for this facility that are not yet closed: a completed visit
+ * is a finished record and a reading added to it afterwards would change what
+ * the customer was already shown.
+ */
+export function renderInspectionWorkOrders(site) {
+  const select = $('#inpInspectionWorkOrder');
+  if (!select) return;
+  const open = (state.work || []).filter(
+    (w) => w.siteId === site.id && w.status !== 'completed' && w.status !== 'cancelled' && w.dbId
+  );
+  select.innerHTML = open.length
+    ? open.map((w) => `<option value="${esc(w.dbId)}">${esc(w.id)} · ${esc(w.tech || 'atanmamış')}</option>`).join('')
+    : '<option value="">Bu tesis için açık iş emri yok</option>';
+  select.disabled = !open.length;
+}
+
+/** Re-read one facility's stations after a write. */
+async function refreshSiteStations(siteId) {
+  try {
+    const sites = await fetchSites();
+    replaceSites(sites);
+  } catch (err) {
+    console.error('[repellent] sahalar yenilenemedi', err);
+  }
+  showCompanyDetail(siteId);
 }
 
 export function fileUploadSubmit(e) {

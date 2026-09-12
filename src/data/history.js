@@ -192,56 +192,20 @@ function assignCrews(visits) {
   }
 }
 
-// ---- equipment replacement history (1-2) ----
+// ---- equipment replacement history ----
 //
 // Roadmap §8: when a device is lost, broken or renewed, a new barcode is
 // issued to the *same point number*, and the old device's readings must stay
-// attached to that point for measurement and comparison. So the identity that
-// history hangs off is the point code, never the barcode.
+// attached to that point. So the identity history hangs off is the point code,
+// never the barcode.
+//
+// barcodeFor() used to live here and produced `RP-<SITEID>-<CODE>-<5 digits>`
+// from a hash. A barcode is a label physically on a box; deriving one means the
+// report prints an identifier no one can scan. Replacements are now
+// station_replacements rows, installed by setStationReplacements() below, and
+// the reason labels come from src/data/repo/stations.js.
 
-const REPLACEMENT_REASONS = {
-  KA: { code: 'KA', name: 'Kayıp', en: 'Lost' },
-  KI: { code: 'KI', name: 'Kırık', en: 'Broken' },
-  Y:  { code: 'Y',  name: 'İstasyon Yenilendi', en: 'Renewed' }
-};
 
-export const replacementReasons = REPLACEMENT_REASONS;
-
-/** Deterministic barcode for a device generation at a point. */
-export function barcodeFor(siteId, code, generation = 1) {
-  const n = hash(`${siteId}|${code}|${generation}`) % 100000;
-  return `RP-${siteId.toUpperCase()}-${code}-${String(n).padStart(5, '0')}`;
-}
-
-// A couple of seeded mid-window replacements, so the "history survives the
-// swap" claim is visible on screen before anyone clicks anything.
-function buildDeviceReplacements() {
-  const months = monthWindow();
-  const out = [];
-  const seeded = [
-    { siteId: 's1', code: 'F-01', monthIndex: 5, reason: 'KI' },
-    { siteId: 's2', code: 'R-04', monthIndex: 7, reason: 'KA' }
-  ];
-  for (const s of seeded) {
-    const mo = months[s.monthIndex];
-    const r = rng(`swap|${s.siteId}|${s.code}`);
-    const day = 6 + Math.floor(r() * 16);
-    out.push({
-      siteId: s.siteId,
-      code: s.code,
-      date: formatDate(mo.year, mo.month, day),
-      monthIndex: s.monthIndex,
-      day,
-      reasonCode: s.reason,
-      reason: REPLACEMENT_REASONS[s.reason].name,
-      oldBarcode: barcodeFor(s.siteId, s.code, 1),
-      newBarcode: barcodeFor(s.siteId, s.code, 2),
-      generation: 2,
-      note: 'Saha ziyaretinde tespit edildi, aynı noktaya yeni cihaz tanımlandı.'
-    });
-  }
-  return out;
-}
 
 // The synthetic visit generator that used to live above this line has been
 // deleted, not merely disconnected: a fabrication engine left callable in a
@@ -284,8 +248,25 @@ export function setVisitHistory(data) {
     months: data.months || monthWindow(),
     visits: data.visits || [],
     recommendations: data.recommendations || [],
-    deviceReplacements: []
+    // Preserved across a visit-history reload so the two can be installed
+    // independently; core/auth.js loads both, but a refresh of one must not
+    // silently blank the other.
+    deviceReplacements: (cache && cache.deviceReplacements) || []
   };
+}
+
+/**
+ * Install the real device replacement log (repo/stations.js).
+ *
+ * The printed report builders are synchronous and read this store; the facility
+ * page fetches per point directly, because right after a swap it needs the row
+ * that was just written rather than the snapshot taken at sign-in.
+ *
+ * @param {object[]} rows
+ */
+export function setStationReplacements(rows) {
+  if (!cache) cache = emptyHistory();
+  cache.deviceReplacements = rows || [];
 }
 
 // ---------- public API ----------
@@ -342,9 +323,12 @@ export function recommendationStats(siteId) {
 
 // ---- point history across device replacements (1-2) ----
 
+// The loaded replacement rows, optionally narrowed to one point. Rows carry
+// `siteId` only when the loader scoped them; a store filled per facility is
+// already narrowed, so a missing siteId is not treated as a mismatch.
 export const deviceReplacements = (siteId, code) =>
   history().deviceReplacements.filter(
-    (d) => (!siteId || d.siteId === siteId) && (!code || d.code === code)
+    (d) => (!siteId || !d.siteId || d.siteId === siteId) && (!code || d.code === code)
   );
 
 /**
@@ -356,21 +340,28 @@ export function readingsForPoint(siteId, code) {
   const swaps = deviceReplacements(siteId, code);
   const visits = visitsForSite(siteId);
 
-  // Walk the window in order and advance the device generation as each
-  // replacement date is passed.
   const ordered = visits
     .slice()
     .sort((a, b) => a.monthIndex - b.monthIndex || a.day - b.day);
+
+  // The barcode before the first recorded replacement. Blank when the org has
+  // never recorded one — the old code derived it from a hash, which printed an
+  // identifier nobody could scan.
+  const originalBarcode = swaps.length ? swaps[0].oldBarcode : '';
 
   const out = [];
   for (const v of ordered) {
     const reading = v.readings.find((x) => x.code === code);
     if (!reading) continue;
 
+    // Walk forward through the replacements: each one the visit date has
+    // passed advances the generation and moves the barcode.
     let generation = 1;
-    for (const s of swaps) {
-      if (v.monthIndex > s.monthIndex || (v.monthIndex === s.monthIndex && v.day >= s.day)) {
-        generation = Math.max(generation, s.generation);
+    let barcode = originalBarcode;
+    for (const swap of swaps) {
+      if (v.completedAt && swap.replacedOn && new Date(v.completedAt) >= new Date(swap.replacedOn)) {
+        generation += 1;
+        barcode = swap.newBarcode;
       }
     }
 
@@ -382,7 +373,7 @@ export function readingsForPoint(siteId, code) {
       tech: v.tech,
       visitType: v.visitType,
       generation,
-      barcode: barcodeFor(siteId, code, generation),
+      barcode,
       status: reading.status,
       pestCount: reading.pestCount,
       pestCode: reading.pestCode,

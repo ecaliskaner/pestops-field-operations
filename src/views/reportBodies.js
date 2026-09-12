@@ -14,7 +14,7 @@ import { lineChart, barChart, stackedBarChart, donutChart } from '../ui/charts.j
 import {
   getVisits, visitsForSite, monthlyPestTotals, recommendationStats,
   chemicalStats, getRecommendations, siteRanking, technicianStats,
-  pointDeviceSummary, readingsForPoint, deviceReplacements, barcodeFor
+  pointDeviceSummary, readingsForPoint, deviceReplacements
 } from '../data/history.js';
 import { allSites } from '../core/state.js';
 import {
@@ -468,9 +468,12 @@ export function placementPoints(siteId) {
       area: stationAreaName(site, st),
       pointNo: placement.pointNo || st.code.replace(/^\D+/, ''),
       specs: placementSummary(st),
-      barcode: summary.generations.length
+      // The label physically on the device. Blank until the org records one;
+      // it used to be derived from a hash, which printed an identifier that
+      // could not be scanned against the box it claimed to name.
+      barcode: (summary.generations.length
         ? summary.generations[summary.generations.length - 1].barcode
-        : barcodeFor(siteId, st.code, 1),
+        : st.deviceBarcode) || '—',
       generations: summary.generations.length || 1,
       readings: summary.totalReadings,
       totalPests: summary.totalPests,
@@ -531,10 +534,10 @@ export function placementActivityReport(siteId) {
   const swapRows = swaps.map((s) => [
     `<b>${esc(s.code)}</b>`,
     esc(s.date),
-    chip(esc(s.reason), s.reasonCode === 'KA' ? 'critical' : 'warning'),
-    `<span style="font-family:ui-monospace,monospace; font-size:10px;">${esc(s.oldBarcode)}</span>`,
+    chip(esc(s.reasonName || s.reason), s.reason === 'lost' ? 'critical' : 'warning'),
+    `<span style="font-family:ui-monospace,monospace; font-size:10px;">${esc(s.oldBarcode) || '—'}</span>`,
     `<span style="font-family:ui-monospace,monospace; font-size:10px;">${esc(s.newBarcode)}</span>`,
-    esc(s.note)
+    esc(s.notes || '')
   ]);
 
   const totalPests = points.reduce((s, p) => s + p.totalPests, 0);

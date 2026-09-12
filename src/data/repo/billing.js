@@ -176,3 +176,48 @@ export async function setInvoiceStatus(invoiceId, status) {
   );
   return Array.isArray(row) ? row[0] : row;
 }
+
+/**
+ * Update the issuing organization's own details.
+ *
+ * These print on every invoice and delivery note, so until now they could only
+ * be set by someone with database access — which meant in practice they were
+ * never set, and finance.js printed a hardcoded company instead.
+ *
+ * `org_admin_write` is an UPDATE-only policy scoped to the caller's own org, so
+ * there is no id to pass and no way to edit another company's row.
+ *
+ * @param {{name: string, taxOffice?: string, taxNo?: string, address?: string,
+ *   phone?: string, email?: string}} input
+ * @returns {Promise<object>}
+ */
+export async function updateOrganization(input) {
+  const rows = await run(
+    supabase
+      .from('organizations')
+      .update({
+        name: input.name,
+        tax_office: input.taxOffice || null,
+        tax_no: input.taxNo || null,
+        address: input.address || null,
+        phone: input.phone || null,
+        email: input.email || null
+      })
+      .eq('id', input.id)
+      .select('id, name, tax_office, tax_no, address, phone, email, logo_url')
+  );
+  const row = rows[0];
+  // An update filtered out by RLS affects zero rows and does NOT raise — the
+  // caller must be told nothing was written rather than shown a success toast.
+  if (!row) throw new Error('Kurum bilgisi güncellenemedi — yönetici yetkisi gerekiyor.');
+  return {
+    id: row.id,
+    name: row.name,
+    taxOffice: row.tax_office || '',
+    taxNo: row.tax_no || '',
+    address: row.address || '',
+    phone: row.phone || '',
+    email: row.email || '',
+    logoUrl: row.logo_url || ''
+  };
+}

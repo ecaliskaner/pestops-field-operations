@@ -14,7 +14,7 @@
 import { supabase, run } from '../../core/supabase.js';
 
 const CHEMICAL_SELECT =
-  'id, name, active_ingredient, license_no, license_until, target_pests, unit, is_active';
+  'id, name, active_ingredient, license_no, license_until, target_pests, unit, is_active, msds_path';
 
 const STOCK_SELECT = `
   id, chemical_id, lot_no, qty, unit, min_qty, unit_cost, expires_on,
@@ -43,7 +43,8 @@ export async function fetchChemicals() {
     // operator can see *why* something they expected is unavailable.
     licenseExpired: !!row.license_until && new Date(row.license_until) < new Date(),
     targetPests: row.target_pests || [],
-    unit: row.unit || 'lt'
+    unit: row.unit || 'lt',
+    msdsPath: row.msds_path || ''
   }));
 }
 
@@ -305,4 +306,53 @@ export async function fetchUsageForSite(siteId) {
     workOrderCode: row.work_order?.code || '',
     at: row.applied_at
   }));
+}
+
+const MSDS_BUCKET = 'msds';
+
+/**
+ * Attach a safety data sheet to a product.
+ *
+ * `chemicals.msds_path` existed from the start with no bucket behind it, so the
+ * facility document library had nothing to show and said so. Uploading and
+ * recording the path are two calls; the upload goes first, because a path
+ * recorded against a file that failed to upload is worse than a file with no
+ * path — the first lies to an auditor, the second is merely an orphan.
+ *
+ * @param {{orgId: string, chemicalId: string, file: File}} input
+ * @returns {Promise<string>} the stored path
+ */
+export async function uploadMsds(input) {
+  const name = input.file.name || 'msds.pdf';
+  const ext = name.includes('.') ? name.split('.').pop().toLowerCase() : 'pdf';
+  const path = `${input.orgId}/${input.chemicalId}/${Date.now()}.${ext}`;
+
+  const { error } = await supabase.storage.from(MSDS_BUCKET).upload(path, input.file, {
+    contentType: input.file.type || 'application/pdf',
+    upsert: false
+  });
+  if (error) throw new Error(error.message);
+
+  await run(
+    supabase.from('chemicals').update({ msds_path: path }).eq('id', input.chemicalId)
+  );
+  return path;
+}
+
+/**
+ * A short-lived URL for a stored safety data sheet. The bucket is private, so
+ * a link cannot address the object directly.
+ *
+ * @param {string} path
+ * @param {number} expiresIn seconds
+ * @returns {Promise<string|null>}
+ */
+export async function signedMsdsUrl(path, expiresIn = 3600) {
+  if (!path) return null;
+  const { data, error } = await supabase.storage.from(MSDS_BUCKET).createSignedUrl(path, expiresIn);
+  if (error) {
+    console.error('[repellent] MSDS baglantisi alinamadi', error);
+    return null;
+  }
+  return data?.signedUrl || null;
 }

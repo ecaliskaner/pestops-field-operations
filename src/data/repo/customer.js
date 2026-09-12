@@ -268,3 +268,61 @@ export async function rejectRecommendation(input) {
   );
   return mapRecommendation(row);
 }
+
+/**
+ * Create or update a site's contract.
+ *
+ * Prices were readable but only writable while creating a site, so an existing
+ * facility's fee could not be corrected from the app at all — and billing.js
+ * refuses to invoice a site whose contract is missing or has no monthly price,
+ * which made that gap a hard stop rather than a cosmetic one.
+ *
+ * A contract is per period, not per site: renewing is a new row, not an edit of
+ * last year's. Passing `id` edits the existing period; omitting it opens a new
+ * one. `contracts_admin_all` scopes both to an admin of the owning org.
+ *
+ * @param {{id?: string, orgId: string, siteId: string, periodStart: string,
+ *   periodEnd: string, monthlyPrice: number|null, annualPrice: number|null,
+ *   extraVisitPrice: number|null, emergencyCallPrice: number|null,
+ *   taxOffice?: string, taxNo?: string}} input
+ * @returns {Promise<object>}
+ */
+export async function saveContract(input) {
+  const payload = {
+    org_id: input.orgId,
+    site_id: input.siteId,
+    period_start: input.periodStart,
+    period_end: input.periodEnd,
+    monthly_price: input.monthlyPrice,
+    annual_price: input.annualPrice,
+    extra_visit_price: input.extraVisitPrice,
+    emergency_call_price: input.emergencyCallPrice,
+    tax_office: input.taxOffice || null,
+    tax_no: input.taxNo || null
+  };
+
+  const query = input.id
+    ? supabase.from('contracts').update(payload).eq('id', input.id)
+    : supabase.from('contracts').insert(payload);
+
+  const rows = await run(query.select(
+    'id, site_id, period_start, period_end, monthly_price, annual_price, ' +
+    'extra_visit_price, emergency_call_price, tax_office, tax_no'
+  ));
+  const row = rows[0];
+  // An update RLS filters out touches zero rows without raising; saying nothing
+  // would leave the operator believing the price was saved.
+  if (!row) throw new Error('Sözleşme kaydedilemedi — yönetici yetkisi gerekiyor.');
+  return {
+    id: row.id,
+    siteId: row.site_id,
+    periodStart: row.period_start,
+    periodEnd: row.period_end,
+    monthlyPrice: row.monthly_price === null ? null : Number(row.monthly_price),
+    annualPrice: row.annual_price === null ? null : Number(row.annual_price),
+    extraVisitPrice: row.extra_visit_price === null ? null : Number(row.extra_visit_price),
+    emergencyCallPrice: row.emergency_call_price === null ? null : Number(row.emergency_call_price),
+    taxOffice: row.tax_office || '',
+    taxNo: row.tax_no || ''
+  };
+}
