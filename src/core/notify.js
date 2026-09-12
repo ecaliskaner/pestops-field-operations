@@ -7,7 +7,7 @@
 // olur." Note the exclusion: the technician is sent the schedule and the work to
 // do, never the commercial terms.
 //
-// Unlike the presenter's demo events (window.__DEMO_NOTIFS__, session-only),
+// Unlike a session-only notification,
 // these live in `state` so a dispatched assignment survives a reload — a
 // notification the worker loses on refresh would not be a notification. The
 // one-click demo reset clears them along with the rest of state.

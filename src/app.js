@@ -35,7 +35,7 @@ import { orgSettingsSubmit } from './views/settings.js';
 import { msdsClicks } from './views/inventory.js';
 import { teamAdminClicks, techCredentialSubmit } from './views/team.js';
 import { createSiteSubmit } from './views/sites.js';
-import { demoClicks, openNotificationCenter, updateNotifBadge, mountPresenterBar } from './ui/demo.js';
+import { openNotificationCenter, updateNotifBadge } from './ui/notificationCenter.js';
 import { visitReportClicks, bindVisitReportFilters } from './views/visitReports.js';
 import { calendarClicks } from './ui/calendar.js';
 import { customerHomeClicks, serviceRequestSubmit } from './views/customerHome.js';
@@ -233,7 +233,6 @@ export function loginSubmit(e) {
 const CLICK_CHAIN = [
   teamAdminClicks,
   msdsClicks,
-  demoClicks,
   dashboardRangeClicks,
   shellClicks,
   workListClicks,
@@ -326,13 +325,11 @@ bind();
 // user, and without the confirmation an expired token still renders a shell.
 checkSession();
 render();
-mountPresenterBar();
 updateNotifBadge();
 
 restoreSession().then((restored) => {
   if (!restored) return;
   render();
-  mountPresenterBar();
   updateNotifBadge();
 });
 watchSession();

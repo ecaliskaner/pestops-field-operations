@@ -2447,6 +2447,19 @@ tr.rec-row-selected > td { background: #eef4ff !important; }
 
 /* --- Real Leaflet field map (replaces the old abstract %-canvas) --- */
 .map-panel { padding: 0; overflow: hidden; }
+/* The empty-state overlay for a portfolio with no geocoded facilities yet.
+   A mostly-blank map with only a small caption underneath reads as broken;
+   this says plainly why there is nothing to see, over the map itself. */
+.map-panel { position: relative; }
+.field-map-empty {
+  position: absolute; z-index: 5; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: min(300px, 80%); text-align: center; padding: 18px 20px;
+  background: rgba(255,255,255,.96); border: 1px solid var(--n-200); border-radius: var(--radius-md, 10px);
+  box-shadow: 0 8px 24px rgba(16,34,51,.12);
+}
+.field-map-empty-icon { display: block; font-size: 22px; margin-bottom: 6px; }
+.field-map-empty b { display: block; font-size: 13px; color: var(--n-900, #18181b); }
+.field-map-empty p { margin: 6px 0 0; font-size: 11.5px; line-height: 1.45; color: var(--n-500, #71717a); }
 .field-map {
   height: 440px;
   width: 100%;
@@ -2957,117 +2970,11 @@ tr.rec-row-selected > td { background: #eef4ff !important; }
 }
 .feed-icon.success { background: #dcfce7; color: #15803d; }
 
-/* Presenter control strip (5-2 / 5-3 / 5-4). Fixed bottom-left, sits under
-   modals and the tour overlay. Lives inside .app-shell so logout hides it. */
-.presenter-bar {
-  position: fixed;
-  left: 14px;
-  bottom: 14px;
-  z-index: 60;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
-  background: #18181b;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 10px;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
-}
-.presenter-tag {
-  font-size: 8px;
-  font-weight: 800;
-  letter-spacing: 0.1em;
-  color: #8b93a1;
-  padding-left: 2px;
-}
-.presenter-bar .role-switch {
-  display: inline-flex;
-  background: rgba(255, 255, 255, 0.06);
-  border-radius: 7px;
-  padding: 2px;
-  gap: 2px;
-}
-.presenter-bar .role-switch button {
-  border: none;
-  background: transparent;
-  color: #c7ccd4;
-  font-size: 11px;
-  font-weight: 600;
-  padding: 4px 9px;
-  border-radius: 5px;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-}
-.presenter-bar .role-switch button:hover { color: #fff; }
-.presenter-bar .role-switch button.active {
-  background: #fff;
-  color: #18181b;
-}
-.presenter-btn {
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(255, 255, 255, 0.05);
-  color: #fff;
-  font-size: 11px;
-  font-weight: 700;
-  padding: 5px 10px;
-  border-radius: 7px;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-.presenter-btn:hover { background: rgba(255, 255, 255, 0.14); }
-
-/* Sidebar nav item spotlighted by the guided tour. */
-.nav-item.tour-lit {
-  background: rgba(37, 99, 235, 0.16);
-  box-shadow: inset 2px 0 0 var(--blue);
-}
-
-/* Guided tour overlay (5-3): dim backdrop + bottom-centred narration card. */
-.tour-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 120;
-  background: rgba(9, 9, 11, 0.42);
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  padding: 0 16px 32px;
-  /* Only the card should catch clicks; the scrim stays visually dimmed but the
-     view behind updates as steps advance. */
-  pointer-events: none;
-}
-.tour-overlay.hidden { display: none; }
-.tour-card {
-  pointer-events: auto;
-  width: min(520px, 100%);
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  padding: 18px 20px;
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.32);
-}
-.tour-progress { display: flex; gap: 5px; margin-bottom: 10px; }
-.tour-progress i {
-  height: 4px;
-  flex: 1;
-  border-radius: 2px;
-  background: var(--line);
-}
-.tour-progress i.active { background: var(--blue); }
-.tour-step-count {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  color: var(--muted);
-  text-transform: uppercase;
-}
-.tour-card h3 { margin: 6px 0 8px; font-size: 17px; font-weight: 800; }
-.tour-card p { font-size: 13px; line-height: 1.5; color: var(--muted); margin-bottom: 16px; }
-.tour-nav { display: flex; justify-content: space-between; align-items: center; }
-
-@media (max-width: 640px) {
-  .presenter-bar { left: 8px; right: 8px; bottom: 8px; justify-content: center; flex-wrap: wrap; }
-}
+/* Presenter bar, guided tour and their sidebar-spotlight styling used to
+   live here — a floating "SUNUM" strip with a role switch, a scripted sales
+   walkthrough, and a reset button that overwrote saved state, mounted on every
+   boot for every signed-in user. Removed along with src/ui/demo.js now that
+   real customers sign in; see that commit for the reasoning. */
 
 /* ===== Phase 4-2: travel-vs-on-site time & technician efficiency ===== */
 
@@ -3263,7 +3170,15 @@ body {
 .table-panel td, td.num, .num { font-variant-numeric: tabular-nums; }
 
 /* ---- Sidebar ---- */
-.sidebar { background: var(--n-950); padding: 20px 12px 14px; border-right: 1px solid #1c1c20; }
+.sidebar { background: var(--n-950); padding: 20px 12px 14px; border-right: 1px solid #1c1c20; }
+/* The nav list is the part that grows — 11 items now fit on a laptop but not
+   a shorter screen, and the sidebar had no overflow rule at all, so items past
+   the fold were simply unreachable. Only .nav scrolls; brand, workspace switcher
+   and the footer stay put. */
+.sidebar { overflow: hidden; }
+.nav { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-right: 2px; }
+.nav::-webkit-scrollbar { width: 5px; }
+.nav::-webkit-scrollbar-thumb { background: rgba(255,255,255,.14); border-radius: 3px; }
 .brand b { font-family: var(--ds-font); font-weight: 700; letter-spacing: -0.02em; font-size: 18px; }
 .brand small, .workspace-switcher small, .sidebar-footer small { color: #8b8b95; }
 .workspace-switcher { background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); border-radius: var(--radius-sm); margin: 0 2px 20px; }

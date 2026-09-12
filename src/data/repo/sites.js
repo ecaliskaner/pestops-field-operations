@@ -162,7 +162,13 @@ export async function createSite(input) {
         contact_name: input.contactName,
         contact_phone: input.contactPhone,
         contact_email: input.contactEmail,
-        service_scope: input.serviceScope
+        service_scope: input.serviceScope,
+        // Nothing ever wrote these, which is the actual reason the Ekip map
+        // showed no facilities on any real account: a coordinate cannot be
+        // invented, so a site with none entered stays off the map honestly —
+        // but until now there was no field to enter one at all.
+        lat: input.lat ?? null,
+        lng: input.lng ?? null
       })
       .select(SITE_SELECT)
       .single()
@@ -216,7 +222,11 @@ export async function updateSite(input) {
         // column that has existed since the core schema and was written on
         // create but never on edit, so a corrected frequency lived only in the
         // browser that typed it — while data/schedule.js plans visits from it.
-        ...(input.serviceScope ? { service_scope: input.serviceScope } : {})
+        ...(input.serviceScope ? { service_scope: input.serviceScope } : {}),
+        // Coordinates are edited the same way: undefined leaves the column
+        // alone, an explicit null clears a coordinate the admin typed in error.
+        ...(input.lat !== undefined ? { lat: input.lat } : {}),
+        ...(input.lng !== undefined ? { lng: input.lng } : {})
       })
       .eq('id', input.siteId)
       .select('id')

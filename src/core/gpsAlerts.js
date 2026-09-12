@@ -2,7 +2,7 @@
 // device GPS puts them outside the site's geofence.
 //
 // The field map's poller (src/views/team.js) is what talks to
-// /api/mobile/live-positions, but the notification centre (src/ui/demo.js) has
+// /api/mobile/live-positions, but the notification centre (src/ui/notificationCenter.js) has
 // to surface the same finding without duplicating that fetch. This module is
 // the seam between them — deliberately tiny and synchronous.
 //

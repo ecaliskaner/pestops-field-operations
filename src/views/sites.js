@@ -76,6 +76,11 @@ export function createSiteSubmit(e) {
         contactName: f.get('contactName'),
         contactPhone: f.get('contactPhone'),
         contactEmail: f.get('contactEmail'),
+        // Optional: an admin who does not have coordinates handy yet can save
+        // without them, and the site simply stays off the Ekip map until they
+        // are added from the edit form later.
+        lat: f.get('lat') ? parseFloat(f.get('lat')) : null,
+        lng: f.get('lng') ? parseFloat(f.get('lng')) : null,
         contractPeriod: f.get('contractPeriod'),
         taxOffice: f.get('taxOffice'),
         taxNo: f.get('taxNo'),
