@@ -211,9 +211,15 @@ function ensureMap() {
     scrollWheelZoom: true,
     zoomSnap: 0.25
   });
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-    attribution: '© OpenStreetMap · © CARTO',
-    subdomains: 'abcd',
+  // CARTO's anonymous basemap CDN (basemaps.cartocdn.com) started failing to
+  // load tiles in production — every tile request errored client-side with no
+  // HTTP status to diagnose from, consistent with CARTO's own account/rate
+  // restrictions on unregistered usage. Switched to OpenStreetMap's own tile
+  // server: no account, no key, the reference default every Leaflet app falls
+  // back to.
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap katkıda bulunanları',
+    subdomains: 'abc',
     maxZoom: 19
   }).addTo(map);
 
@@ -649,7 +655,13 @@ function renderTechDetail() {
   const statLine = stats
     ? `${stats.visits} ziyaret · saha ort. ${stats.avgOnSiteMin} dk · yol ort. ${stats.avgTravelMin} dk`
     : 'Henüz tamamlanmış ziyaret yok';
-  const stopNames = todaysStopsFor(tech.name).map((s) => s.company || s.name).join(' → ');
+  // The real site behind "Tesis planını görüntüle" — this used to come from
+  // techSites, a hardcoded map of four demo technician names to four seeded
+  // site ids ("Ayşe Demir" -> "s1"), falling back to the literal 's1' for
+  // anyone else. Every real technician hit that fallback and the button opened
+  // a facility that does not exist in a real account.
+  const stops = todaysStopsFor(tech.name);
+  const stopNames = stops.map((s) => s.company || s.name).join(' → ');
   const lastSignal = p
     ? new Date(p.at).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
     : '—';
@@ -666,8 +678,11 @@ function renderTechDetail() {
       <div><span>Saha özeti</span><b>${esc(statLine)}</b></div>
       ${tech.email ? `<div><span>E-posta</span><b>${esc(tech.email)}</b></div>` : ''}
     </div>
-    <button class="secondary-btn map-access" data-action="facilityMap">⌖ Tesis planını görüntüle</button>
-    <p class="map-hint">Plan uygulama içinde çevrimiçi görüntülenir; teknisyen isterse offline kullanım için ayrıca indirebilir.</p>
+    ${stops.length
+      ? `<button class="secondary-btn map-access" data-action="facilityMap" data-site-id="${esc(stops[0].id)}">⌖ Tesis planını görüntüle</button>
+         <p class="map-hint">Plan uygulama içinde çevrimiçi görüntülenir; teknisyen isterse offline kullanım için ayrıca indirebilir.</p>`
+      : `<button class="secondary-btn map-access" disabled title="Bugün için planlı bir ziyaret yok">⌖ Tesis planını görüntüle</button>
+         <p class="map-hint">Bugün için planlı ziyaret olmadığından görüntülenecek bir tesis planı yok.</p>`}
   `;
 }
 

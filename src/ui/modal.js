@@ -23,9 +23,11 @@ function mountSiteLocationPicker(containerId, initialLat, initialLng) {
   const host = document.getElementById(containerId);
   if (!host || typeof L === 'undefined') return;
 
+  // Same provider as team.js's ensureMap() — see that comment for why CARTO's
+  // anonymous basemap CDN was dropped in favour of OpenStreetMap's own tiles.
   const map = L.map(containerId, { zoomControl: true, attributionControl: false });
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-    subdomains: 'abcd', maxZoom: 19
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    subdomains: 'abc', maxZoom: 19
   }).addTo(map);
 
   const hasInitial = Number.isFinite(initialLat) && Number.isFinite(initialLng);
@@ -48,6 +50,17 @@ function mountSiteLocationPicker(containerId, initialLat, initialLng) {
   // into the modal's layout measures itself wrong until nudged once more.
   setTimeout(() => map.invalidateSize(), 80);
 }
+
+// Set by app.js at boot to views/sites.js's activeSiteFilters(), so the
+// siteFilters branch below can prefill the form without modal.js importing
+// from sites.js — sites.js already imports `modal` from here, and the reverse
+// import would be circular.
+// { get, apply, clear } supplied by app.js at boot, wired to views/sites.js's
+// activeSiteFilters()/setSiteFilters()/clearSiteFilters(). Avoids modal.js
+// importing sites.js directly — sites.js already imports `modal` from here,
+// and the reverse import would be circular.
+let siteFiltersApi = null;
+export function registerSiteFilters(api) { siteFiltersApi = api; }
 
 export function modal(type, siteId = null) {
   const content = $('#modalContent');
@@ -394,6 +407,55 @@ export function modal(type, siteId = null) {
         resultsDiv.innerHTML = html || '<p class="text-muted" style="font-size:11px; text-align:center; padding:10px;">Eşleşen sonuç bulunamadı.</p>';
       });
     }, 100);
+  } else if (type === 'siteFilters') {
+    // Real Şehir/Sektör filtering — replaces the "⚙ Filtreler" button's old
+    // fabricated toast, which claimed these were applied while filtering
+    // nothing. Options are only ever the values actually present in the
+    // portfolio; a city or sector nobody has yet is not offered.
+    const cities = [...new Set(state.sites.map((s) => s.city).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'tr'));
+    const sectors = [...new Set(state.sites.map((s) => s.sector).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'tr'));
+    const current = siteFiltersApi ? siteFiltersApi.get() : { city: 'all', sector: 'all' };
+
+    content.innerHTML = `
+      <h2>Tesisleri Filtrele</h2>
+      <p class="text-muted" style="margin-bottom:14px;">Şehir veya sektöre göre daraltın. Bulunduğunuz durum filtresi ve arama ile birlikte uygulanır.</p>
+      <form class="form-grid" id="siteFiltersForm">
+        <label class="form-label">
+          Şehir
+          <select name="city" class="form-select">
+            <option value="all">Tümü</option>
+            ${cities.map((c) => `<option value="${esc(c)}"${c === current.city ? ' selected' : ''}>${esc(c)}</option>`).join('')
+              || ''}
+          </select>
+          ${!cities.length ? '<small class="text-muted" style="font-weight:normal;">Portföyde henüz şehir bilgisi girilmiş tesis yok.</small>' : ''}
+        </label>
+        <label class="form-label">
+          Sektör
+          <select name="sector" class="form-select">
+            <option value="all">Tümü</option>
+            ${sectors.map((sc) => `<option value="${esc(sc)}"${sc === current.sector ? ' selected' : ''}>${esc(sc)}</option>`).join('')}
+          </select>
+          ${!sectors.length ? '<small class="text-muted" style="font-weight:normal;">Portföyde henüz sektör bilgisi girilmiş tesis yok.</small>' : ''}
+        </label>
+        <div style="display:flex; gap:8px; margin-top:6px;">
+          <button type="button" class="secondary-btn" id="siteFiltersClear" style="flex:1; justify-content:center;">Temizle</button>
+          <button type="submit" class="primary-btn" style="flex:1; justify-content:center;">Uygula</button>
+        </div>
+      </form>
+    `;
+    modalEl.classList.remove('hidden');
+
+    $('#siteFiltersClear').addEventListener('click', () => {
+      siteFiltersApi?.clear();
+      modalEl.classList.add('hidden');
+    });
+    $('#siteFiltersForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const f = new FormData(e.target);
+      siteFiltersApi?.apply({ city: f.get('city'), sector: f.get('sector') });
+      modalEl.classList.add('hidden');
+    });
+    return;
   } else if (type === 'inviteTechnician') {
     content.innerHTML = `
       <h2>Teknisyen Davet Et</h2>
