@@ -9,6 +9,46 @@ import { renderWork } from '../views/work.js';
 import { renderCalendarGrid } from '../ui/calendar.js';
 import { supabase } from '../core/supabase.js';
 
+// Click-to-place location picker for the create/edit site forms.
+//
+// The lat/lng fields used to be plain number inputs with a hint suggesting the
+// admin look their own facility's coordinates up on Google Maps and paste them
+// in — something nobody actually does. An address is what a real admin has on
+// hand (the form already asks for it); a point on a map they can click is the
+// only other input that costs them nothing to give. This mirrors team.js's
+// ensureMap() pattern (same tiles, same "container must be visible first"
+// caveat) but stays local to this file rather than being extracted, since nothing
+// else needs a single-pin picker.
+function mountSiteLocationPicker(containerId, initialLat, initialLng) {
+  const host = document.getElementById(containerId);
+  if (!host || typeof L === 'undefined') return;
+
+  const map = L.map(containerId, { zoomControl: true, attributionControl: false });
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    subdomains: 'abcd', maxZoom: 19
+  }).addTo(map);
+
+  const hasInitial = Number.isFinite(initialLat) && Number.isFinite(initialLng);
+  map.setView(hasInitial ? [initialLat, initialLng] : [39.5, 33.5], hasInitial ? 14 : 5.5);
+
+  const form = host.closest('form');
+  const latInput = form?.querySelector('input[name="lat"]');
+  const lngInput = form?.querySelector('input[name="lng"]');
+  let marker = hasInitial ? L.marker([initialLat, initialLng]).addTo(map) : null;
+
+  map.on('click', (e) => {
+    const { lat, lng } = e.latlng;
+    if (marker) marker.setLatLng(e.latlng);
+    else marker = L.marker(e.latlng).addTo(map);
+    if (latInput) latInput.value = lat.toFixed(6);
+    if (lngInput) lngInput.value = lng.toFixed(6);
+  });
+
+  // Same fix as team.js: a map built while its container was still settling
+  // into the modal's layout measures itself wrong until nudged once more.
+  setTimeout(() => map.invalidateSize(), 80);
+}
+
 export function modal(type, siteId = null) {
   const content = $('#modalContent');
   const modalEl = $('#modal');
@@ -61,18 +101,14 @@ export function modal(type, siteId = null) {
           Tesis Adresi
           <input required type="text" name="address" placeholder="Örn: Gebze Organize Sanayi Bölgesi, Kocaeli" class="form-input">
         </label>
-        <label class="form-label">
-          Enlem (Latitude)
-          <input type="number" step="any" name="lat" placeholder="Örn: 40.8000" class="form-input">
-        </label>
-        <label class="form-label">
-          Boylam (Longitude)
-          <input type="number" step="any" name="lng" placeholder="Örn: 29.4300" class="form-input">
-        </label>
-        <p class="text-muted" style="grid-column: span 2; font-size:10px; margin:-6px 0 0;">
-          Koordinat girilirse tesis Ekip &amp; rota haritasında görünür. Google Maps'te adresi aratıp konuma sağ tıklayarak koordinatı kopyalayabilirsiniz.
-        </p>
-        
+        <div class="form-label" style="grid-column: span 2;">
+          Harita Konumu (opsiyonel)
+          <div id="createSiteMap" class="site-location-picker"></div>
+          <small class="text-muted" style="font-weight:normal;">Tesisin bulunduğu noktaya tıklayın. İşaretlenirse tesis Ekip &amp; rota haritasında görünür — işaretlenmezse tesis yine oluşturulur, sadece o haritada görünmez.</small>
+          <input type="hidden" name="lat">
+          <input type="hidden" name="lng">
+        </div>
+
         <div style="grid-column: span 2; font-weight:700; font-size:11px; color:var(--muted); border-bottom:1px solid var(--line); padding-bottom:4px; text-transform:uppercase; margin-top:6px;">VERGİLENDİRME & MALİ BİLGİLER</div>
         <label class="form-label">
           Vergi Dairesi
@@ -125,6 +161,10 @@ export function modal(type, siteId = null) {
         <button type="submit" class="primary-btn" style="grid-column: span 2; justify-content:center; margin-top:10px; height:38px;">＋ Tesis Kaydet</button>
       </form>
     `;
+    // Leaflet needs the container laid out and visible before it can measure
+    // itself; classList.remove('hidden') below runs synchronously right after
+    // this branch, so a deferred callback is enough — no need to move it.
+    setTimeout(() => mountSiteLocationPicker('createSiteMap', null, null), 30);
   } else if (type === 'editSite') {
     const s = state.sites.find(site => site.id === siteId);
     if (!s) return;
@@ -164,20 +204,16 @@ export function modal(type, siteId = null) {
           Tesis Adresi
           <input required type="text" name="address" value="${esc(s.address || '')}" class="form-input">
         </label>
-        <label class="form-label">
-          Enlem (Latitude)
-          <input type="number" step="any" name="lat" value="${s.lat === null || s.lat === undefined ? '' : esc(s.lat)}" placeholder="Örn: 40.8000" class="form-input">
-        </label>
-        <label class="form-label">
-          Boylam (Longitude)
-          <input type="number" step="any" name="lng" value="${s.lng === null || s.lng === undefined ? '' : esc(s.lng)}" placeholder="Örn: 29.4300" class="form-input">
-        </label>
-        <p class="text-muted" style="grid-column: span 2; font-size:10px; margin:-6px 0 0;">
-          ${s.lat != null && s.lng != null
-            ? 'Bu tesis Ekip &amp; rota haritasında görünüyor.'
-            : "Koordinat girilmedi — tesis Ekip &amp; rota haritasında görünmüyor. Google Maps'te adresi aratıp konuma sağ tıklayarak koordinatı kopyalayabilirsiniz."}
-        </p>
-        
+        <div class="form-label" style="grid-column: span 2;">
+          Harita Konumu (opsiyonel)
+          <div id="editSiteMap" class="site-location-picker"></div>
+          <small class="text-muted" style="font-weight:normal;">${s.lat != null && s.lng != null
+            ? 'Bu tesis Ekip &amp; rota haritasında görünüyor. Konumu değiştirmek için haritaya yeniden tıklayın.'
+            : 'Tesisin bulunduğu noktaya tıklayın — işaretlenirse tesis Ekip &amp; rota haritasında görünmeye başlar.'}</small>
+          <input type="hidden" name="lat" value="${s.lat === null || s.lat === undefined ? '' : esc(s.lat)}">
+          <input type="hidden" name="lng" value="${s.lng === null || s.lng === undefined ? '' : esc(s.lng)}">
+        </div>
+
         <div style="grid-column: span 2; font-weight:700; font-size:11px; color:var(--muted); border-bottom:1px solid var(--line); padding-bottom:4px; text-transform:uppercase; margin-top:6px;">VERGİLENDİRME & MALİ BİLGİLER</div>
         <label class="form-label">
           Vergi Dairesi
@@ -230,6 +266,7 @@ export function modal(type, siteId = null) {
         <button type="submit" class="primary-btn" style="grid-column: span 2; justify-content:center; margin-top:10px; height:38px;">✓ Değişiklikleri Kaydet</button>
       </form>
     `;
+    setTimeout(() => mountSiteLocationPicker('editSiteMap', s.lat, s.lng), 30);
   } else if (type === 'work') {
     const siteOptions = state.sites.map(s => `<option value="${esc(s.name)}">${esc(s.company)} - ${esc(s.name)}</option>`).join('');
     // Real technicians only — no more hardcoded demo names. An org that
