@@ -1422,7 +1422,12 @@ export function editSiteSubmit(e) {
       address: String(f.get('address') || '').trim(),
       contactName: String(f.get('contactName') || '').trim(),
       contactPhone: String(f.get('contactPhone') || '').trim(),
-      contactEmail: String(f.get('contactEmail') || '').trim()
+      contactEmail: String(f.get('contactEmail') || '').trim(),
+      // Undefined would leave the column untouched; num() always returns a
+      // number or null, so an edit always states the coordinate outright —
+      // clearing a mistaken one is as valid a save as adding a correct one.
+      lat: num('lat'),
+      lng: num('lng')
     }),
     saveContract({
       // An existing period is edited; a site with no contract yet opens one.
@@ -1453,6 +1458,10 @@ export function editSiteSubmit(e) {
       // The prose cadence ("15 Günde Bir") is a label with no column; the plan
       // is computed from serviceScope above, so this is display only.
       site.serviceFrequency = f.get('serviceFrequency');
+      // Installed locally too, so the Ekip map picks the site up on the very
+      // next visit to that view without waiting on a reload.
+      site.lat = num('lat');
+      site.lng = num('lng');
       save();
 
       $('#modal').classList.add('hidden');

@@ -29,7 +29,7 @@ import {
 } from '../data/repo/technicians.js';
 import { fetchTechnicianStats, fetchGeofenceEvents } from '../data/repo/work.js';
 import { setGpsAlerts } from '../core/gpsAlerts.js';
-import { updateNotifBadge } from '../ui/demo.js';
+import { updateNotifBadge } from '../ui/notificationCenter.js';
 
 // ---- module-local view state (never persisted) ----
 
@@ -149,7 +149,7 @@ async function pollLivePositions() {
 // A technician whose device GPS puts them outside the geofence of the site
 // they just reported arriving at. `insideGeofence === false` only: a null
 // means the server could not measure it (an offline record), which is not an
-// accusation. The notification centre (src/ui/demo.js) renders these, so this
+// accusation. The notification centre (src/ui/notificationCenter.js) renders
 // bridge has to stay wired or that alert silently stops firing.
 function publishGpsAlerts() {
   const siteById = new Map((state.sites || []).map((s) => [s.id, s]));
@@ -228,6 +228,13 @@ function ensureMap() {
 function plotSites() {
   if (!map) return;
   const sites = mappableSites();
+
+  // Ahead of the memoized short-circuit below, so a genuinely empty portfolio
+  // gets the overlay on the very first paint too — the memo key for "no sites"
+  // is the same empty string the module starts with, and would otherwise skip
+  // this on the first call.
+  document.getElementById('fieldMapEmpty')?.classList.toggle('hidden', sites.length > 0);
+
   const key = sites.map((s) => `${s.id}:${s.lat},${s.lng},${s.geofenceRadiusM},${s.state}`).join('|');
   if (key === plottedSiteKey) return;
   plottedSiteKey = key;

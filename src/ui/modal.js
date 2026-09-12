@@ -61,6 +61,17 @@ export function modal(type, siteId = null) {
           Tesis Adresi
           <input required type="text" name="address" placeholder="Örn: Gebze Organize Sanayi Bölgesi, Kocaeli" class="form-input">
         </label>
+        <label class="form-label">
+          Enlem (Latitude)
+          <input type="number" step="any" name="lat" placeholder="Örn: 40.8000" class="form-input">
+        </label>
+        <label class="form-label">
+          Boylam (Longitude)
+          <input type="number" step="any" name="lng" placeholder="Örn: 29.4300" class="form-input">
+        </label>
+        <p class="text-muted" style="grid-column: span 2; font-size:10px; margin:-6px 0 0;">
+          Koordinat girilirse tesis Ekip &amp; rota haritasında görünür. Google Maps'te adresi aratıp konuma sağ tıklayarak koordinatı kopyalayabilirsiniz.
+        </p>
         
         <div style="grid-column: span 2; font-weight:700; font-size:11px; color:var(--muted); border-bottom:1px solid var(--line); padding-bottom:4px; text-transform:uppercase; margin-top:6px;">VERGİLENDİRME & MALİ BİLGİLER</div>
         <label class="form-label">
@@ -153,6 +164,19 @@ export function modal(type, siteId = null) {
           Tesis Adresi
           <input required type="text" name="address" value="${esc(s.address || '')}" class="form-input">
         </label>
+        <label class="form-label">
+          Enlem (Latitude)
+          <input type="number" step="any" name="lat" value="${s.lat === null || s.lat === undefined ? '' : esc(s.lat)}" placeholder="Örn: 40.8000" class="form-input">
+        </label>
+        <label class="form-label">
+          Boylam (Longitude)
+          <input type="number" step="any" name="lng" value="${s.lng === null || s.lng === undefined ? '' : esc(s.lng)}" placeholder="Örn: 29.4300" class="form-input">
+        </label>
+        <p class="text-muted" style="grid-column: span 2; font-size:10px; margin:-6px 0 0;">
+          ${s.lat != null && s.lng != null
+            ? 'Bu tesis Ekip &amp; rota haritasında görünüyor.'
+            : "Koordinat girilmedi — tesis Ekip &amp; rota haritasında görünmüyor. Google Maps'te adresi aratıp konuma sağ tıklayarak koordinatı kopyalayabilirsiniz."}
+        </p>
         
         <div style="grid-column: span 2; font-weight:700; font-size:11px; color:var(--muted); border-bottom:1px solid var(--line); padding-bottom:4px; text-transform:uppercase; margin-top:6px;">VERGİLENDİRME & MALİ BİLGİLER</div>
         <label class="form-label">
@@ -400,7 +424,7 @@ export function modal(type, siteId = null) {
     return;
   }
   // NOTE: the old type === 'notifications' branch was removed in Wave 4. The
-  // bell now opens the notification centre owned by ui/demo.js instead, so
+  // bell now opens the notification centre owned by ui/notificationCenter.js, so
   // nothing calls modal('notifications') any more.
 
   modalEl.classList.remove('hidden');

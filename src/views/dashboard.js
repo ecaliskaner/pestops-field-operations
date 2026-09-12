@@ -60,6 +60,11 @@ export function renderDashboard(range){
   const setText = (sel, value) => { const el = $(sel); if (el) el.textContent = value; };
 
   setText('#workspaceName', orgName);
+  // The avatar letterhead used to be a static "AO" in the markup — the
+  // initials of a fabricated demo company name ("Apex Operations") that
+  // never agreed with whatever org was actually signed in. Derived the same
+  // way every other avatar in the app is: first letter of up to two words.
+  setText('#workspaceAvatar', orgName.trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase() || '—');
   setText('#orgCrumb', orgName);
   setText('#workspaceMeta', `${customerCount} müşteri · ${state.sites.length} tesis`);
   setText('#activeSitesMetric', state.sites.length);
