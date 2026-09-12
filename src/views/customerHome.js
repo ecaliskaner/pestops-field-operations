@@ -12,40 +12,100 @@
 // visits, but the portal had no way to ask for one. That is what makes this a
 // portal rather than a report viewer.
 
-import { $, toast } from '../core/dom.js';
-import { state, save, visibleSites } from '../core/state.js';
+import { $, toast, esc } from '../core/dom.js';
+import { state, visibleSites, replaceWork } from '../core/state.js';
+import { fetchWorkOrders } from '../data/repo/work.js';
 import { ui } from '../core/session.js';
-import { recommendationsForSite, visitsForSite } from '../data/history.js';
-import { nextVisitFor, plannedVisits } from '../data/schedule.js';
-import { contractFor } from '../data/billing.js';
+import { fetchRecommendations, fetchContracts, requestService, customerOwes, stillOpen } from '../data/repo/customer.js';
 import { visitTypes } from '../data/catalog.js';
 import { showCompanyDetail } from './companyDetail.js';
 import { setView } from '../core/router.js';
 
-const esc = (s) => String(s ?? '')
-  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-
 const visitTypeName = (code) => (visitTypes.find((v) => v.code === code) || {}).name || code;
+
+// recommendations.due_on is a plain `date` (2026-09-11); an unset termin shows
+// as a dash rather than "Invalid Date".
+const formatDue = (d) =>
+  d ? new Date(d).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
 
 /* --------------------------------------------------------------- gathering */
 
-// Findings the *customer* owes an action on. `raised` is waiting on them and
-// `rejected` came back for rework; `customer_actioned` is already with us.
-function pendingActions() {
-  return visibleSites().flatMap((site) =>
-    recommendationsForSite(site.id)
-      .filter((r) => r.stage === 'raised' || r.stage === 'rejected')
-      .map((r) => ({ ...r, siteName: site.name, siteId: site.id })));
+// Real findings and contracts, loaded once when the portal first renders.
+// Both were previously generated: recommendationsForSite() invented findings
+// per site and contractFor() invented prices, which meant a customer could be
+// quoted a call-out fee that appears in no contract they ever signed.
+let recommendations = [];
+let contractsBySite = {};
+let portalLoaded = false;
+
+async function loadPortalData() {
+  if (portalLoaded) return;
+  portalLoaded = true;
+  try {
+    recommendations = await fetchRecommendations();
+  } catch (err) {
+    console.error('[repellent] oneriler yuklenemedi', err);
+  }
+  try {
+    contractsBySite = await fetchContracts();
+  } catch (err) {
+    console.error('[repellent] sozlesmeler yuklenemedi', err);
+  }
+  renderCustomerHome();
 }
 
+const recsForSite = (siteId) => recommendations.filter((r) => r.siteId === siteId);
+
+// Findings the customer owes an action on, across every site they can see.
+function pendingActions() {
+  const siteName = new Map(visibleSites().map((s) => [s.id, s.name]));
+  return customerOwes(recommendations)
+    .filter((r) => siteName.has(r.siteId))
+    .map((r) => ({ ...r, siteName: siteName.get(r.siteId) }));
+}
+
+// The customer's own next scheduled visit: the soonest work order that is not
+// finished yet. state.work already holds only their sites' orders (RLS), so
+// this reads the same rows the office board does rather than a parallel
+// schedule generator.
+function nextVisit() {
+  const now = Date.now();
+  const open = (state.work || [])
+    .filter((w) => !w.completed && w.dueAt && new Date(w.dueAt).getTime() >= now)
+    .sort((a, b) => new Date(a.dueAt) - new Date(b.dueAt));
+  if (!open.length) return null;
+
+  const w = open[0];
+  const site = visibleSites().find((s) => s.id === w.siteId);
+  const due = new Date(w.dueAt);
+  const assigned = w.tech && w.tech !== 'Atanmadı';
+  return {
+    date: due.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', weekday: 'long' }),
+    time: due.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
+    siteName: site ? site.name : '',
+    city: site ? site.city : '',
+    // "Confirmed" means a named technician is actually assigned to it. A visit
+    // still sitting unassigned is exactly what the customer should see as
+    // pending rather than as a promise.
+    confirmed: assigned,
+    teamLabel: assigned ? w.tech : 'Ekip henüz atanmadı',
+    tasks: [visitTypeName(w.visitType), w.title].filter(Boolean)
+  };
+}
+
+// The most recent completed service across the customer's sites.
 function lastVisitAcross() {
-  const all = visibleSites().flatMap((s) => visitsForSite(s.id));
-  if (!all.length) return null;
-  // Visit ids are generated in chronological order per site, so the highest
-  // month/day pair across the set is the most recent service.
-  return all.reduce((best, v) =>
-    (!best || v.monthIndex > best.monthIndex ||
-      (v.monthIndex === best.monthIndex && v.day > best.day)) ? v : best, null);
+  const done = (state.work || [])
+    .filter((w) => w.completed && w.completedAt)
+    .sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt));
+  if (!done.length) return null;
+  const w = done[0];
+  const site = visibleSites().find((s) => s.id === w.siteId);
+  return {
+    date: new Date(w.completedAt).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' }),
+    siteName: site ? site.name : '',
+    tech: w.tech
+  };
 }
 
 /* --------------------------------------------------------------- rendering */
@@ -54,12 +114,13 @@ export function renderCustomerHome() {
   const host = $('#customerHomeBody');
   if (!host) return;
 
+  loadPortalData();
+
   const sites = visibleSites();
   const user = state.currentUser;
-  const next = nextVisitFor(sites.map((s) => s.id));
+  const next = nextVisit();
   const actions = pendingActions();
   const last = lastVisitAcross();
-  const openTotal = sites.reduce((n, s) => n + recommendationsForSite(s.id).filter((r) => r.status === 'open').length, 0);
 
   $('#customerHomeGreeting') && ($('#customerHomeGreeting').textContent =
     `${user ? user.name : 'Hoş geldiniz'} · ${user && user.company ? user.company : ''}`);
@@ -134,12 +195,12 @@ function actionsCard(actions) {
       <div class="ch-action-list">
         ${actions.slice(0, 4).map((a) => `
           <button class="ch-action-row" data-ch-site="${esc(a.siteId)}">
-            <span class="ch-action-badge ${a.stage === 'rejected' ? 'warn' : ''}">
-              ${a.stage === 'rejected' ? '↩ Tekrar' : '● Açık'}
+            <span class="ch-action-badge ${a.rework ? 'warn' : ''}">
+              ${a.rework ? '↩ Tekrar' : '● Açık'}
             </span>
             <span class="ch-action-text">
               <b>${esc(a.desc)}</b>
-              <small>${esc(a.siteName)} · ${esc(a.category)} · termin ${esc(a.dueDate || '—')}</small>
+              <small>${esc(a.siteName)}${a.category ? ` · ${esc(a.category)}` : ''} · termin ${esc(formatDue(a.dueOn))}</small>
             </span>
             <span class="ch-action-go">→</span>
           </button>`).join('')}
@@ -156,7 +217,7 @@ function sitesGrid(sites, last) {
       ${last ? `<p class="ch-last">Son servis: <b>${esc(last.date)}</b> · ${esc(last.siteName)} · ${esc(last.tech)}</p>` : ''}
       <div class="ch-site-grid">
         ${sites.map((s) => {
-          const recs = recommendationsForSite(s.id).filter((r) => r.status === 'open').length;
+          const recs = stillOpen(recsForSite(s.id)).length;
           const tone = s.state === 'risk' ? 'critical' : s.state === 'watch' ? 'warning' : 'healthy';
           const label = s.state === 'risk' ? 'Riskli' : s.state === 'watch' ? 'İzlenmeli' : 'Sağlıklı';
           return `
@@ -192,8 +253,11 @@ function openRequestModal(kind) {
   if (!content || !modalEl || !sites.length) return;
 
   const meta = REQUEST_KINDS[kind] || REQUEST_KINDS.ES;
-  const contract = contractFor(sites[0]);
-  const price = meta.priceKey ? contract[meta.priceKey] : null;
+  // Quote a price only when this site's real contract carries one. Inventing
+  // a call-out fee the customer never agreed to would be worse than showing
+  // no figure at all.
+  const contract = contractsBySite[sites[0].id] || null;
+  const price = meta.priceKey && contract ? contract[meta.priceKey] : null;
 
   content.innerHTML = `
     <h2>${esc(meta.label)} talebi</h2>
@@ -221,8 +285,12 @@ function openRequestModal(kind) {
       </label>
       ${price ? `
         <p class="ch-price-note">
-          ℹ️ Sözleşmenize göre bu ziyaretin bedeli <b>${price.toLocaleString('tr-TR')} ₺</b>
+          ℹ️ Sözleşmenize göre bu ziyaretin bedeli <b>${esc(price.toLocaleString('tr-TR'))} ₺</b>
           olarak faturalandırılır. Talebiniz onaylandıktan sonra planlanır.
+        </p>` : meta.priceKey ? `
+        <p class="ch-price-note">
+          ℹ️ Bu ziyaretin ücreti sözleşmenizde tanımlı değil. Talebiniz operasyon
+          ekibine iletilir ve planlanmadan önce bedeli sizinle teyit edilir.
         </p>` : `
         <p class="ch-price-note">
           ℹ️ Takip ziyaretleri sözleşme kapsamındadır, ek ücret yansıtılmaz.
@@ -248,30 +316,41 @@ export function serviceRequestSubmit(e) {
   const meta = REQUEST_KINDS[kind] || REQUEST_KINDS.ES;
   if (!site) return true;
 
-  // A customer request becomes a real, assignable work order — the same object
-  // the operations board and the technician's day are built from. Marked
-  // `requestedByCustomer` so the office can see where it came from.
-  const id = `WO-${Math.floor(Math.random() * 9000) + 1000}`;
-  state.work.unshift({
-    id,
-    siteId: site.id,
-    title: `${meta.label} — ${site.name}`,
-    site: `${site.company} · ${site.name}`,
-    priority: meta.priority,
-    type: 'Müşteri talebi',
-    visitType: kind,
-    due: when,
-    tech: 'Atanmadı',
-    description: note,
-    requestedByCustomer: true,
-    requestedAt: new Date().toLocaleString('tr-TR')
-  });
-  save();
+  const button = e.target.querySelector('button[type="submit"]');
+  if (button) { button.disabled = true; button.textContent = 'Gönderiliyor…'; }
 
-  $('#modal').classList.add('hidden');
-  renderCustomerHome();
-  toast(`${meta.label} talebiniz alındı (${id}). Operasyon ekibi en kısa sürede dönüş yapacak.`);
+  // The request becomes a real work order the office can see and assign. A
+  // client has no INSERT policy on work_orders, so this goes through the
+  // request_service() RPC — see data/repo/customer.js.
+  requestService({ siteId, kind, note, window: when })
+    .then(({ code }) => {
+      $('#modal').classList.add('hidden');
+      // Reload the board so the new request shows up in the portal (and in the
+      // office view) without a refresh.
+      return refreshWorkOrders().then(() => {
+        renderCustomerHome();
+        toast(`${meta.label} talebiniz alındı${code ? ` (${code})` : ''}. Operasyon ekibi en kısa sürede dönüş yapacak.`);
+      });
+    })
+    .catch((err) => {
+      toast(err.message || 'Talebiniz gönderilemedi. Lütfen tekrar deneyin.');
+    })
+    .finally(() => {
+      if (button) { button.disabled = false; button.textContent = 'Talebi Gönder'; }
+    });
+
   return true;
+}
+
+// Pull the work-order board again after a request is raised. Failing here is
+// not fatal — the request is already recorded server-side; the customer just
+// would not see it until the next load.
+async function refreshWorkOrders() {
+  try {
+    replaceWork(await fetchWorkOrders());
+  } catch (err) {
+    console.error('[repellent] is emirleri yenilenemedi', err);
+  }
 }
 
 /* ---------------------------------------------------------------- handlers */

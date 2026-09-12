@@ -8,12 +8,12 @@ import { applyRoleAccess } from '../core/roles.js';
 import { renderDashboard } from '../views/dashboard.js';
 import { renderSites } from '../views/sites.js';
 import { renderWork } from '../views/work.js';
-import { renderTeam, startFieldSimulation } from '../views/team.js';
+import { renderTeam, startFieldTracking, stopFieldTracking } from '../views/team.js';
 import { renderAiPredictions, renderInsights } from '../views/insights.js';
 import { renderReports } from '../views/reports.js';
-import { renderMobileRoute } from '../views/mobile.js';
 import { renderInventory } from '../views/inventory.js';
 import { renderFinance } from '../views/finance.js';
+import { renderSettings } from '../views/settings.js';
 import { renderVisitReports } from '../views/visitReports.js';
 import { renderCustomerHome } from '../views/customerHome.js';
 import { renderTechToday } from '../views/techToday.js';
@@ -31,8 +31,6 @@ export function setView(view){
   } else if (view === 'work') {
     renderWork();
     renderTechToday();
-  } else if (view === 'mobileSim') {
-    renderMobileRoute();
   } else if (view === 'inventory') {
     renderInventory();
   } else if (view === 'finance') {
@@ -49,26 +47,50 @@ export function setView(view){
   } else if (view === 'team') {
     // The map is built once during the initial render() while #team is hidden
     // (zero size). Re-entering the view must re-measure it, or the tiles render
-    // grey. startFieldSimulation() is idempotent and calls invalidateSize().
-    startFieldSimulation();
+    // grey. startFieldTracking() is idempotent and calls invalidateSize().
+    startFieldTracking();
+  } else {
+    // Leaving Ekip stops the live_positions() poll. Without this it keeps
+    // querying every 15 seconds for the rest of the session while nobody is
+    // looking at the map.
+    stopFieldTracking();
+  }
+}
+
+// One panel must never be able to take the application down with it.
+//
+// render() paints every view in turn, so an exception in any one of them used
+// to abort the whole pass: the screens after it never painted and the shell
+// was left half-drawn and unresponsive. That is exactly what a real account
+// hit on its first load — an empty site list made renderWork() throw, and the
+// app froze on a partly-rendered dashboard.
+//
+// Each panel is now isolated. A failure is logged loudly (it is still a bug to
+// fix, not something to swallow quietly) but the rest of the app still paints.
+function paint(name, fn) {
+  try {
+    fn();
+  } catch (err) {
+    console.error(`[repellent] ${name} cizilemedi`, err);
   }
 }
 
 export function render(){
-  renderDashboard();
-  renderSites();
-  renderWork();
-  renderTeam();
-  renderInsights();
-  renderReports();
-  renderAiPredictions();
-  renderInventory();
-  renderFinance();
-  renderVisitReports();
-  renderCustomerHome();
-  renderTechToday();
-  setView(state.view);
-  applyRoleAccess();
+  paint('dashboard', renderDashboard);
+  paint('sites', renderSites);
+  paint('work', renderWork);
+  paint('team', renderTeam);
+  paint('insights', renderInsights);
+  paint('reports', renderReports);
+  paint('aiPredictions', renderAiPredictions);
+  paint('inventory', renderInventory);
+  paint('finance', renderFinance);
+  paint('visitReports', renderVisitReports);
+  paint('customerHome', renderCustomerHome);
+  paint('techToday', renderTechToday);
+  paint('settings', renderSettings);
+  paint('view', () => setView(state.view));
+  paint('roleAccess', applyRoleAccess);
 }
 
 // Company Detail Page & Tabs Management

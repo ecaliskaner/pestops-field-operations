@@ -1,47 +1,47 @@
 // Extracted from app.js (Phase 0a-3).
 
-import { $, $$ } from '../core/dom.js';
+import { $, $$, esc } from '../core/dom.js';
 import { recalculateSiteStats, state } from '../core/state.js';
-import { getVisits } from '../data/history.js';
 
 export function riskRows(){
   return state.work.filter(w => !w.completed).slice(0,3).map(w=>`
-    <div class="risk-item" data-work-id="${w.id}" style="cursor:pointer;">
-      <span class="risk-bar ${w.priority}"></span>
-      <div><b>${w.title}</b><small>${w.site}</small></div>
-      <p class="risk-desc">${w.description.slice(0,67)}…</p>
-      <div><span class="status-chip ${w.priority}">${w.type}</span><small>${w.due}</small></div>
+    <div class="risk-item" data-work-id="${esc(w.id)}" style="cursor:pointer;">
+      <span class="risk-bar ${esc(w.priority)}"></span>
+      <div><b>${esc(w.title)}</b><small>${esc(w.site)}</small></div>
+      <p class="risk-desc">${esc(String(w.description || '').slice(0,67))}…</p>
+      <div><span class="status-chip ${esc(w.priority)}">${esc(w.type)}</span><small>${esc(w.due)}</small></div>
     </div>
-  `).join('');
+  `).join('') || '<p class="empty">Açık iş emri bulunmuyor.</p>';
 }
 
 // ---- range control (Bugün / Bu hafta / Bu ay) ----
 //
-// The seeded history's window ends on the in-universe "today" (12 Tem 2026,
-// the last generated day of the last month — see data/history.js). Widening
-// the range pulls in more of that same real, deterministic visit history
-// instead of inventing a second data source, so the numbers stay consistent
-// with every other view that reads getVisits().
+// This used to widen a window over the seeded 12-month demo history. It now
+// filters the org's real completed work orders by their actual completion
+// timestamp, so the number a customer sees is one they can reconcile against
+// their own job list.
 const RANGE_DAYS = { today: 1, week: 7, month: 30 };
 let currentRange = 'today'; // module-local; never persisted, same pattern as team.js routeOptimized
 
-function visitTypeIcon(v) {
-  if (v.visitType === 'AC') return ['alert', '!'];
-  if (v.recommendationsRaised.length) return ['alert', '!'];
-  return ['done', '✓'];
+// Start of the trailing window, anchored to local midnight so "Bugün" means
+// today's calendar day rather than the last 24 hours.
+function rangeStart(days) {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  start.setDate(start.getDate() - (days - 1));
+  return start;
 }
 
-// Real completed visits within the trailing window, newest first — used to
-// both widen the activity feed and scale the completed-service metric when a
-// wider range is selected.
-function recentVisits(days) {
-  const visits = getVisits();
-  const lastMonthIndex = Math.max(...visits.map(v => v.monthIndex));
-  const lastDay = Math.max(...visits.filter(v => v.monthIndex === lastMonthIndex).map(v => v.day));
-  return visits
-    .filter(v => v.monthIndex === lastMonthIndex && v.day > lastDay - days)
-    .sort((a, b) => b.day - a.day)
-    .slice(0, 8);
+function completedInRange(days) {
+  const from = rangeStart(days);
+  return state.work.filter((w) => {
+    if (!w.completed) return false;
+    // A work order completed through the office button has no real
+    // completed_at yet; counting it in every window would inflate the metric,
+    // so it only counts once the database records when it happened.
+    if (!w.completedAt) return false;
+    return new Date(w.completedAt) >= from;
+  });
 }
 
 export function renderDashboard(range){
@@ -51,69 +51,98 @@ export function renderDashboard(range){
   // Recalculate all sites stats to ensure dashboard represents fresh data
   state.sites.forEach(recalculateSiteStats);
 
+  // Identity + headline counters. These lived as literals in index.html
+  // ("Apex Operations", "12 müşteri · 34 tesis", "Aktif tesis 34",
+  // "Sahadaki teknisyen 11/14", "13 TEMMUZ 2026") — numbers no real account
+  // could reconcile. They now read the signed-in org's own data.
+  const orgName = state.currentUser?.orgName || state.currentUser?.company || 'Repellent';
+  const customerCount = new Set(state.sites.map(s => s.company).filter(Boolean)).size;
+  const setText = (sel, value) => { const el = $(sel); if (el) el.textContent = value; };
+
+  setText('#workspaceName', orgName);
+  setText('#orgCrumb', orgName);
+  setText('#workspaceMeta', `${customerCount} müşteri · ${state.sites.length} tesis`);
+  setText('#activeSitesMetric', state.sites.length);
+  setText('#fieldTechMetric', state.technicians.length);
+  setText('#dashDate', `${new Date().toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }).toLocaleUpperCase('tr')} · OPERASYON ÖZETİ`);
+
   $('#riskList').innerHTML=riskRows();
   $('#criticalMetric').textContent=state.sites.reduce((n,s)=>n+s.issues,0);
 
   const days = RANGE_DAYS[currentRange] || 1;
-  const historic = currentRange === 'today' ? [] : recentVisits(days);
-  $('#completedMetric').textContent = state.completed + historic.length;
+  const completedCount = completedInRange(days).length;
+  $('#completedMetric').textContent = completedCount;
   const workComp = $('#workCompleted');
-  if (workComp) workComp.textContent = state.completed + historic.length;
+  if (workComp) workComp.textContent = completedCount;
 
-  const curated = [
-    ['done','✓','Servis raporu onaylandı','Novatek · Çayırova Ar-Ge Merkezi','10:42', 's5'],
-    ['alert','!','Kritik aktivite kaydedildi','Acme Foods · R-12 istasyonu','10:18', 's1'],
-    ['','⌖','Teknisyen tesise ulaştı','Ayşe Demir · Gebze Üretim Tesisi','10:05', 's1'],
-    ['','↗','Müşteri raporu paylaşıldı','Orion Hotels · Taksim Otel','09:48', 's6']
-  ];
-  const historicRows = historic.map(v => {
-    const [kind, icon] = visitTypeIcon(v);
-    return [kind, icon, `Ziyaret tamamlandı — ${v.tech}`, `${v.company} · ${v.siteName}`, v.date, v.siteId];
-  });
-
-  $('#activityFeed').innerHTML=[...curated, ...historicRows].map(x=>`
-    <div class="activity-item" data-site-id="${x[5]}" style="cursor:pointer;">
-      <span class="feed-icon ${x[0]}">${x[1]}</span>
-      <div><b>${x[2]}</b><p>${x[3]}</p></div>
-      <time>${x[4]}</time>
+  // The activity feed is the real work_order_events audit trail (loaded in
+  // core/auth.js). It replaced a hardcoded four-row demo list — a customer
+  // must never see fabricated events attributed to their own sites.
+  $('#activityFeed').innerHTML = state.activity.map(ev => `
+    <div class="activity-item" data-site-id="${esc(ev.siteId)}" style="cursor:pointer;">
+      <span class="feed-icon ${esc(ev.kind)}">${esc(ev.icon)}</span>
+      <div><b>${esc(ev.title)}${ev.tech ? ` — ${esc(ev.tech)}` : ''}</b><p>${esc(ev.where)}</p></div>
+      <time>${esc(ev.time)}</time>
     </div>
-  `).join('');
+  `).join('') || '<p class="empty">Henüz saha hareketi kaydedilmedi. Teknisyenler mobil uygulamadan ziyarete başladıkça buraya düşecek.</p>';
 
-  $('#scheduleList').innerHTML=[
-    ['14:30','Acme Foods','Gebze Üretim Tesisi','AD', 's1'],
-    ['16:00','Kuzey Lojistik','Hadımköy DM','MK', 's2'],
-    ['17:15','Orion Hotels','Taksim Otel','EY', 's6']
-  ].map(x=>`
-    <div class="schedule-item" data-site-id="${x[4]}" style="cursor:pointer;">
-      <span class="schedule-time">${x[0]}</span>
-      <div><b>${x[1]}</b><p>${x[2]}</p></div>
-      <span class="schedule-avatar">${x[3]}</span>
-    </div>
-  `).join('');
+  // Today's schedule: the org's own open work orders due today, earliest
+  // first — previously three hardcoded rows naming customers that do not
+  // exist in this account.
+  const todayEnd = new Date();
+  todayEnd.setHours(23, 59, 59, 999);
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const scheduled = state.work
+    .filter(w => !w.completed && w.dueAt && new Date(w.dueAt) >= todayStart && new Date(w.dueAt) <= todayEnd)
+    .sort((a, b) => new Date(a.dueAt) - new Date(b.dueAt))
+    .slice(0, 5);
 
-  // Update Portfolio donut score dynamically
-  const avgScore = Math.round(state.sites.reduce((sum, s) => sum + s.score, 0) / state.sites.length);
+  $('#scheduleList').innerHTML = scheduled.map(w => {
+    const [company, siteName] = String(w.site).split(' · ');
+    const time = new Date(w.dueAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+    const avatar = String(w.tech || '')
+      .split(/\s+/).filter(Boolean).slice(0, 2).map(p => p[0].toLocaleUpperCase('tr')).join('') || '—';
+    return `
+    <div class="schedule-item" data-site-id="${esc(w.siteId)}" style="cursor:pointer;">
+      <span class="schedule-time">${esc(time)}</span>
+      <div><b>${esc(company || '')}</b><p>${esc(siteName || '')}</p></div>
+      <span class="schedule-avatar" title="${esc(w.tech)}">${esc(avatar)}</span>
+    </div>`;
+  }).join('') || '<p class="empty">Bugün için planlanmış ziyaret yok.</p>';
+
+  // Update Portfolio donut score dynamically. A brand-new account has zero
+  // sites, and dividing by that produced a literal "NaN" on the first screen
+  // the customer ever sees — the empty portfolio renders as a neutral, empty
+  // ring with a dash instead.
+  const totalSites = state.sites.length;
+  const avgScore = totalSites
+    ? Math.round(state.sites.reduce((sum, s) => sum + s.score, 0) / totalSites)
+    : null;
   const healthyCount = state.sites.filter(s => s.state === 'healthy').length;
   const watchCount = state.sites.filter(s => s.state === 'watch').length;
   const riskCount = state.sites.filter(s => s.state === 'risk').length;
 
   const scoreEl = $('#portfolioScore');
-  if (scoreEl) scoreEl.textContent = avgScore;
-  
+  if (scoreEl) scoreEl.textContent = avgScore === null ? '—' : avgScore;
+
   const donut = $('.donut');
   if (donut) {
-    const totalSites = state.sites.length;
-    const hDeg = Math.round((healthyCount / totalSites) * 360);
-    const wDeg = Math.round(((healthyCount + watchCount) / totalSites) * 360);
-    donut.style.background = `conic-gradient(var(--green) 0deg ${hDeg}deg, #f0bd4a ${hDeg}deg ${wDeg}deg, #e05a54 ${wDeg}deg 360deg)`;
+    if (!totalSites) {
+      donut.style.background = 'conic-gradient(var(--line) 0deg 360deg)';
+    } else {
+      const hDeg = Math.round((healthyCount / totalSites) * 360);
+      const wDeg = Math.round(((healthyCount + watchCount) / totalSites) * 360);
+      donut.style.background = `conic-gradient(var(--green) 0deg ${hDeg}deg, #f0bd4a ${hDeg}deg ${wDeg}deg, #e05a54 ${wDeg}deg 360deg)`;
+    }
   }
 
   const legend = $('.score-legend');
   if (legend) {
     legend.innerHTML = `
-      <p><i class="legend-dot good"></i><b>${healthyCount}</b> Sağlıklı</p>
-      <p><i class="legend-dot watch"></i><b>${watchCount}</b> İzlenmeli</p>
-      <p><i class="legend-dot risk"></i><b>${riskCount}</b> Riskli</p>
+      <p><i class="legend-dot good"></i><b>${esc(healthyCount)}</b> Sağlıklı</p>
+      <p><i class="legend-dot watch"></i><b>${esc(watchCount)}</b> İzlenmeli</p>
+      <p><i class="legend-dot risk"></i><b>${esc(riskCount)}</b> Riskli</p>
     `;
   }
 }

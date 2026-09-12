@@ -6,9 +6,9 @@
 
 import { $, $$, toast } from './core/dom.js';
 import { save, state } from './core/state.js';
-import { users } from './core/auth.js';
+import { signIn, signOut, restoreSession, watchSession } from './core/auth.js';
 import { ui } from './core/session.js';
-import { checkSession, logout } from './core/roles.js';
+import { checkSession } from './core/roles.js';
 import { techSites } from './data/seed.js';
 import { render, setView } from './core/router.js';
 import { modal } from './ui/modal.js';
@@ -17,21 +17,23 @@ import { renderSites } from './views/sites.js';
 import { renderInsights } from './views/insights.js';
 import {
   workListClicks, workCardClicks, completeWorkClicks, calendarToggleClicks,
-  taskChemDeleteClicks, createWorkSubmit, taskChemicalSubmit, renderWork
+  createWorkSubmit, taskChemicalSubmit, renderWork
 } from './views/work.js';
 import { teamRosterClicks } from './views/team.js';
 import {
   siteCardClicks, backNavClicks, planToolbarClicks, planCanvasClicks,
   companyTabClicks, fileDownloadClicks, editSiteSubmit, adminInspectionSubmit,
-  fileUploadSubmit, recommendationSubmit, chemicalUsageSubmit, placementSubmit,
+  fileUploadSubmit, recommendationSubmit, placementSubmit,
   deviceReplacementSubmit, lifecycleClicks, recCustomerResponseSubmit, recApprovalSubmit,
   showStationDetail, switchCompanyTab, showCompanyDetail
 } from './views/companyDetail.js';
 import { reportCardClicks, reportModalClicks, generateReportSubmit } from './views/reports.js';
-import { mobileClicks, mobileChemDeleteClicks, mobChemicalSubmit, chemicalDocClicks } from './views/mobile.js';
 import { insightsClicks } from './views/insights.js';
 import { invoiceActionClicks, invoiceFilterClicks, billingClicks } from './views/finance.js';
-import { stockRefillSubmit } from './views/inventory.js';
+import { stockRefillSubmit, chemicalDefineSubmit } from './views/inventory.js';
+import { orgSettingsSubmit } from './views/settings.js';
+import { msdsClicks } from './views/inventory.js';
+import { teamAdminClicks, techCredentialSubmit } from './views/team.js';
 import { createSiteSubmit } from './views/sites.js';
 import { demoClicks, openNotificationCenter, updateNotifBadge, mountPresenterBar } from './ui/demo.js';
 import { visitReportClicks, bindVisitReportFilters } from './views/visitReports.js';
@@ -47,26 +49,19 @@ localStorage.removeItem("repellent-product-demo"); localStorage.removeItem("lady
 
 export function shellClicks(e) {
     if (e.target.id === 'btnLogOut') {
-      logout();
+      // signOut() rather than the old roles.js:logout(): clearing the local
+      // profile cache without ending the Supabase session would leave a live,
+      // still-usable token behind on a shared machine.
+      signOut().then(() => {
+        render();
+        toast('Oturum kapatıldı.');
+      });
       return true;
     }
     
-    const quickLogin = e.target.closest('.quick-login-btn');
-    if (quickLogin) {
-      const roleKey = quickLogin.dataset.loginAs;
-      let email = 'admin@repellent.com';
-      if (roleKey === 'tech') email = 'ayse@repellent.com';
-      if (roleKey === 'client') email = 'acme@client.com';
-
-      state.currentUser = users[email];
-      localStorage.setItem("repellent-user", JSON.stringify(state.currentUser));
-      checkSession();
-      render();
-      mountPresenterBar();
-      updateNotifBadge();
-      toast(`Hoş geldiniz, ${state.currentUser.name}!`);
-      return true;
-    }
+    // The one-click "log in as admin/tech/client" buttons that used to live
+    // here are gone. They bypassed authentication entirely, and there is no
+    // version of them that is safe once this app holds real customer data.
 
     // data-action click event bindings
     const actionEl = e.target.closest('[data-action]');
@@ -184,7 +179,8 @@ export function modalOpenerClicks(e) {
       }
     }
     if(e.target.closest('#createReport')) modal('report');
-    
+    if(e.target.closest('#btnInviteTechnician')) modal('inviteTechnician');
+
     if(e.target.closest('.modal-close')||e.target.id==='modal') $('#modal').classList.add('hidden');
     
     if(e.target.closest('#optionalDownload')){
@@ -204,20 +200,28 @@ export function loginSubmit(e) {
     if (e.target.id === 'loginForm') {
       e.preventDefault();
       const email = $('#inpLoginEmail').value.trim();
-      const password = $('#inpLoginPassword').value.trim();
-      
-      const user = users[email];
-      if (user && password === '123') {
-        state.currentUser = user;
-        localStorage.setItem("repellent-user", JSON.stringify(state.currentUser));
-        checkSession();
-        render();
-        mountPresenterBar();
-        updateNotifBadge();
-        toast(`Başarıyla giriş yapıldı. Hoş geldiniz, ${user.name}!`);
-      } else {
-        toast('Hata: Geçersiz e-posta veya şifre (Şifre: 123)');
-      }
+      const password = $('#inpLoginPassword').value;
+      const button = e.target.querySelector('button[type="submit"], .primary-btn');
+
+      // The network round-trip is real now, so the button has to say so —
+      // otherwise an impatient double-click fires two sign-in requests.
+      const restore = button ? button.textContent : null;
+      if (button) { button.disabled = true; button.textContent = 'Giriş yapılıyor…'; }
+
+      signIn(email, password)
+        .then((result) => {
+          if (result.ok) {
+            render();
+            updateNotifBadge();
+            toast(`Hoş geldiniz, ${state.currentUser.name}!`);
+          } else {
+            toast(result.message);
+          }
+        })
+        .catch(() => toast('Giriş yapılamadı. Bağlantınızı kontrol edin.'))
+        .finally(() => {
+          if (button) { button.disabled = false; button.textContent = restore; }
+        });
       return true;
     }
   return false;
@@ -227,6 +231,8 @@ export function loginSubmit(e) {
 // original single delegator, including blocks that deliberately fall through
 // to later ones. A handler returns true to stop processing the event.
 const CLICK_CHAIN = [
+  teamAdminClicks,
+  msdsClicks,
   demoClicks,
   dashboardRangeClicks,
   shellClicks,
@@ -250,14 +256,10 @@ const CLICK_CHAIN = [
   // marker drag must not also fall through to station selection.
   floorPlanClicks,
   planCanvasClicks,
-  mobileClicks,
   companyTabClicks,
   insightsClicks,
   invoiceActionClicks,
   billingClicks,
-  chemicalDocClicks,
-  mobileChemDeleteClicks,
-  taskChemDeleteClicks,
   invoiceFilterClicks,
   fileDownloadClicks
 ];
@@ -277,10 +279,11 @@ const SUBMIT_CHAIN = [
   adminInspectionSubmit,
   fileUploadSubmit,
   recommendationSubmit,
-  chemicalUsageSubmit,
   stockRefillSubmit,
-  taskChemicalSubmit,
-  mobChemicalSubmit
+  chemicalDefineSubmit,
+  orgSettingsSubmit,
+  techCredentialSubmit,
+  taskChemicalSubmit
 ];
 
 function bind() {
@@ -314,7 +317,22 @@ function bind() {
 Object.assign(window, { showStationDetail, switchCompanyTab });
 
 bind();
+
+// Boot. checkSession() paints the shell or the login screen from the cached
+// profile immediately, so the page is never blank while the network is slow;
+// restoreSession() then confirms the cached identity against a real Supabase
+// session and clears it if the token is gone. Order matters: without the
+// optimistic first paint a refresh flashes the login screen at a signed-in
+// user, and without the confirmation an expired token still renders a shell.
 checkSession();
 render();
 mountPresenterBar();
 updateNotifBadge();
+
+restoreSession().then((restored) => {
+  if (!restored) return;
+  render();
+  mountPresenterBar();
+  updateNotifBadge();
+});
+watchSession();

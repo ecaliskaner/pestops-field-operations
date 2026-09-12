@@ -1,11 +1,10 @@
-import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/models.dart';
-import 'api_client.dart';
-import 'mock_backend.dart';
 import 'outbox.dart';
+import 'supabase_service.dart';
 
 /// Result of a QR scan, so the screen can react to the first-QR unlock.
 class ScanResult {
@@ -23,55 +22,54 @@ class ScanResult {
   });
 }
 
+String _nowIso() => DateTime.now().toUtc().toIso8601String();
+
 /// The single source of truth the UI listens to.
+///
+/// Every mutating field action below follows the same shape: try the live
+/// Supabase RPC; if the failure looks like "no network reached the server"
+/// (isNetworkFailure), fall back to the offline outbox and reflect the change
+/// optimistically in local state; if the server DID answer with a rejection
+/// (a PostgrestException — e.g. RLS denied it, or a business rule like
+/// "already completed"), surface that real message instead of queuing an
+/// action that will only fail again on retry.
 class AppState extends ChangeNotifier {
-  late ApiClient api;
+  AppState() : _service = SupabaseService(Supabase.instance.client);
+
+  final SupabaseService _service;
   final Outbox outbox = Outbox();
 
   Technician? technician;
-  String? _token;
-  String baseUrl = _defaultBaseUrl();
-
   List<WorkOrder> route = [];
   bool loading = false;
   String? lastSyncAtLocal;
 
-  /// Manual demo toggle. Field techs (and presenters) can force airplane mode
-  /// on stage; a real network failure also flips this on automatically.
+  /// Manual "force offline" toggle for field testing and demos — the offline
+  /// path is exercised deliberately, not just discovered by accident. A real
+  /// network failure also flips this on automatically.
   bool offlineMode = false;
 
-  bool get isLoggedIn => _token != null && technician != null;
+  bool get isLoggedIn => _service.isLoggedIn && technician != null;
   int get pendingCount => outbox.length;
-
-  static String _defaultBaseUrl() {
-    if (kIsWeb) return 'http://localhost:4173';
-    try {
-      if (Platform.isAndroid) return 'http://10.0.2.2:4173'; // emulator → host
-    } catch (_) {}
-    return 'http://localhost:4173';
-  }
 
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
-    baseUrl = prefs.getString('baseUrl') ?? _defaultBaseUrl();
-    _token = prefs.getString('token');
     lastSyncAtLocal = prefs.getString('lastSyncAt');
-    final techEmail = prefs.getString('technician');
-    if (_token != null && _token!.startsWith('demo-') && techEmail != null) {
-      offlineMode = true;
-      technician = MockBackend.findTechnician(techEmail, '1234');
-      route = MockBackend.routeFor(techEmail);
-    }
-    api = ApiClient(baseUrl: baseUrl, token: _token);
     await outbox.load();
-    notifyListeners();
-  }
 
-  Future<void> setBaseUrl(String url) async {
-    baseUrl = url.trim().replaceAll(RegExp(r'/+$'), '');
-    api.baseUrl = baseUrl;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('baseUrl', baseUrl);
+    final restored = await _service.restoreSession();
+    if (restored) {
+      try {
+        technician = await _service.fetchTechnician();
+        await loadRoute();
+      } on Object {
+        // Session token was valid but the account has no technician row yet
+        // (an admin hasn't finished onboarding it) — do not pretend to be
+        // logged in with nothing to show.
+        await _service.signOut();
+        technician = null;
+      }
+    }
     notifyListeners();
   }
 
@@ -79,34 +77,22 @@ class AppState extends ChangeNotifier {
     loading = true;
     notifyListeners();
     try {
-      final res = await api.login(email, password);
-      _token = res['token'];
-      api.token = _token;
-      technician = Technician.fromJson(res['technician']);
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('token', _token!);
-      await prefs.setString('technician', technician!.email);
+      await _service.signIn(email, password);
+      technician = await _service.fetchTechnician();
       offlineMode = false;
       await loadRoute();
       return null;
-    } on ApiException catch (e) {
-      return e.statusCode == 401 ? 'E-posta veya şifre hatalı.' : e.message;
-    } catch (_) {
-      // Backend unreachable (wrong address, or this build has no server
-      // behind it at all — e.g. a static demo deploy). Fall back to the
-      // bundled demo dataset so the known accounts still work, fully
-      // offline: every action already has a local/offline path.
-      final mockTech = MockBackend.findTechnician(email, password);
-      if (mockTech == null) return 'E-posta veya şifre hatalı.';
-      technician = mockTech;
-      _token = 'demo-${mockTech.email}';
-      api.token = _token;
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('token', _token!);
-      await prefs.setString('technician', technician!.email);
-      offlineMode = true;
-      route = MockBackend.routeFor(mockTech.email);
-      return null;
+    } on AuthException catch (e) {
+      return e.message.contains('Invalid') ? 'E-posta veya şifre hatalı.' : e.message;
+    } on Object catch (e) {
+      if (technician != null) {
+        // signIn succeeded but fetchTechnician found no row for this account.
+        await _service.signOut();
+        technician = null;
+        return 'Hesabınız henüz bir teknisyen kaydına bağlanmamış. Yöneticinize başvurun.';
+      }
+      if (isNetworkFailure(e)) return 'Sunucuya ulaşılamıyor. İnternet bağlantınızı kontrol edin.';
+      return 'Giriş yapılamadı.';
     } finally {
       loading = false;
       notifyListeners();
@@ -114,12 +100,9 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> logout() async {
-    _token = null;
+    await _service.signOut();
     technician = null;
     route = [];
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('token');
-    await prefs.remove('technician');
     notifyListeners();
   }
 
@@ -127,12 +110,11 @@ class AppState extends ChangeNotifier {
     loading = true;
     notifyListeners();
     try {
-      final res = await api.bootstrap();
-      final list = (res['route'] as List).map((e) => WorkOrder.fromJson(e)).toList();
-      route = list;
+      route = await _service.fetchRoute();
       offlineMode = false;
-    } catch (_) {
-      // Stay on cached route; flip the badge to offline.
+    } on Object {
+      // Stay on the cached route; flip the badge to offline rather than
+      // clearing what the technician already has on screen.
       offlineMode = true;
     } finally {
       loading = false;
@@ -147,11 +129,15 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
-  void _replaceJob(Map<String, dynamic>? woJson) {
-    if (woJson == null) return;
-    final updated = WorkOrder.fromJson(woJson);
-    final i = route.indexWhere((w) => w.id == updated.id);
-    if (i >= 0) route[i] = updated;
+  Future<void> _refreshJob(String id) async {
+    try {
+      final updated = await _service.fetchWorkOrder(id);
+      final i = route.indexWhere((w) => w.id == updated.id);
+      if (i >= 0) route[i] = updated;
+    } on Object {
+      // Best-effort: the optimistic local update already applied by the
+      // caller stands until the next successful loadRoute()/refresh.
+    }
     notifyListeners();
   }
 
@@ -170,9 +156,9 @@ class AppState extends ChangeNotifier {
       return;
     }
     try {
-      final res = await api.depart(w.id);
-      _replaceJob(res['workOrder']);
-    } catch (_) {
+      await _service.depart(w.id);
+      await _refreshJob(w.id);
+    } on Object {
       offlineMode = true;
       w.status = 'on_the_way';
       notifyListeners();
@@ -183,7 +169,7 @@ class AppState extends ChangeNotifier {
   Future<String> arrive(WorkOrder w, double lat, double lng) async {
     if (offlineMode) {
       w.status = 'arrived_gps';
-      w.arrivedGpsAt = DateTime.now().toUtc().toIso8601String();
+      w.arrivedGpsAt = _nowIso();
       await outbox.add(
         type: 'arrive',
         label: '${w.site.company} — GPS varış',
@@ -193,10 +179,12 @@ class AppState extends ChangeNotifier {
       return 'GPS konumu kaydedildi (çevrimdışı). İş henüz başlamadı — ilk QR bekleniyor.';
     }
     try {
-      final res = await api.arrive(w.id, lat, lng);
-      _replaceJob(res['workOrder']);
-      return res['message'] ?? 'GPS doğrulandı. İlk QR bekleniyor.';
-    } catch (_) {
+      final res = await _service.arrive(w.id, lat, lng,
+          mobileEventId: Outbox.newEventId(), capturedAt: _nowIso());
+      await _refreshJob(w.id);
+      return (res['message'] as String?) ?? 'GPS doğrulandı. İlk QR bekleniyor.';
+    } on Object catch (e) {
+      if (!isNetworkFailure(e)) return _friendlyMessage(e);
       offlineMode = true;
       return arrive(w, lat, lng);
     }
@@ -220,13 +208,13 @@ class AppState extends ChangeNotifier {
       }
       final first = w.realWorkStartedAt == null;
       if (first) {
-        w.realWorkStartedAt = DateTime.now().toUtc().toIso8601String();
+        w.realWorkStartedAt = _nowIso();
         w.status = 'started_by_first_qr';
       }
       await outbox.add(
         type: 'qr_scan',
         label: '${w.site.company} — QR ${st.code}${first ? ' (ilk QR)' : ''}',
-        payload: {'workOrderId': w.id, 'stationCode': st.code, 'first': first},
+        payload: {'workOrderId': w.id, 'stationCode': st.code},
       );
       notifyListeners();
       return ScanResult(
@@ -238,17 +226,19 @@ class AppState extends ChangeNotifier {
       );
     }
     try {
-      final res = await api.qrScan(w.id, raw);
-      _replaceJob(res['workOrder']);
+      final res = await _service.qrScan(w.id, raw,
+          mobileEventId: Outbox.newEventId(), capturedAt: _nowIso());
+      await _refreshJob(w.id);
       return ScanResult(
         ok: true,
         isFirstScan: res['isFirstScan'] == true,
-        stationCode: res['stationCode'] ?? '',
-        message: res['message'] ?? '',
+        stationCode: (res['stationCode'] as String?) ?? '',
+        message: (res['message'] as String?) ?? '',
       );
-    } on ApiException catch (e) {
-      return ScanResult(ok: false, isFirstScan: false, stationCode: '', message: e.message);
-    } catch (_) {
+    } on Object catch (e) {
+      if (!isNetworkFailure(e)) {
+        return ScanResult(ok: false, isFirstScan: false, stationCode: '', message: _friendlyMessage(e));
+      }
       offlineMode = true;
       return qrScan(w, code);
     }
@@ -263,6 +253,8 @@ class AppState extends ChangeNotifier {
     required String notes,
     int photoCount = 0,
   }) async {
+    final mobileEventId = Outbox.newEventId();
+    final capturedAt = _nowIso();
     final payload = {
       'workOrderId': w.id,
       'stationCode': stationCode,
@@ -285,20 +277,35 @@ class AppState extends ChangeNotifier {
         type: 'inspection',
         label: '${w.site.company} — $stationCode formu',
         payload: payload,
+        mobileEventId: mobileEventId,
+        capturedAt: capturedAt,
       );
       notifyListeners();
       return 'Form çevrimdışı kaydedildi. Sync kuyruğunda.';
     }
     try {
-      final res = await api.saveInspection({...payload, 'mobileEventId': Outbox.newEventId()});
-      _replaceJob(res['workOrder']);
+      await _service.saveInspection(
+        workOrderId: w.id,
+        stationCode: stationCode,
+        status: status,
+        pestType: pestType,
+        activityCount: activityCount,
+        notes: notes,
+        photoCount: photoCount,
+        mobileEventId: mobileEventId,
+        capturedAt: capturedAt,
+      );
+      await _refreshJob(w.id);
       return 'Form kaydedildi ✓';
-    } catch (_) {
+    } on Object catch (e) {
+      if (!isNetworkFailure(e)) return _friendlyMessage(e);
       offlineMode = true;
       await outbox.add(
         type: 'inspection',
         label: '${w.site.company} — $stationCode formu',
         payload: payload,
+        mobileEventId: mobileEventId,
+        capturedAt: capturedAt,
       );
       notifyListeners();
       return 'Bağlantı yok — form sync kuyruğuna alındı.';
@@ -309,46 +316,98 @@ class AppState extends ChangeNotifier {
     if (!w.started) return 'İş tamamlanamaz — önce ilk QR okutulmalı.';
     if (offlineMode) {
       w.status = 'completed';
-      w.completedAt = DateTime.now().toUtc().toIso8601String();
+      w.completedAt = _nowIso();
       notifyListeners();
       return 'Ziyaret çevrimdışı tamamlandı.';
     }
     try {
-      final res = await api.complete(w.id);
-      _replaceJob(res['workOrder']);
+      await _service.complete(w.id);
+      await _refreshJob(w.id);
       return 'Ziyaret tamamlandı ✓';
-    } on ApiException catch (e) {
-      return e.message;
-    } catch (_) {
+    } on Object catch (e) {
+      if (!isNetworkFailure(e)) return _friendlyMessage(e);
       offlineMode = true;
       return complete(w);
     }
   }
 
-  /// Drain the outbox to the server, one batch, idempotently. Called on
-  /// reconnect (offline toggle off) or from the sync screen.
+  /// Drain the outbox to the server, one event at a time, idempotently — each
+  /// carries the mobileEventId it was queued with, so a retried sync (or one
+  /// that partially succeeded before a connection drop) never double-writes.
   Future<String> drainOutbox() async {
     if (outbox.isEmpty) return 'Kuyruk boş.';
     if (offlineMode) return 'Önce çevrimiçi olun.';
-    final events = outbox.events.map((e) => e.toSyncEvent()).toList();
-    try {
-      final res = await api.sync(events);
-      final results = (res['results'] as List).cast<Map<String, dynamic>>();
-      for (final r in results) {
-        if (r['ok'] == true) await outbox.remove(r['mobileEventId']);
+    var accepted = 0;
+    for (final ev in List<OutboxEvent>.from(outbox.events)) {
+      try {
+        await _replay(ev);
+        await outbox.remove(ev.mobileEventId);
+        accepted++;
+      } on Object catch (e) {
+        if (!isNetworkFailure(e)) {
+          // The server rejected this specific event (not a connectivity
+          // problem) — drop it rather than retrying forever, but keep
+          // draining the rest of the queue.
+          await outbox.remove(ev.mobileEventId);
+          continue;
+        }
+        // Real connectivity failure: stop here, leave the remainder queued.
+        offlineMode = true;
+        notifyListeners();
+        return accepted > 0
+            ? '$accepted kayıt senkronize edildi, bağlantı koptu.'
+            : 'Senkronizasyon başarısız — bağlantı yok.';
       }
-      if (res['route'] != null) {
-        route = (res['route'] as List).map((e) => WorkOrder.fromJson(e)).toList();
-      }
-      lastSyncAtLocal = DateTime.now().toIso8601String();
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('lastSyncAt', lastSyncAtLocal!);
-      notifyListeners();
-      return '${res['accepted']} kayıt senkronize edildi.';
-    } catch (_) {
-      offlineMode = true;
-      notifyListeners();
-      return 'Senkronizasyon başarısız — bağlantı yok.';
     }
+    await loadRoute();
+    lastSyncAtLocal = _nowIso();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('lastSyncAt', lastSyncAtLocal!);
+    notifyListeners();
+    return '$accepted kayıt senkronize edildi.';
+  }
+
+  Future<void> _replay(OutboxEvent ev) async {
+    final p = ev.payload;
+    switch (ev.type) {
+      case 'arrive':
+        await _service.arrive(
+          p['workOrderId'] as String,
+          (p['lat'] as num).toDouble(),
+          (p['lng'] as num).toDouble(),
+          mobileEventId: ev.mobileEventId,
+          capturedAt: ev.capturedAt,
+        );
+        return;
+      case 'qr_scan':
+        await _service.qrScan(
+          p['workOrderId'] as String,
+          p['stationCode'] as String,
+          mobileEventId: ev.mobileEventId,
+          capturedAt: ev.capturedAt,
+        );
+        return;
+      case 'inspection':
+        await _service.saveInspection(
+          workOrderId: p['workOrderId'] as String,
+          stationCode: p['stationCode'] as String,
+          status: p['status'] as String,
+          pestType: (p['pestType'] as String?) ?? 'none',
+          activityCount: (p['activityCount'] as num?)?.toInt() ?? 0,
+          notes: (p['notes'] as String?) ?? '',
+          photoCount: (p['photoCount'] as num?)?.toInt() ?? 0,
+          mobileEventId: ev.mobileEventId,
+          capturedAt: ev.capturedAt,
+        );
+        return;
+      default:
+        throw StateError('unknown outbox event type: ${ev.type}');
+    }
+  }
+
+  String _friendlyMessage(Object e) {
+    if (e is PostgrestException) return e.message;
+    if (e is AuthException) return e.message;
+    return 'İşlem tamamlanamadı.';
   }
 }

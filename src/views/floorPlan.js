@@ -13,14 +13,10 @@
 // product: it appears on the plan, in the placement list, in the QR sheet and in
 // the reports.
 
-import { $, $$, toast } from '../core/dom.js';
+import { $, $$, toast, esc } from '../core/dom.js';
 import { state, save, recalculateSiteStats } from '../core/state.js';
 import { ui } from '../core/session.js';
 import { equipmentTypes, getPlacementSchema } from '../data/catalog.js';
-import { barcodeFor } from '../data/history.js';
-
-const esc = (s) => String(s ?? '')
-  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 const activeSite = () => state.sites.find((s) => s.id === ui.activeSiteId);
 const isAdmin = () => state.currentUser && state.currentUser.role === 'admin';
@@ -168,12 +164,12 @@ function openPlacementForm(site, x, y) {
   content.innerHTML = `
     <h2>Yeni Kontrol Noktası</h2>
     <p class="text-muted" style="margin-bottom:14px;">
-      Plan üzerinde seçilen konum: <b>%${x.toFixed(1)} / %${y.toFixed(1)}</b>.
+      Plan üzerinde seçilen konum: <b>%${esc(x.toFixed(1))} / %${esc(y.toFixed(1))}</b>.
       Noktaya otomatik numara ve barkod atanır.
     </p>
     <form id="newStationForm" class="form-grid" style="display:grid; gap:12px;">
-      <input type="hidden" name="x" value="${x}" />
-      <input type="hidden" name="y" value="${y}" />
+      <input type="hidden" name="x" value="${esc(x)}" />
+      <input type="hidden" name="y" value="${esc(y)}" />
       <label class="form-label">
         <span>Ekipman Türü</span>
         <select name="type" id="newStationType">
@@ -248,7 +244,9 @@ export function newStationSubmit(e) {
   $('#btnAddStation')?.classList.remove('active');
 
   refreshPlanViews(site);
-  toast(`${code} eklendi · barkod ${barcodeFor(site.id, code, 1)}`);
+  // No barcode is announced: it is the label on the physical box, recorded
+  // when the device is actually installed, not derived from the point code.
+  toast(`${code} noktası eklendi. Cihaz barkodunu nokta detayından kaydedin.`);
   return true;
 }
 

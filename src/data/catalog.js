@@ -282,126 +282,29 @@ export const equipmentStatusCodes = {
   unchecked: { name: 'Kontrol Bekliyor', code: 'KB', color: '#d4d4d8' }
 };
 
-// ===== CHEMICAL DATABASE =====
-export const chemicalDatabase = [
-  { id: 'ch1', name: 'K-Othrine SC 25', activeIngredient: 'Deltamethrin', concentration: '2.5%', usage: 'Yürüyen & uçan haşere', dosagePerM2: '50 ml/100m²', waterRatio: '5 lt suya 50 ml', category: 'İnsektisit', unitCost: 1.5, unit: 'ml' },
-  { id: 'ch2', name: 'Goliath Gel', activeIngredient: 'Fipronil', concentration: '0.05%', usage: 'Hamamböceği jel uygulaması', dosagePerM2: '3 nokta/m²', waterRatio: 'Doğrudan uygulama', category: 'İnsektisit Jel', unitCost: 15.0, unit: 'gr' },
-  { id: 'ch3', name: 'Racumin Paste', activeIngredient: 'Coumatetralyl', concentration: '0.0375%', usage: 'Kemirgen yem istasyonu', dosagePerM2: '20 gr/istasyon', waterRatio: 'Doğrudan uygulama', category: 'Rodentisit', unitCost: 0.8, unit: 'gr' },
-  { id: 'ch4', name: 'Storm Secure', activeIngredient: 'Flocoumafen', concentration: '0.005%', usage: 'Kemirgen mücadelesi', dosagePerM2: '50 gr/istasyon', waterRatio: 'Doğrudan uygulama', category: 'Rodentisit', unitCost: 1.2, unit: 'gr' },
-  { id: 'ch5', name: 'Aqua K-Othrine EW 20', activeIngredient: 'Deltamethrin', concentration: '2%', usage: 'Rezidüel ilaçlama', dosagePerM2: '50 ml/100m²', waterRatio: '10 lt suya 25 ml', category: 'İnsektisit', unitCost: 1.8, unit: 'ml' },
-  { id: 'ch6', name: 'Icon 10 CS', activeIngredient: 'Lambda-cyhalothrin', concentration: '10%', usage: 'Dış alan bariyer ilaçlama', dosagePerM2: '100 ml/100m²', waterRatio: '10 lt suya 10 ml', category: 'İnsektisit', unitCost: 2.2, unit: 'ml' },
-  { id: 'ch7', name: 'Maxforce White IC', activeIngredient: 'Imidacloprid', concentration: '2.15%', usage: 'Hamamböceği jel', dosagePerM2: '3 nokta/m²', waterRatio: 'Doğrudan uygulama', category: 'İnsektisit Jel', unitCost: 12.0, unit: 'gr' },
-  { id: 'ch8', name: 'Cislin 2.5 UL', activeIngredient: 'Deltamethrin', concentration: '2.5%', usage: 'ULV fogger uygulama', dosagePerM2: '1 ml/m³', waterRatio: 'Doğrudan ULV', category: 'ULV İnsektisit', unitCost: 3.5, unit: 'ml' },
-  { id: 'ch9', name: 'Steri-Fab', activeIngredient: 'İzopropil Alkol + Phenothrin', concentration: 'Karışım', usage: 'Dezenfeksiyon & haşere', dosagePerM2: '100 ml/10m²', waterRatio: 'Doğrudan sprey', category: 'Dezenfektan', unitCost: 0.9, unit: 'ml' },
-  { id: 'ch10', name: 'Actellic 50 EC', activeIngredient: 'Pirimiphos-methyl', concentration: '50%', usage: 'Depo zararlıları fumigasyon', dosagePerM2: '100 ml/100m²', waterRatio: '10 lt suya 50 ml', category: 'Depo İnsektisit', unitCost: 2.5, unit: 'ml' },
-  { id: 'ch11', name: 'Demand CS', activeIngredient: 'Lambda-cyhalothrin', concentration: '10%', usage: 'Genel haşere mücadelesi', dosagePerM2: '50 ml/100m²', waterRatio: '10 lt suya 12.5 ml', category: 'İnsektisit', unitCost: 2.0, unit: 'ml' },
-  { id: 'ch12', name: 'Responsar SC', activeIngredient: 'Alfasipermetrin', concentration: '10%', usage: 'Dış çevre ilaçlama', dosagePerM2: '100 ml/100m²', waterRatio: '10 lt suya 20 ml', category: 'İnsektisit', unitCost: 1.6, unit: 'ml' }
-];
+// The chemical catalogue used to live here: twelve brand-name products with
+// invented unit costs, plus a dosing table and a calculateDosage() helper keyed
+// to their made-up ids (ch1..ch12).
+//
+// A pest control operator's product range is not a catalogue that ships with
+// the software. Each product is registered by that company under its own
+// biyosidal ruhsat, and only the registered range may be applied. The range now
+// lives in the `chemicals` table and is defined from Stok & Envanter; see
+// src/data/repo/inventory.js.
+//
+// The dosing calculator went with it. It had no caller left and could not have
+// worked on real data, because every product it knew about was fictional.
+// Per-product dosing belongs on the chemicals row alongside the licence, so it
+// can be re-introduced against products that actually exist.
 
-// ===== STRUCTURED DOSING =====
-// Machine-readable form of the `dosagePerM2` / `waterRatio` strings above, so
-// the field calculator can work from numbers instead of re-parsing prose.
-//   dose  — how much product per `per` units of `perUnit`
-//   mix   — tank ratio: `chem` units of product per `water` litres of water.
-//           null for products applied neat (gels, pastes, ULV).
-//   basis — what the technician measures: area, volume or device count.
-const DEFAULT_TANK_LITRES = 10;
-
-export const chemicalDosing = {
-  ch1:  { basis: 'area',   dose: { amount: 50,  unit: 'ml', per: 100, perUnit: 'm²' }, mix: { chem: 50,   water: 5 } },
-  ch2:  { basis: 'area',   dose: { amount: 3,   unit: 'nokta', per: 1, perUnit: 'm²' }, mix: null, neatNote: 'Jel — doğrudan nokta uygulaması, su ile seyreltilmez.' },
-  ch3:  { basis: 'device', dose: { amount: 20,  unit: 'gr', per: 1,  perUnit: 'istasyon' }, mix: null, neatNote: 'Yem bloğu — istasyona doğrudan yerleştirilir.' },
-  ch4:  { basis: 'device', dose: { amount: 50,  unit: 'gr', per: 1,  perUnit: 'istasyon' }, mix: null, neatNote: 'Yem bloğu — istasyona doğrudan yerleştirilir.' },
-  ch5:  { basis: 'area',   dose: { amount: 50,  unit: 'ml', per: 100, perUnit: 'm²' }, mix: { chem: 25,   water: 10 } },
-  ch6:  { basis: 'area',   dose: { amount: 100, unit: 'ml', per: 100, perUnit: 'm²' }, mix: { chem: 10,   water: 10 } },
-  ch7:  { basis: 'area',   dose: { amount: 3,   unit: 'nokta', per: 1, perUnit: 'm²' }, mix: null, neatNote: 'Jel — doğrudan nokta uygulaması, su ile seyreltilmez.' },
-  ch8:  { basis: 'volume', dose: { amount: 1,   unit: 'ml', per: 1,   perUnit: 'm³' }, mix: null, neatNote: 'ULV — cihaza saf olarak doldurulur.' },
-  ch9:  { basis: 'area',   dose: { amount: 100, unit: 'ml', per: 10,  perUnit: 'm²' }, mix: null, neatNote: 'Hazır sprey — seyreltilmeden uygulanır.' },
-  ch10: { basis: 'area',   dose: { amount: 100, unit: 'ml', per: 100, perUnit: 'm²' }, mix: { chem: 50,   water: 10 } },
-  ch11: { basis: 'area',   dose: { amount: 50,  unit: 'ml', per: 100, perUnit: 'm²' }, mix: { chem: 12.5, water: 10 } },
-  ch12: { basis: 'area',   dose: { amount: 100, unit: 'ml', per: 100, perUnit: 'm²' }, mix: { chem: 20,   water: 10 } }
-};
-
-const round = (n, dp = 1) => Math.round(n * 10 ** dp) / 10 ** dp;
-
-// Given a chemical and the measured quantity the technician entered (m², m³ or
-// number of stations, depending on the product), work out how much product and
-// how much water is required, plus how many tank loads that comes to.
-// Returns null when the chemical or the amount is unusable, so callers can
-// simply hide the panel.
-export function calculateDosage(chemicalId, amount, tankLitres = DEFAULT_TANK_LITRES) {
-  const dosing = chemicalDosing[chemicalId];
-  const chem = chemicalDatabase.find(c => c.id === chemicalId);
-  if (!dosing || !chem) return null;
-
-  const measured = parseFloat(amount);
-  if (!isFinite(measured) || measured <= 0) return null;
-
-  const { dose, mix, basis } = dosing;
-  const productAmount = round((measured / dose.per) * dose.amount, 2);
-
-  const basisUnit = basis === 'volume' ? 'm³' : (basis === 'device' ? 'istasyon' : 'm²');
-
-  const result = {
-    chemicalId,
-    chemicalName: chem.name,
-    basis,
-    basisUnit,
-    measured,
-    productAmount,
-    productUnit: dose.unit,
-    doseText: `${dose.amount} ${dose.unit}/${dose.per === 1 ? '' : dose.per}${dose.perUnit}`,
-    waterLitres: 0,
-    tankLoads: 0,
-    tankLitres,
-    perTankProduct: 0,
-    neat: !mix,
-    neatNote: dosing.neatNote || '',
-    // Pre-formatted for the "Miktar" field so the saved record still reads the
-    // way a hand-typed entry would.
-    quantityText: `${productAmount} ${dose.unit}`,
-    estimatedCost: Math.round(productAmount * (chem.unitCost || 0))
-  };
-
-  if (mix) {
-    result.waterLitres = round((productAmount / mix.chem) * mix.water, 1);
-    result.tankLoads = round(result.waterLitres / tankLitres, 2);
-    result.perTankProduct = round((tankLitres / mix.water) * mix.chem, 2);
-    result.mixText = `${mix.water} lt suya ${mix.chem} ${dose.unit}`;
-  }
-
-  return result;
-}
-
-// ===== CHEMICAL DOCUMENT LIBRARY =====
-// Roadmap §9: the automatic chemical-usage report can only be produced if each
-// product carries its MSDS, a label sample and its ministry (biyosidal) permit.
-// These are demo placeholders — no real document content is shipped.
-const DOC_DATE = '12 Oca 2026';
-
-function chemDocs(permitNo, msdsSize, labelSize, permitSize) {
-  return [
-    { kind: 'msds',   label: 'MSDS / Güvenlik Bilgi Formu', en: 'Safety Data Sheet', icon: '🧪', size: msdsSize,   date: DOC_DATE, ref: '16 bölümlü GBF' },
-    { kind: 'label',  label: 'Etiket Örneği',               en: 'Label Sample',      icon: '🏷️', size: labelSize,  date: DOC_DATE, ref: 'Onaylı ambalaj etiketi' },
-    { kind: 'permit', label: 'Bakanlık Biyosidal İzni',     en: 'Ministry Permit',   icon: '📜', size: permitSize, date: DOC_DATE, ref: permitNo }
-  ];
-}
-
-export const chemicalDocuments = {
-  ch1:  chemDocs('T.C. Sağlık Bak. Ruhsat No: 2019/47', '412 KB', '180 KB', '1.1 MB'),
-  ch2:  chemDocs('T.C. Sağlık Bak. Ruhsat No: 2018/112', '388 KB', '164 KB', '980 KB'),
-  ch3:  chemDocs('T.C. Sağlık Bak. Ruhsat No: 2020/08', '455 KB', '201 KB', '1.3 MB'),
-  ch4:  chemDocs('T.C. Sağlık Bak. Ruhsat No: 2021/33', '430 KB', '175 KB', '1.0 MB'),
-  ch5:  chemDocs('T.C. Sağlık Bak. Ruhsat No: 2019/91', '402 KB', '188 KB', '1.2 MB'),
-  ch6:  chemDocs('T.C. Sağlık Bak. Ruhsat No: 2017/64', '397 KB', '170 KB', '940 KB'),
-  ch7:  chemDocs('T.C. Sağlık Bak. Ruhsat No: 2020/126', '365 KB', '158 KB', '1.1 MB'),
-  ch8:  chemDocs('T.C. Sağlık Bak. Ruhsat No: 2018/79', '448 KB', '193 KB', '1.4 MB'),
-  ch9:  chemDocs('T.C. Sağlık Bak. Ruhsat No: 2022/15', '376 KB', '162 KB', '870 KB'),
-  ch10: chemDocs('T.C. Sağlık Bak. Ruhsat No: 2019/58', '421 KB', '184 KB', '1.2 MB'),
-  ch11: chemDocs('T.C. Sağlık Bak. Ruhsat No: 2021/71', '409 KB', '177 KB', '1.0 MB'),
-  ch12: chemDocs('T.C. Sağlık Bak. Ruhsat No: 2020/94', '393 KB', '169 KB', '990 KB')
-};
-
-export function getChemicalDocuments(chemicalId) {
-  return chemicalDocuments[chemicalId] || [];
-}
+// The chemical document library used to live here: twelve products, each with
+// an invented "T.C. Saglik Bak. Ruhsat No", an invented file size and a single
+// hardcoded date, rendered on the facility page as MSDS sheets, approved label
+// samples and ministry permits. No document content was ever shipped behind
+// them and the "Goruntule" button had no handler.
+//
+// Inventing a ministry permit number is not a placeholder, it is a fabricated
+// regulatory record on the screen an auditor inspects. The facility page now
+// lists the org's own registered products and the ruhsat number it entered,
+// and says plainly when no MSDS has been uploaded. Real document upload is
+// still to be built; saying so is the honest state.

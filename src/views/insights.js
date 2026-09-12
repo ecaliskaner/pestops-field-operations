@@ -5,7 +5,7 @@
 // Phase 2 adds: multi-select pest filtering (2-2), side-by-side location and
 // city comparison (2-1), and the recommendation funnel (2-3).
 
-import { $, $$, toast } from '../core/dom.js';
+import { $, $$, toast, esc } from '../core/dom.js';
 import { state, visibleSites } from '../core/state.js';
 import { ui } from '../core/session.js';
 import { lineChart, barChart, stackedBarChart, donutChart, mountChart } from '../ui/charts.js';
@@ -394,10 +394,10 @@ export function renderClientAnalytics() {
     const open = r.open + live.filter(x => x.status === 'open').length;
     const resolved = r.resolved + live.filter(x => x.status === 'resolved').length;
     recStats.innerHTML = `
-      <div class="metric-card" style="box-shadow:none; border:1px solid var(--line); background:var(--soft);"><div><span>Açık Öneri</span><strong>${open}</strong></div></div>
-      <div class="metric-card" style="box-shadow:none; border:1px solid var(--line); background:var(--soft);"><div><span>Giderilen Öneri</span><strong>${resolved}</strong></div></div>
-      <div class="metric-card" style="box-shadow:none; border:1px solid var(--line); background:var(--soft);"><div><span>Hijyen Odaklı</span><strong>${r.hygiene}</strong></div></div>
-      <div class="metric-card" style="box-shadow:none; border:1px solid var(--line); background:var(--soft);"><div><span>Yalıtım & Fiziksel</span><strong>${r.isolation}</strong></div></div>
+      <div class="metric-card" style="box-shadow:none; border:1px solid var(--line); background:var(--soft);"><div><span>Açık Öneri</span><strong>${esc(open)}</strong></div></div>
+      <div class="metric-card" style="box-shadow:none; border:1px solid var(--line); background:var(--soft);"><div><span>Giderilen Öneri</span><strong>${esc(resolved)}</strong></div></div>
+      <div class="metric-card" style="box-shadow:none; border:1px solid var(--line); background:var(--soft);"><div><span>Hijyen Odaklı</span><strong>${esc(r.hygiene)}</strong></div></div>
+      <div class="metric-card" style="box-shadow:none; border:1px solid var(--line); background:var(--soft);"><div><span>Yalıtım & Fiziksel</span><strong>${esc(r.isolation)}</strong></div></div>
     `;
   }
 
@@ -405,10 +405,10 @@ export function renderClientAnalytics() {
   if (chemStats) {
     const c = chemicalStats(site.id);
     chemStats.innerHTML = `
-      <div class="metric-card" style="box-shadow:none; border:1px solid var(--line); background:var(--soft);"><div><span>Uygulama Sayısı</span><strong>${c.applications}</strong></div></div>
+      <div class="metric-card" style="box-shadow:none; border:1px solid var(--line); background:var(--soft);"><div><span>Uygulama Sayısı</span><strong>${esc(c.applications)}</strong></div></div>
       <div class="metric-card" style="box-shadow:none; border:1px solid var(--line); background:var(--soft);"><div><span>Toplam Sarfiyat</span><strong>${c.totalQuantity.toLocaleString('tr-TR')} ml/gr</strong></div></div>
-      <div class="metric-card" style="box-shadow:none; border:1px solid var(--line); background:var(--soft);"><div><span>Aktif Ürün Türü</span><strong>${c.distinctProducts}</strong></div></div>
-      <div class="metric-card" style="box-shadow:none; border:1px solid var(--line); background:var(--soft);"><div><span>Son Uygulama</span><strong>${c.lastDate}</strong></div></div>
+      <div class="metric-card" style="box-shadow:none; border:1px solid var(--line); background:var(--soft);"><div><span>Aktif Ürün Türü</span><strong>${esc(c.distinctProducts)}</strong></div></div>
+      <div class="metric-card" style="box-shadow:none; border:1px solid var(--line); background:var(--soft);"><div><span>Son Uygulama</span><strong>${esc(c.lastDate)}</strong></div></div>
     `;
   }
 }

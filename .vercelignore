@@ -1,0 +1,42 @@
+# Vercel serves the repo root statically with no build step, so anything
+# listed here is reachable at a public URL unless excluded — unlike
+# server.js's own isForbiddenPath() check (local dev only), Vercel has no
+# equivalent guard by default.
+
+# Database schema, RLS policies, and Edge Function source. Not secret (no
+# credentials live in SQL), but a running production schema has no reason to
+# be browsable at /supabase/migrations/*.sql.
+supabase/
+
+# Demo/seed runtime state — not meant to be served as a static file at all;
+# the app reads it through server.js's /state.js route in dev, and production
+# reads live data from Supabase instead.
+#
+# Anchored with a leading slash: "data/" with no anchor matches a directory
+# named data/ AT ANY DEPTH (same rule as .gitignore), which silently deployed
+# a build that excluded src/data/ too — the app's actual seed/catalog/history
+# modules — and broke every view. This bit exactly once; keep the slash.
+/data/
+
+# The Flutter app's full source tree (large, and irrelevant to what Vercel
+# serves — the built output lives in technician/, which IS deployed).
+technician_app/
+
+# Local-dev-only server; Vercel uses api/env.js + vercel.json instead (see
+# api/env.js's own comment).
+server.js
+
+# Internal docs, scripts, and tooling config — no reason to be public.
+docs/
+scripts/
+.claude/
+.agents/
+Dijital_Pest_Control_Platformu_Teknik_Dokum.md
+Repellent Online sistem yol haritası.docx
+README.md
+
+# Belt-and-suspenders: .env is already git-ignored (never reaches the repo
+# Vercel builds from), but excluded here too in case that ever changes.
+.env
+.env.*
+!.env.example

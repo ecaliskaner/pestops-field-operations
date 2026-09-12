@@ -1,7 +1,7 @@
 // Role-based access gating and session check.
 // Extracted from app.js (Phase 0a-3).
 
-import { $, $$, toast } from '../core/dom.js';
+import { $, $$, toast, esc } from '../core/dom.js';
 import { state } from '../core/state.js';
 import { ui } from '../core/session.js';
 import { setView } from '../core/router.js';
@@ -21,10 +21,10 @@ export function applyRoleAccess() {
   const footerBlock = $('#sidebarUserProfileBlock');
   if (footerBlock) {
     footerBlock.innerHTML = `
-      <div class="avatar" style="background:${role === 'tech' ? '#f4c7a9' : (role === 'client' ? '#d6e7f9' : '#efe5d8')}; color:#18181b; font-weight:700; width:30px; height:30px; border-radius:50%; display:grid; place-items:center; font-size:10px;">${state.currentUser.avatar}</div>
+      <div class="avatar" style="background:${esc(role === 'tech' ? '#f4c7a9' : (role === 'client' ? '#d6e7f9' : '#efe5d8'))}; color:#18181b; font-weight:700; width:30px; height:30px; border-radius:50%; display:grid; place-items:center; font-size:10px;">${esc(state.currentUser.avatar)}</div>
       <div style="flex:1; text-align:left; min-width:0; overflow:hidden;">
-        <b style="font-size:12px; display:block; color:#fff; white-space:nowrap; text-overflow:ellipsis; overflow:hidden;">${state.currentUser.name}</b>
-        <small style="font-size:10px; color:#aeb8c1; display:block; white-space:nowrap; text-overflow:ellipsis; overflow:hidden;">${state.currentUser.title}</small>
+        <b style="font-size:12px; display:block; color:#fff; white-space:nowrap; text-overflow:ellipsis; overflow:hidden;">${esc(state.currentUser.name)}</b>
+        <small style="font-size:10px; color:#aeb8c1; display:block; white-space:nowrap; text-overflow:ellipsis; overflow:hidden;">${esc(state.currentUser.title)}</small>
       </div>
       <button class="secondary-btn" id="btnLogOut" style="height:26px; padding:0 8px; font-size:9px; border-color:rgba(255,255,255,0.2); background:rgba(255,255,255,0.05); color:#fff; font-weight:700; border-radius:6px; cursor:pointer;">Çıkış</button>
     `;
@@ -130,12 +130,10 @@ export function checkSession() {
   }
 }
 
-export function logout() {
-  state.currentUser = null;
-  localStorage.removeItem("repellent-user");
-  checkSession();
-  toast("Oturum kapatıldı.");
-}
+// logout() used to live here and only cleared the local profile cache. That is
+// no longer a complete sign-out — it would leave the Supabase session (and its
+// still-valid token) alive — so it has been removed rather than left as a
+// tempting one-liner. Use signOut() from core/auth.js.
 
 
 // Mobile app workflow states

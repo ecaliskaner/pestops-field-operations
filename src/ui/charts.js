@@ -11,6 +11,8 @@
 //     series: [{ name: 'Kemirgen', values: [13, 11, 15] }]
 //   }));
 
+import { esc } from '../core/dom.js';
+
 // Pulled from the --blue/--green/--amber/--red/--violet ramp in styles.css.
 // Literal values, not var(), so exported SVG/PNG survives outside the page.
 export const CHART_COLORS = [
@@ -38,10 +40,6 @@ const DEFAULTS = {
 };
 
 /* ---------------------------------------------------------------- helpers */
-
-const esc = s => String(s)
-  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  .replace(/"/g, '&quot;');
 
 // SVG wants '.' decimals regardless of locale, and trailing zeros just bloat
 // the markup we may later hand to the PNG encoder.

@@ -1,106 +1,57 @@
-// Team / field view. Extracted from app.js (Phase 0a-3), extended in Phase 3a
-// (Session G) with a live simulated-GPS map, geofence enter/exit events, route
-// optimization before/after, and technician credential cards.
+// Team / field view (Ekip & rota) — real technicians, real coordinates, real
+// device fixes.
 //
-// The map is a REAL Leaflet/OpenStreetMap surface centred on the İstanbul metro
-// area. Sites, depot and technicians sit on genuine coordinates, and each
-// technician follows a polyline that traces the actual motorway corridors
-// (D-100 / O-4 on the Anadolu side, the 15 Temmuz bridge, the TEM/O-3 to
-// Hadımköy). Baseline motion is a deterministic in-browser simulation, but any
-// technician who reports a real fix from the Flutter app is pinned to their
-// true coordinates instead — see pollLivePositions() below.
+// What this file used to be: a deterministic simulation. Four hardcoded
+// technicians (Ayşe Demir, Mert Kaya, Ece Yılmaz, Can Öztürk) glided along
+// hand-drawn İstanbul motorway polylines between eight hardcoded facility
+// coordinates, manufacturing geofence enter/exit events as they went, while a
+// 3-second poll against /api/mobile/live-positions tried to overlay real fixes
+// on top. That endpoint belongs to the old Node server and does not exist on
+// the Vercel deployment, so in production the poll failed on every tick and
+// what a customer saw was entirely invented movement attributed to people who
+// do not work for them.
+//
+// What it is now: the org's own technicians, its own sites at the coordinates
+// it recorded, and only positions the Flutter app actually reported through
+// the live_positions() RPC. When nobody is in the field the map says so
+// instead of inventing traffic. Every panel degrades to an honest empty state
+// rather than a plausible fiction.
+//
+// Technician rates and compliance documents are edited here: this is the only
+// page that already knows which technician is selected, and both are read
+// straight back by the finance page and the customer portal.
 
-import { $, $$ } from '../core/dom.js';
-import { state } from '../core/state.js';
-import { save } from '../core/state.js';
-import { techData, techSites, initial } from '../data/seed.js';
-import { technicianStats } from '../data/history.js';
-import { credentialDocs } from '../data/credentials.js';
-import { stackedBarChart, mountChart } from '../ui/charts.js';
+import { $, esc, toast } from '../core/dom.js';
+import { state, save, setTechRates } from '../core/state.js';
+import {
+  fetchLivePositions, fetchTechnicianCredentials, fetchRatesByTechnician,
+  setTechnicianRate, saveTechnicianCredential, signedCredentialUrl
+} from '../data/repo/technicians.js';
+import { fetchTechnicianStats, fetchGeofenceEvents } from '../data/repo/work.js';
 import { setGpsAlerts } from '../core/gpsAlerts.js';
 import { updateNotifBadge } from '../ui/demo.js';
 
-// ---- real geography (WGS84 lat/lng) -------------------------------------
-//
-// The six seeded sites are already real İstanbul-area facilities, so each gets
-// its true-ish coordinate plus a geofence radius in metres. The depot is the
-// Repellent operations hub on the Anadolu side (Kozyatağı).
+// ---- module-local view state (never persisted) ----
 
-const DEPOT = { lat: 40.9762, lng: 29.0980, name: 'Repellent Merkez' };
+let map = null;
+let mapInited = false;
+let opBounds = null;
+const techLayers = {};        // technician name -> L.marker
+let siteLayers = [];          // site markers + geofence circles, re-plotted on change
+let routeLayer = null;
+let plottedSiteKey = '';      // guards against re-plotting an identical site set
 
-const SITE_GEO = {
-  s1: { lat: 40.8021, lng: 29.4307, r: 240 }, // Acme Foods — Gebze Üretim Tesisi
-  s2: { lat: 41.1372, lng: 28.6792, r: 240 }, // Kuzey Lojistik — Hadımköy Dağıtım Merkezi
-  s3: { lat: 40.9923, lng: 29.1277, r: 200 }, // Aster Hospital — Ataşehir Kampüsü
-  s4: { lat: 41.0812, lng: 29.0101, r: 170 }, // Bora Retail — Levent Merkez Mağaza
-  s5: { lat: 40.8252, lng: 29.3761, r: 210 }, // Novatek — Çayırova Ar-Ge Merkezi
-  s6: { lat: 41.0369, lng: 28.9851, r: 160 }, // Orion Hotels — Taksim Otel
-  // Acme's out-of-region locations. They carry real coordinates so the geofence
-  // and the mobile API agree with the rest of the app, but they sit ~330 km and
-  // ~350 km away and no technician is routed to them today — see the operating
-  // bounds below, which deliberately do not frame them.
-  s7: { lat: 38.4271, lng: 27.4183, r: 220 }, // Acme Foods — İzmir Soğuk Hava Deposu (Kemalpaşa)
-  s8: { lat: 39.9861, lng: 32.7395, r: 230 }  // Acme Foods — Ankara Dağıtım Merkezi (Başkent OSB)
-};
+let livePositions = {};       // technician name -> live fix from the RPC
+let credentialsByTech = {};   // technician id -> credential rows
+let ratesByTechnician = {};   // technician id -> current hourly rate
+let technicianStatsRows = [];
+let geofenceEvents = [];
+let routeOptimized = false;
 
-const siteById = (id) => initial.sites.find((s) => s.id === id);
+let livePollTimer = null;
+const LIVE_POLL_MS = 15000;   // a real device fix does not move every 3 seconds
 
-// ---- road corridors -----------------------------------------------------
-//
-// Shared waypoints along the real motorways. Technician routes are assembled
-// from these so several technicians visibly share the same highways.
-
-const P = {
-  depot:   [DEPOT.lat, DEPOT.lng],
-  s1:      [SITE_GEO.s1.lat, SITE_GEO.s1.lng],
-  s2:      [SITE_GEO.s2.lat, SITE_GEO.s2.lng],
-  s3:      [SITE_GEO.s3.lat, SITE_GEO.s3.lng],
-  s4:      [SITE_GEO.s4.lat, SITE_GEO.s4.lng],
-  s5:      [SITE_GEO.s5.lat, SITE_GEO.s5.lng],
-  s6:      [SITE_GEO.s6.lat, SITE_GEO.s6.lng],
-  // Anadolu D-100 / O-4 eastbound corridor
-  kozOn:   [40.9840, 29.1080],
-  kartal:  [40.9010, 29.1800],
-  pendik:  [40.8790, 29.2560],
-  tuzla:   [40.8400, 29.3050],
-  // 15 Temmuz bridge crossing (Anadolu <-> Avrupa)
-  uskudar: [41.0230, 29.0250],
-  brA:     [41.0400, 29.0330],
-  brB:     [41.0455, 29.0280],
-  besik:   [41.0430, 29.0060],
-  // Avrupa TEM / O-3 towards Hadımköy
-  maslak:  [41.1080, 29.0180],
-  tem1:    [41.1150, 28.9200],
-  tem2:    [41.1300, 28.8000],
-  taksAcc: [41.0700, 28.9600]
-};
-
-// Each technician's full working loop, depot -> stops -> depot, expressed as an
-// ordered list of corridor keys. The site keys (s1..s6) are the geofenced
-// stops; everything else is a road waypoint.
-const TECH_LOOPS = {
-  'Ayşe Demir': ['depot', 'kozOn', 'kartal', 'pendik', 'tuzla', 's5', 's1',
-                 'tuzla', 'pendik', 'kartal', 's3', 'kozOn', 'depot'],
-  'Mert Kaya':  ['depot', 'uskudar', 'brA', 'brB', 'besik', 'maslak', 'tem1', 'tem2', 's2',
-                 'tem2', 'tem1', 'taksAcc', 's6', 'besik', 'brB', 'brA', 'uskudar', 'depot'],
-  'Ece Yılmaz': ['depot', 'uskudar', 'brA', 'brB', 'besik', 'taksAcc', 's6',
-                 'besik', 'brB', 'brA', 'uskudar', 'kozOn', 's3',
-                 'kartal', 'pendik', 'tuzla', 's5', 's1',
-                 'tuzla', 'pendik', 'kartal', 'kozOn', 'depot'],
-  'Can Öztürk': ['depot', 'uskudar', 'brA', 'brB', 'besik', 's4',
-                 'besik', 'brB', 'brA', 'uskudar', 'kozOn', 'kartal', 'pendik', 'tuzla', 's5',
-                 'tuzla', 'pendik', 'kartal', 'kozOn', 'depot']
-};
-
-// Which stops belong to each technician's day (drives the roster / route panel).
-const TECH_STOPS = {
-  'Ayşe Demir': ['s1', 's3'],
-  'Mert Kaya':  ['s2', 's6'],
-  'Ece Yılmaz': ['s6', 's3', 's1'],
-  'Can Öztürk': ['s4', 's5']
-};
-
-// ---- geometry helpers ---------------------------------------------------
+// ---- helpers ------------------------------------------------------------
 
 const R_EARTH = 6371000;
 const toRad = (d) => (d * Math.PI) / 180;
@@ -115,233 +66,140 @@ function haversine(a, b) {
   return 2 * R_EARTH * Math.asin(Math.min(1, Math.sqrt(h)));
 }
 
-// Pre-compute cumulative distances along a polyline so we can map a "metres
-// travelled" cursor onto a real coordinate.
-function buildRoute(keys) {
-  const pts = keys.map((k) => P[k]);
-  const cum = [0];
-  for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + haversine(pts[i - 1], pts[i]));
-  return { pts, cum, total: cum[cum.length - 1] };
+function initialsOf(name) {
+  return String(name || '')
+    .split(/\s+/).filter(Boolean).slice(0, 2)
+    .map((p) => p[0].toLocaleUpperCase('tr')).join('') || '—';
 }
 
-// Position along a route at a given distance (wraps around the loop).
-function locate(route, distance) {
-  const total = route.total || 1;
-  let d = ((distance % total) + total) % total;
-  const { pts, cum } = route;
-  let i = 1;
-  while (i < cum.length && cum[i] < d) i++;
-  if (i >= cum.length) return { lat: pts[pts.length - 1][0], lng: pts[pts.length - 1][1] };
-  const segLen = cum[i] - cum[i - 1] || 1;
-  const t = (d - cum[i - 1]) / segLen;
-  const a = pts[i - 1];
-  const b = pts[i];
-  return { lat: a[0] + (b[0] - a[0]) * t, lng: a[1] + (b[1] - a[1]) * t };
-}
+const technicianList = () => state.technicians || [];
+const technicianByName = (name) => technicianList().find((t) => t.name === name) || null;
 
-// ---- live simulation state (module-local; never persisted) ----
-
-let map = null;
-let mapInited = false;
-let opBounds = null;          // bounds of the whole operating area (for re-fit)
-const techLayers = {};        // tech -> L.marker
-let siteCircles = {};         // siteId -> L.circle
-let routeLayer = null;        // L.polyline group for the optimization overlay
-
-const routes = {};            // tech -> buildRoute(...)
-const motion = {};            // tech -> { cursor, speed }
-const insideFence = {};       // tech -> Set of siteIds currently inside
-let geofenceEvents = [];      // most-recent-first feed
-let routeOptimized = false;   // route panel before/after toggle
-
-let simTimer = null;
-let lastTs = 0;
-const TICK_MS = 100;          // animation cadence
-
-// ---- real GPS from the technician mobile app ----------------------------
-// Everything above this line is simulated. This is not: the Flutter app posts
-// a real device fix to /api/mobile/work-orders/:id/arrive, and the API keeps it
-// in its event log. Any technician who has reported in gets pinned to their
-// true coordinates; the rest keep gliding along the simulated loops so the map
-// still reads as a live fleet.
-const realPositions = {};     // tech name -> { lat, lng, at, siteCompany, distanceM }
-let livePollTimer = null;
-const LIVE_POLL_MS = 3000;
-
-async function pollLivePositions() {
-  let payload;
-  try {
-    const res = await fetch('/api/mobile/live-positions', { cache: 'no-store' });
-    if (!res.ok) return;
-    payload = await res.json();
-  } catch {
-    return;                   // API down → keep simulating, never break the map
-  }
-  let changed = false;
-  const seen = new Set();
-  (payload.positions || []).forEach((p) => {
-    const lat = Number(p && p.lat);
-    const lng = Number(p && p.lng);
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
-    // Only known technicians — the map has no marker for anyone else.
-    if (!(p.techName in techLayers)) return;
-    seen.add(p.techName);
-    const prev = realPositions[p.techName];
-    if (!prev || prev.at !== p.at) changed = true;
-    realPositions[p.techName] = { ...p, lat, lng };
-  });
-  // Someone the server no longer reports — most often after POST /api/mobile/reset
-  // — must fall back to the simulation instead of staying pinned at a stale fix
-  // forever. The cursor kept advancing, so they rejoin their route in place.
-  Object.keys(realPositions).forEach((n) => {
-    if (!seen.has(n)) { delete realPositions[n]; changed = true; }
-  });
-  if (changed) {
-    refreshTechMarkers();
-    renderLiveGpsNote();
-    publishGpsAlerts();
-  }
-}
-
-// A technician whose device GPS puts them outside the geofence of the site they
-// just reported arriving at. `insideGeofence === false` only — a null means the
-// server could not measure it (offline record), which is not an accusation.
-function publishGpsAlerts() {
-  const alerts = Object.values(realPositions)
-    .filter((p) => p.insideGeofence === false)
-    .map((p) => ({
-      techName: p.techName,
-      siteCompany: p.siteCompany,
-      siteName: p.siteName,
-      workOrderId: p.workOrderId,
-      distanceM: p.distanceM,
-      radiusM: p.radiusM,
-      at: p.at,
-    }));
-  setGpsAlerts(alerts);
-  updateNotifBadge();
-}
+// Sites the org has actually geocoded. A site with no lat/lng cannot be drawn,
+// and inventing a coordinate for it would be exactly what this rewrite removes.
+const mappableSites = () =>
+  (state.sites || []).filter((s) => Number.isFinite(s.lat) && Number.isFinite(s.lng));
 
 function fmtDistance(m) {
-  if (typeof m !== 'number') return '';
-  if (m < 1000) return `${m} m`;
+  if (typeof m !== 'number' || !Number.isFinite(m)) return '';
+  if (m < 1000) return `${Math.round(m)} m`;
   const km = m / 1000;
   return `${km >= 100 ? Math.round(km) : km.toFixed(1)} km`;
 }
 
-// True when a fix lands anywhere near the İstanbul operating area. A phone
-// reporting from far outside it — a bad fix, a VPN, or an emulator still on its
-// factory Mountain View default — would otherwise just vanish off-map with no
-// explanation, which reads as "the feature is broken".
-function withinOperatingArea(lat, lng) {
-  if (!opBounds) return true;
-  return opBounds.pad(0.6).contains([lat, lng]);
+// ---- data loading -------------------------------------------------------
+//
+// Loaded lazily on the first Ekip render rather than at sign-in: three extra
+// queries should not sit on the login path for a user who never opens this
+// page. Each failure is logged and leaves its own panel in its empty state.
+
+let auxLoaded = false;
+
+async function loadTeamAux() {
+  if (auxLoaded) return;
+  auxLoaded = true;
+  try {
+    credentialsByTech = await fetchTechnicianCredentials();
+  } catch (err) {
+    console.error('[repellent] teknisyen belgeleri yuklenemedi', err);
+  }
+  try {
+    ratesByTechnician = await fetchRatesByTechnician();
+  } catch (err) {
+    // Rates are admin-only; a technician signing in gets denied here and the
+    // table simply does not render for them.
+    console.error('[repellent] teknisyen ucretleri yuklenemedi', err);
+  }
+  try {
+    technicianStatsRows = await fetchTechnicianStats();
+  } catch (err) {
+    console.error('[repellent] teknisyen istatistikleri yuklenemedi', err);
+  }
+  try {
+    geofenceEvents = await fetchGeofenceEvents();
+  } catch (err) {
+    console.error('[repellent] geofence olaylari yuklenemedi', err);
+  }
+  renderCredentials(state.selectedTech);
+  renderTechRates();
+  renderProductivity();
+  renderGeofenceFeed();
+  renderTechDetail();
 }
 
-// A line under the map so it is obvious which markers are real device fixes
-// rather than simulation — otherwise the demo looks identical either way.
-// Each chip pans the map to that technician, including the off-area ones.
-function renderLiveGpsNote() {
-  const el = document.getElementById('liveGpsNote');
-  if (!el) return;
-  const names = Object.keys(realPositions);
-  if (!names.length) { el.innerHTML = ''; return; }
-  el.innerHTML = names.map((n) => {
-    const p = realPositions[n];
-    const dist = fmtDistance(p.distanceM);
-    const mismatch = p.insideGeofence === false;
-    const offMap = !withinOperatingArea(p.lat, p.lng);
-    let cls = 'live-gps-chip';
-    let label;
-    if (mismatch) {
-      // The whole point of the alert: they said they were there, GPS disagrees.
-      cls += ' mismatch';
-      label = `${n} — ${p.siteCompany || 'tesiste'} değil · ${dist} uzakta${offMap ? ' (harita dışı)' : ''}`;
-    } else {
-      if (offMap) cls += ' off-area';
-      label = `${n} — canlı GPS${p.siteCompany ? ` @ ${p.siteCompany}` : ''}${dist ? ` · ${dist}` : ''}`;
-    }
-    return `<button type="button" class="${cls}" data-tech="${n}" title="Haritada göster"><i></i>${label}</button>`;
-  }).join('');
+async function pollLivePositions() {
+  let rows;
+  try {
+    rows = await fetchLivePositions();
+  } catch (err) {
+    console.error('[repellent] canli konumlar alinamadi', err);
+    return;
+  }
+  const next = {};
+  for (const p of rows) {
+    if (Number.isFinite(p.lat) && Number.isFinite(p.lng)) next[p.name] = p;
+  }
+  livePositions = next;
+  refreshTechMarkers();
+  renderLiveGpsNote();
+  renderFieldCount();
+  publishGpsAlerts();
 }
 
-let liveNoteBound = false;
-function bindLiveNote() {
-  if (liveNoteBound) return;
-  const el = document.getElementById('liveGpsNote');
-  if (!el) return;
-  el.addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-tech]');
-    if (!btn || !map) return;
-    const p = realPositions[btn.dataset.tech];
-    if (p) map.setView([p.lat, p.lng], 14, { animate: true });
-  });
-  liveNoteBound = true;
+// A technician whose device GPS puts them outside the geofence of the site
+// they just reported arriving at. `insideGeofence === false` only: a null
+// means the server could not measure it (an offline record), which is not an
+// accusation. The notification centre (src/ui/demo.js) renders these, so this
+// bridge has to stay wired or that alert silently stops firing.
+function publishGpsAlerts() {
+  const siteById = new Map((state.sites || []).map((s) => [s.id, s]));
+  setGpsAlerts(
+    Object.values(livePositions)
+      .filter((p) => p.insideGeofence === false)
+      .map((p) => ({
+        techName: p.name,
+        siteCompany: siteById.get(p.siteId)?.company || '',
+        siteName: p.siteName,
+        workOrderId: p.workOrderId,
+        distanceM: p.distanceM,
+        radiusM: p.radiusM,
+        at: p.at
+      }))
+  );
+  updateNotifBadge();
 }
 
-// A full working loop plays out in this many wall-clock seconds. Fast enough to
-// be visibly live, slow enough to read as real road movement (~a marker gliding
-// down the motorway) rather than teleporting.
-const LOOP_SECONDS = 150;
+// ---- map ----------------------------------------------------------------
 
-function initMotion() {
-  const techs = Object.keys(TECH_LOOPS);
-  techs.forEach((tech, i) => {
-    if (motion[tech]) return;
-    routes[tech] = buildRoute(TECH_LOOPS[tech]);
-    // Spread the technicians around their loops so they don't all start stacked
-    // on the depot.
-    motion[tech] = {
-      cursor: routes[tech].total * (i / techs.length),
-      speed: routes[tech].total / LOOP_SECONDS // metres per second
-    };
-    insideFence[tech] = new Set();
-  });
+function techColor(name) {
+  const t = technicianByName(name);
+  return (t && t.color) || '#1769e0';
 }
 
-// ---- Leaflet map ---------------------------------------------------------
-
-function techColor(tech) { return (techData[tech] || [])[5] || '#1769e0'; }
-function techInitials(tech) { return (techData[tech] || ['--'])[0]; }
-
-function techIcon(tech, active) {
-  // `live` = a real GPS fix from the mobile app, not simulation.
-  // `mismatch` = that fix contradicts the arrival the technician reported.
-  const p = realPositions[tech];
+function techIcon(name, active) {
+  const p = livePositions[name];
   const live = !!p;
   const mismatch = !!p && p.insideGeofence === false;
   return L.divIcon({
     className: 'tech-marker-wrap',
     iconSize: [38, 38],
     iconAnchor: [19, 19],
-    html: `<div class="tech-marker${active ? ' active' : ''}${live ? ' live' : ''}${mismatch ? ' mismatch' : ''}" style="--tc:${techColor(tech)}">
-             <span>${techInitials(tech)}</span>
+    html: `<div class="tech-marker${active ? ' active' : ''}${live ? ' live' : ''}${mismatch ? ' mismatch' : ''}" style="--tc:${techColor(name)}">
+             <span>${esc(initialsOf(name))}</span>
            </div>`
   });
 }
 
-function siteIcon(siteId) {
-  const site = siteById(siteId);
-  const label = site ? site.company : siteId;
-  const cls = site ? (site.state === 'risk' ? 'risk' : site.state === 'watch' ? 'watch' : 'ok') : 'ok';
+function siteIcon(site) {
+  const cls = site.state === 'risk' ? 'risk' : site.state === 'watch' ? 'watch' : 'ok';
   return L.divIcon({
     className: 'site-marker-wrap',
     iconSize: [20, 28],
     iconAnchor: [10, 28],
-    html: `<div class="site-pin ${cls}"><i></i></div><span class="site-pin-label">${label}</span>`
+    html: `<div class="site-pin ${cls}"><i></i></div><span class="site-pin-label">${esc(site.company || site.name)}</span>`
   });
 }
 
-function depotIcon() {
-  return L.divIcon({
-    className: 'depot-marker-wrap',
-    iconSize: [26, 26],
-    iconAnchor: [13, 26],
-    html: `<div class="depot-pin">🏢</div><span class="site-pin-label depot">${DEPOT.name}</span>`
-  });
-}
-
-// Build the map exactly once. Idempotent across re-renders.
 function ensureMap() {
   if (mapInited) return;
   const host = document.getElementById('fieldMap');
@@ -353,339 +211,367 @@ function ensureMap() {
     scrollWheelZoom: true,
     zoomSnap: 0.25
   });
-
   L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
     attribution: '© OpenStreetMap · © CARTO',
     subdomains: 'abcd',
     maxZoom: 19
   }).addTo(map);
 
-  // Geofence circles + site pins.
-  siteCircles = {};
-  Object.entries(SITE_GEO).forEach(([id, g]) => {
-    const site = siteById(id);
-    const risk = site && site.state === 'risk';
-    const watch = site && site.state === 'watch';
-    const color = risk ? '#e0574a' : watch ? '#d9922b' : '#138b67';
-    siteCircles[id] = L.circle([g.lat, g.lng], {
-      radius: g.r,
-      color,
-      weight: 1.5,
-      opacity: 0.6,
-      fillColor: color,
-      fillOpacity: 0.08,
-      dashArray: '4 4',
-      interactive: false
+  // A neutral Türkiye-wide opening frame for an org with no geocoded sites
+  // yet; plotSites() fits to the real ones as soon as there are any.
+  map.setView([39.5, 33.5], 5.5);
+  mapInited = true;
+}
+
+// Draw the org's real sites and their real geofence radii. Idempotent: the
+// site set is keyed so a re-render does not stack duplicate layers.
+function plotSites() {
+  if (!map) return;
+  const sites = mappableSites();
+  const key = sites.map((s) => `${s.id}:${s.lat},${s.lng},${s.geofenceRadiusM},${s.state}`).join('|');
+  if (key === plottedSiteKey) return;
+  plottedSiteKey = key;
+
+  siteLayers.forEach((layer) => map.removeLayer(layer));
+  siteLayers = [];
+
+  sites.forEach((site) => {
+    const color = site.state === 'risk' ? '#e0574a' : site.state === 'watch' ? '#d9922b' : '#138b67';
+    const circle = L.circle([site.lat, site.lng], {
+      radius: site.geofenceRadiusM || 150,
+      color, weight: 1.5, opacity: 0.6,
+      fillColor: color, fillOpacity: 0.08,
+      dashArray: '4 4', interactive: false
     }).addTo(map);
-    const site2 = siteById(id);
-    L.marker([g.lat, g.lng], { icon: siteIcon(id) })
+    const marker = L.marker([site.lat, site.lng], { icon: siteIcon(site) })
       .addTo(map)
-      .bindTooltip(site2 ? `<b>${site2.company}</b><br>${site2.name}` : id, { direction: 'top', offset: [0, -26] });
+      .bindTooltip(`<b>${esc(site.company || '')}</b><br>${esc(site.name)}`, { direction: 'top', offset: [0, -26] });
+    siteLayers.push(circle, marker);
   });
 
-  // Depot.
-  L.marker([DEPOT.lat, DEPOT.lng], { icon: depotIcon() })
-    .addTo(map)
-    .bindTooltip(`<b>${DEPOT.name}</b><br>Operasyon merkezi`, { direction: 'top', offset: [0, -24] });
+  if (sites.length) {
+    opBounds = L.latLngBounds(sites.map((s) => [s.lat, s.lng]));
+    map.fitBounds(opBounds, { padding: [42, 42], maxZoom: 14 });
+  }
+}
 
-  // Technician markers.
-  Object.keys(TECH_LOOPS).forEach((tech) => {
-    const active = tech === state.selectedTech;
-    const start = locate(routes[tech], motion[tech].cursor);
-    const marker = L.marker([start.lat, start.lng], {
-      icon: techIcon(tech, active),
-      zIndexOffset: 500
-    }).addTo(map);
-    marker.bindTooltip(tech, { direction: 'top', offset: [0, -18] });
+// One marker per technician who has actually reported a fix. A technician with
+// no live position gets no marker — the roster still lists them.
+function refreshTechMarkers() {
+  if (!map) return;
+  Object.keys(techLayers).forEach((name) => {
+    if (!livePositions[name]) {
+      map.removeLayer(techLayers[name]);
+      delete techLayers[name];
+    }
+  });
+  Object.entries(livePositions).forEach(([name, p]) => {
+    const active = name === state.selectedTech;
+    if (techLayers[name]) {
+      techLayers[name].setLatLng([p.lat, p.lng]);
+      techLayers[name].setIcon(techIcon(name, active));
+      return;
+    }
+    const marker = L.marker([p.lat, p.lng], { icon: techIcon(name, active), zIndexOffset: 500 })
+      .addTo(map)
+      .bindTooltip(esc(name), { direction: 'top', offset: [0, -18] });
     marker.on('click', () => {
-      state.selectedTech = tech;
+      state.selectedTech = name;
       save();
       refreshTechMarkers();
       renderTeam();
     });
-    techLayers[tech] = marker;
-  });
-
-  // Frame today's operating area: the depot plus the sites actually on the
-  // technicians' loops. Framing to every known site would zoom out to include
-  // other-city facilities nobody is dispatched to today, collapsing the
-  // İstanbul detail this map exists to show. Out-of-region sites still get a
-  // pin and a geofence — they are simply not part of the day's frame.
-  const routeSiteIds = [...new Set(Object.values(TECH_LOOPS).flat())]
-    .filter((id) => SITE_GEO[id]);
-  opBounds = L.latLngBounds([
-    [DEPOT.lat, DEPOT.lng],
-    ...routeSiteIds.map((id) => [SITE_GEO[id].lat, SITE_GEO[id].lng])
-  ]);
-  map.fitBounds(opBounds, { padding: [42, 42] });
-
-  mapInited = true;
-}
-
-// Re-skin the technician markers to reflect the current selection.
-function refreshTechMarkers() {
-  Object.entries(techLayers).forEach(([tech, marker]) => {
-    marker.setIcon(techIcon(tech, tech === state.selectedTech));
+    techLayers[name] = marker;
   });
 }
 
-// ---- animation loop ------------------------------------------------------
-
-// Driven by a timer (not requestAnimationFrame) so live tracking keeps ticking
-// even when the browser tab is backgrounded; motion uses the real elapsed time
-// between ticks so it stays smooth and frame-rate independent.
-function step() {
-  const ts = performance.now();
-  if (!lastTs) lastTs = ts;
-  let dt = (ts - lastTs) / 1000;
-  lastTs = ts;
-  // Guard against huge jumps when the tab was backgrounded (timers clamp there).
-  if (dt > 1) dt = TICK_MS / 1000;
-
-  let fired = false;
-
-  Object.entries(motion).forEach(([tech, m]) => {
-    m.cursor += m.speed * dt;
-    // A real device fix wins over the simulated loop. The cursor keeps
-    // advancing regardless, so if the phone goes quiet the marker resumes its
-    // route from where it would have been rather than snapping backwards.
-    const real = realPositions[tech];
-    const pos = real ? { lat: real.lat, lng: real.lng } : locate(routes[tech], m.cursor);
-    const marker = techLayers[tech];
-    if (marker) marker.setLatLng([pos.lat, pos.lng]);
-
-    // Geofence membership against every site, using real metres.
-    Object.entries(SITE_GEO).forEach(([siteId, g]) => {
-      const within = haversine([pos.lat, pos.lng], [g.lat, g.lng]) <= g.r;
-      const was = insideFence[tech].has(siteId);
-      if (within && !was) {
-        insideFence[tech].add(siteId);
-        pushGeofenceEvent(tech, siteId, 'enter');
-        fired = true;
-      } else if (!within && was) {
-        insideFence[tech].delete(siteId);
-        pushGeofenceEvent(tech, siteId, 'exit');
-        fired = true;
-      }
-    });
-  });
-
-  if (fired) renderGeofenceFeed();
+function renderFieldCount() {
+  const el = $('#fieldLiveCount');
+  if (!el) return;
+  const live = Object.keys(livePositions).length;
+  el.textContent = live ? `${live} teknisyen sahada` : 'Sahada canlı konum yok';
 }
 
-function pushGeofenceEvent(tech, siteId, kind) {
-  const site = siteById(siteId);
-  const now = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  geofenceEvents.unshift({
-    tech,
-    siteId,
-    kind,
-    siteName: site ? site.name : siteId,
-    company: site ? site.company : '',
-    time: now
-  });
-  if (geofenceEvents.length > 18) geofenceEvents.pop();
+// A line under the map so it is obvious which markers are real device fixes.
+// With the simulation gone every marker is one — but the mismatch chips still
+// matter: they are the "said they were there, GPS disagrees" alert.
+function renderLiveGpsNote() {
+  const el = document.getElementById('liveGpsNote');
+  if (!el) return;
+  const names = Object.keys(livePositions);
+  if (!names.length) {
+    el.innerHTML = mappableSites().length
+      ? '<span class="live-gps-empty">Şu anda sahadan canlı konum bildiren teknisyen yok. Teknisyenler mobil uygulamadan ziyarete başladığında burada görünür.</span>'
+      : '<span class="live-gps-empty">Haritada gösterilecek konum yok — tesislerin koordinatları henüz girilmemiş.</span>';
+    return;
+  }
+  el.innerHTML = names.map((n) => {
+    const p = livePositions[n];
+    const dist = fmtDistance(p.distanceM);
+    const mismatch = p.insideGeofence === false;
+    const cls = `live-gps-chip${mismatch ? ' mismatch' : ''}`;
+    const label = mismatch
+      ? `${n} — ${p.siteName || 'tesiste'} değil · ${dist} uzakta`
+      : `${n} — canlı GPS${p.siteName ? ` @ ${p.siteName}` : ''}${dist ? ` · ${dist}` : ''}`;
+    return `<button type="button" class="${cls}" data-tech="${esc(n)}" title="Haritada göster"><i></i>${esc(label)}</button>`;
+  }).join('');
 }
+
+let liveNoteBound = false;
+function bindLiveNote() {
+  if (liveNoteBound) return;
+  const el = document.getElementById('liveGpsNote');
+  if (!el) return;
+  el.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-tech]');
+    if (!btn || !map) return;
+    const p = livePositions[btn.dataset.tech];
+    if (p) map.setView([p.lat, p.lng], 14, { animate: true });
+  });
+  liveNoteBound = true;
+}
+
+/**
+ * Start live field tracking: build the map, plot the real sites, and begin
+ * polling live_positions(). Idempotent across re-renders.
+ */
+export function startFieldTracking() {
+  ensureMap();
+  plotSites();
+  // The map is built during the initial render() while #team is hidden (zero
+  // size), which leaves fitBounds at a bogus zoom. Re-measure once visible.
+  if (map) setTimeout(() => {
+    map.invalidateSize();
+    if (opBounds) map.fitBounds(opBounds, { padding: [42, 42], maxZoom: 14 });
+  }, 60);
+  bindLiveNote();
+  if (livePollTimer == null) {
+    pollLivePositions();
+    livePollTimer = setInterval(pollLivePositions, LIVE_POLL_MS);
+  }
+}
+
+/** Stop polling — used when the app tears the view down. */
+export function stopFieldTracking() {
+  if (livePollTimer != null) { clearInterval(livePollTimer); livePollTimer = null; }
+}
+
+// ---- geofence feed ------------------------------------------------------
+//
+// Real arrivals and real mismatches from work_order_events. The simulation
+// used to manufacture an enter/exit pair every time a fake marker crossed a
+// fake circle; nothing here is generated in the browser.
 
 function renderGeofenceFeed() {
   const feed = $('#geofenceFeed');
   if (!feed) return;
   if (!geofenceEvents.length) {
-    feed.innerHTML = '<p class="geo-empty">Teknisyenler harita üzerinde hareket ettikçe geofence giriş/çıkış olayları burada belirir.</p>';
+    feed.innerHTML = '<p class="geo-empty">Henüz GPS doğrulamalı varış kaydı yok. Teknisyenler mobil uygulamadan tesise vardığını bildirdikçe buraya düşer.</p>';
     return;
   }
-  feed.innerHTML = geofenceEvents.map((ev) => {
-    const enter = ev.kind === 'enter';
-    return `
-      <div class="geo-event ${enter ? 'enter' : 'exit'}">
-        <span class="geo-dot">${enter ? '↴' : '↳'}</span>
+  feed.innerHTML = geofenceEvents.map((ev) => `
+      <div class="geo-event ${ev.mismatch ? 'exit' : 'enter'}">
+        <span class="geo-dot">${ev.mismatch ? '⚠' : '↴'}</span>
         <div class="geo-body">
-          <b>${ev.tech} · ${enter ? 'GİRİŞ' : 'ÇIKIŞ'}</b>
-          <small>${ev.company} — ${ev.siteName}</small>
+          <b>${esc(ev.tech)} · ${ev.mismatch ? 'GEOFENCE DIŞI' : 'VARIŞ'}</b>
+          <small>${esc(ev.company)} — ${esc(ev.siteName)}${ev.distanceM !== null ? ` · ${esc(fmtDistance(ev.distanceM))}` : ''}</small>
         </div>
-        <time>${ev.time}</time>
-      </div>`;
-  }).join('');
+        <time>${esc(ev.time)}</time>
+      </div>`).join('');
 }
 
-// Start / stop the live simulation. Idempotent — guards against stacking loops
-// across re-renders, and re-sizes the (possibly hidden-at-init) map.
-export function startFieldSimulation() {
-  initMotion();
-  ensureMap();
-  renderGeofenceFeed();
-  // The map is built once during the initial render() while #team is hidden
-  // (zero size), which leaves fitBounds at a bogus zoom. Re-measure and re-frame
-  // once the view is actually on screen.
-  if (map) setTimeout(() => {
-    map.invalidateSize();
-    if (opBounds) map.fitBounds(opBounds, { padding: [42, 42] });
-  }, 60);
-  if (simTimer == null) {
-    lastTs = 0;
-    simTimer = setInterval(step, TICK_MS);
-  }
-  bindLiveNote();
-  if (livePollTimer == null) {
-    pollLivePositions();       // don't wait a full interval for the first fix
-    livePollTimer = setInterval(pollLivePositions, LIVE_POLL_MS);
-  }
-}
-
-export function stopFieldSimulation() {
-  if (simTimer != null) { clearInterval(simTimer); simTimer = null; }
-  if (livePollTimer != null) { clearInterval(livePollTimer); livePollTimer = null; }
-}
-
-// ---- route optimization (task 3-5) --------------------------------------
+// ---- route optimization -------------------------------------------------
 //
-// Now measured in real driving distance (straight-line metres between the
-// day's stops) rather than abstract canvas units.
+// Computed over the selected technician's actual open work orders for today,
+// using the sites' real coordinates. It previously optimised a fixed list of
+// six seeded facilities regardless of who was selected.
 
-function optimizeRoute(stopIds) {
-  const remaining = [...stopIds];
-  const order = [];
-  let cur = [DEPOT.lat, DEPOT.lng];
+function todaysStopsFor(techName) {
+  const start = new Date(); start.setHours(0, 0, 0, 0);
+  const end = new Date(); end.setHours(23, 59, 59, 999);
+  const siteById = new Map((state.sites || []).map((s) => [s.id, s]));
+
+  const seen = new Set();
+  return (state.work || [])
+    .filter((w) => w.tech === techName && !w.completed && w.dueAt)
+    .filter((w) => { const d = new Date(w.dueAt); return d >= start && d <= end; })
+    .sort((a, b) => new Date(a.dueAt) - new Date(b.dueAt))
+    .map((w) => siteById.get(w.siteId))
+    .filter((s) => s && Number.isFinite(s.lat) && Number.isFinite(s.lng))
+    .filter((s) => { if (seen.has(s.id)) return false; seen.add(s.id); return true; });
+}
+
+// Nearest-neighbour ordering, anchored on the day's first stop.
+function optimizeRoute(stops) {
+  if (stops.length < 3) return stops;
+  const remaining = stops.slice(1);
+  const order = [stops[0]];
+  let cur = [stops[0].lat, stops[0].lng];
   while (remaining.length) {
     let bestI = 0;
     let bestD = Infinity;
-    remaining.forEach((id, i) => {
-      const g = SITE_GEO[id];
-      const d = haversine(cur, [g.lat, g.lng]);
+    remaining.forEach((s, i) => {
+      const d = haversine(cur, [s.lat, s.lng]);
       if (d < bestD) { bestD = d; bestI = i; }
     });
     const [next] = remaining.splice(bestI, 1);
     order.push(next);
-    cur = [SITE_GEO[next].lat, SITE_GEO[next].lng];
+    cur = [next.lat, next.lng];
   }
   return order;
 }
 
-// Total driving distance (metres) for an ordered stop list, depot → … → depot.
 function routeDistance(order) {
   let total = 0;
-  let cur = [DEPOT.lat, DEPOT.lng];
-  order.forEach((id) => {
-    const g = SITE_GEO[id];
-    total += haversine(cur, [g.lat, g.lng]);
-    cur = [g.lat, g.lng];
-  });
-  total += haversine(cur, [DEPOT.lat, DEPOT.lng]);
+  for (let i = 1; i < order.length; i++) {
+    total += haversine([order[i - 1].lat, order[i - 1].lng], [order[i].lat, order[i].lng]);
+  }
   return total;
 }
 
-// Straight-line metres → driving minutes. Metro traffic averages ~26 km/h door
-// to door, and real roads add ~40% over the crow-flies distance, so ~1 minute
-// per 360 straight-line metres reads as a believable İstanbul field day.
+// Straight-line metres -> driving minutes. Metro traffic averages ~26 km/h
+// door to door, and real roads add ~40% over the crow-flies distance.
 const routeMinutes = (order) => Math.round(routeDistance(order) / 360);
 const routeKm = (order) => Math.round((routeDistance(order) * 1.4) / 1000);
-
-// The day's stops, in seed order (the "naive" plan).
-const DAY_STOPS = ['s1', 's2', 's3', 's4', 's5', 's6'];
 
 function renderRouteOptimization() {
   const panel = $('#routeOptBody');
   if (!panel) return;
 
-  const naive = DAY_STOPS;
-  const optimized = optimizeRoute(DAY_STOPS);
-  const naiveMin = routeMinutes(naive);
+  const stops = todaysStopsFor(state.selectedTech);
+  const btn = $('#btnRouteOptimize');
+
+  if (stops.length < 2) {
+    panel.innerHTML = `<p class="route-empty">${esc(state.selectedTech || 'Seçili teknisyen')} için bugün rota hesaplanacak yeterli ziyaret yok. En az iki, koordinatı girilmiş tesise açık iş emri gerekiyor.</p>`;
+    if (btn) btn.disabled = true;
+    if (routeLayer && map) { map.removeLayer(routeLayer); routeLayer = null; }
+    return;
+  }
+  if (btn) btn.disabled = false;
+
+  const optimized = optimizeRoute(stops);
+  const naiveMin = routeMinutes(stops);
   const optMin = routeMinutes(optimized);
   const saved = naiveMin - optMin;
   const savedPct = naiveMin ? Math.round((saved / naiveMin) * 100) : 0;
+  const shown = routeOptimized ? optimized : stops;
 
-  const shown = routeOptimized ? optimized : naive;
-  const label = (id) => (siteById(id) || {}).company || id;
-
-  const chips = ['depot', ...shown, 'depot'].map((id, i) => {
-    const name = id === 'depot' ? 'Merkez' : label(id);
-    return `<span class="route-chip ${id === 'depot' ? 'depot' : ''}">${i}. ${name}</span>`;
-  }).join('<span class="route-arrow">→</span>');
+  const chips = shown.map((s, i) =>
+    `<span class="route-chip">${i + 1}. ${esc(s.company || s.name)}</span>`
+  ).join('<span class="route-arrow">→</span>');
 
   panel.innerHTML = `
     <div class="route-compare">
-      <div class="route-metric ${routeOptimized ? '' : 'active'}">
-        <span>Mevcut sıralama</span><strong>${naiveMin} dk</strong><small>${routeKm(naive)} km</small>
+      <div class="route-metric ${esc(routeOptimized ? '' : 'active')}">
+        <span>Planlanan sıra</span><strong>${esc(naiveMin)} dk</strong><small>${esc(routeKm(stops))} km</small>
       </div>
-      <div class="route-metric ${routeOptimized ? 'active' : ''}">
-        <span>Optimize sıralama</span><strong>${optMin} dk</strong><small>${routeKm(optimized)} km</small>
+      <div class="route-metric ${esc(routeOptimized ? 'active' : '')}">
+        <span>Optimize sıra</span><strong>${esc(optMin)} dk</strong><small>${esc(routeKm(optimized))} km</small>
       </div>
       <div class="route-metric saved">
-        <span>Kazanç</span><strong>${saved} dk · %${savedPct}</strong>
+        <span>Kazanç</span><strong>${esc(saved)} dk · %${esc(savedPct)}</strong>
       </div>
     </div>
-    <p class="route-mode">${routeOptimized ? '✓ Optimize edilmiş en yakın-komşu rotası' : 'Sözleşme/giriş sırasına göre ham rota'}</p>
+    <p class="route-mode">${esc(routeOptimized ? '✓ En yakın-komşu sıralaması' : `${state.selectedTech} · bugünkü planlanan sıra`)}</p>
     <div class="route-chips">${chips}</div>`;
 
-  drawRouteOverlay(routeOptimized ? optimized : naive);
-
-  const btn = $('#btnRouteOptimize');
-  if (btn) btn.textContent = routeOptimized ? '↺ Ham rotayı göster' : '⚡ Rotayı optimize et';
+  drawRouteOverlay(shown);
 }
 
-// Draw the current stop order as a polyline on the real map.
 function drawRouteOverlay(order) {
   if (!map) return;
   if (routeLayer) { map.removeLayer(routeLayer); routeLayer = null; }
-  const pts = ['depot', ...order, 'depot'].map((id) =>
-    id === 'depot' ? [DEPOT.lat, DEPOT.lng] : [SITE_GEO[id].lat, SITE_GEO[id].lng]);
-  routeLayer = L.polyline(pts, {
+  if (order.length < 2) return;
+  routeLayer = L.polyline(order.map((s) => [s.lat, s.lng]), {
     color: routeOptimized ? '#138b67' : '#c2673a',
-    weight: 3,
-    opacity: 0.85,
+    weight: 3, opacity: 0.85,
     dashArray: routeOptimized ? null : '8 8',
     lineJoin: 'round'
   }).addTo(map);
 }
 
-// ---- technician credential cards (task 2-5) ----
-//
-// The credential registry and row markup moved to data/credentials.js (6-1) so
-// the customer portal can render the same documents; see the KVKK note there.
+// ---- credentials --------------------------------------------------------
 
-function renderCredentials(tech) {
+const CREDENTIAL_ICONS = {
+  sgk: '🧾', safety_cert: '🦺', permit: '📋', health_report: '🩺'
+};
+
+// A document expiring within this window is flagged, so the office renews it
+// before a customer audit finds it — not merely once it has already lapsed.
+const EXPIRY_WARNING_DAYS = 60;
+
+function credentialRow(doc) {
+  const icon = CREDENTIAL_ICONS[doc.kind] || '📄';
+  const parts = [];
+  if (doc.referenceNo) parts.push(`Belge no: ${doc.referenceNo}`);
+  if (doc.validUntil) {
+    parts.push(`Geçerlilik: ${new Date(doc.validUntil).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' })}`);
+  }
+  const soon = doc.validUntil
+    && (new Date(doc.validUntil) - Date.now()) < EXPIRY_WARNING_DAYS * 24 * 3600 * 1000;
+  const ok = doc.isValid && !soon;
+  const label = ok ? 'Geçerli' : (doc.isValid ? 'Yakında doluyor' : 'Geçersiz');
+  return `
+    <div class="cred-doc">
+      <span class="cred-doc-icon">${icon}</span>
+      <div class="cred-doc-body"><b>${esc(doc.title)}</b><small>${esc(parts.join(' · ') || '—')}</small></div>
+      <span class="cred-doc-status ${ok ? 'ok' : 'warn'}">${label}</span>
+      ${doc.documentPath
+        ? `<button type="button" class="text-btn cred-open-btn" data-path="${esc(doc.documentPath)}" style="padding:0 0 0 8px; font-size:10px; font-weight:700; color:var(--violet);">Aç ↗</button>`
+        : '<span style="color:var(--muted); font-size:10px; padding-left:8px;">dosya yok</span>'}
+    </div>`;
+}
+
+function renderCredentials(techName) {
   const host = $('#techCredentials');
   if (!host) return;
-  const initials = (techData[tech] || ['--'])[0];
+  const tech = technicianByName(techName);
+  if (!tech) {
+    host.innerHTML = '<p class="cred-empty">Teknisyen seçilmedi.</p>';
+    return;
+  }
+  const docs = credentialsByTech[tech.id] || [];
 
   host.innerHTML = `
     <div class="cred-head">
-      <span class="tech-avatar" style="background:${(techData[tech] || [])[5] || '#eee'}">${initials}</span>
-      <div><b>${tech}</b><span>Belgeler müşteri portalında görüntülenebilir</span></div>
+      <span class="tech-avatar" style="background:${esc(tech.color || '#eee')}">${esc(tech.initials || initialsOf(tech.name))}</span>
+      <div><b>${esc(tech.name)}</b><span>Belgeler müşteri portalında görüntülenebilir</span></div>
     </div>
     <div class="cred-docs">
-      ${credentialDocs(tech)}
+      ${docs.length ? docs.map(credentialRow).join('')
+        : '<p class="cred-empty">Bu teknisyen için henüz belge kaydı girilmemiş (SGK, iş güvenliği sertifikası, uygulama izni, portör raporu).</p>'}
     </div>
-    <p class="cred-kvkk">🔒 <b>KVKK bildirimi:</b> Bu kartlar demo amaçlı yer tutucu belgelerdir. Gerçek kimlik,
-    SGK veya sağlık verisi içermez; kişisel tanımlayıcılar maskelenmiştir. Canlı sistemde belgeler yalnızca
-    ilgili müşteriye ve yalnızca hizmet süresince gösterilir.</p>`;
+    <p class="cred-kvkk">🔒 <b>KVKK bildirimi:</b> Belgeler yalnızca ilgili müşteriye ve yalnızca hizmet süresince gösterilir.
+    Kimlik ve SGK numaraları maskelenmiş biçimde saklanır; belge dosyaları özel (private) depolama alanında tutulur.</p>`;
 }
 
-// ---- productivity: travel vs on-site time & efficiency (task 4-2) ----
-//
-// Reads the seeded 12-month history through technicianStats() — real per-tech
-// visit counts and on-site / travel minute totals — and turns them into the
-// utilisation story: how much of each technician's working time is billable
-// time on the customer's site versus unbillable "windshield" travel. The cost
-// side of the same numbers lives in views/finance.js next to the margins.
+// ---- productivity -------------------------------------------------------
 
-const firstName = (name) => name.split(' ')[0];
 const hours = (min) => Math.round(min / 60);
-// Share of working time spent on-site rather than driving. Higher is better.
-const utilisation = (t) => Math.round((t.onSiteMin / (t.onSiteMin + t.travelMin)) * 100);
+const utilisation = (t) =>
+  (t.onSiteMin + t.travelMin ? Math.round((t.onSiteMin / (t.onSiteMin + t.travelMin)) * 100) : 0);
 const utilClass = (u) => (u >= 70 ? 'ok' : u >= 60 ? 'mid' : 'low');
 
 function renderProductivity() {
   const body = $('#teamProductivityBody');
   if (!body) return;
 
-  const stats = technicianStats();
+  const stats = technicianStatsRows;
+  const pill = $('#teamUtilPill');
+
+  if (!stats.length) {
+    if (pill) { pill.textContent = 'Veri yok'; pill.className = 'status-chip blue'; }
+    body.innerHTML = `<p class="prod-empty">Verimlilik, tamamlanan iş emirlerinin gerçek zaman damgalarından hesaplanır:
+      yol süresi (yola çıkış → GPS varış) ve saha süresi (ilk QR → tamamlama). Henüz tamamlanmış ziyaret olmadığı için
+      gösterilecek veri yok.</p>`;
+    return;
+  }
+
   const totalOn = stats.reduce((s, t) => s + t.onSiteMin, 0);
   const totalTravel = stats.reduce((s, t) => s + t.travelMin, 0);
   const totalVisits = stats.reduce((s, t) => s + t.visits, 0);
   const teamUtil = totalOn + totalTravel ? Math.round((totalOn / (totalOn + totalTravel)) * 100) : 0;
 
-  const pill = $('#teamUtilPill');
   if (pill) {
     pill.textContent = `Ekip verimliliği %${teamUtil}`;
     pill.className = `status-chip ${teamUtil >= 70 ? 'healthy' : teamUtil >= 60 ? 'warning' : 'blue'}`;
@@ -693,13 +579,14 @@ function renderProductivity() {
 
   const rows = stats.map((t) => {
     const u = utilisation(t);
+    const tech = technicianByName(t.tech);
     const sel = t.tech === state.selectedTech ? ' selected' : '';
     return `
-      <div class="prod-row${sel}" data-tech="${t.tech}">
+      <div class="prod-row${sel}" data-tech="${esc(t.tech)}">
         <div class="prod-row-head">
-          <span class="tech-avatar" style="background:${(techData[t.tech] || [])[5] || '#eee'}">${(techData[t.tech] || ['--'])[0]}</span>
-          <div class="prod-row-id"><b>${t.tech}</b><small>${t.visits} ziyaret · ort. saha ${t.avgOnSiteMin} dk · ort. yol ${t.avgTravelMin} dk</small></div>
-          <span class="prod-util ${utilClass(u)}">%${u}</span>
+          <span class="tech-avatar" style="background:${esc((tech && tech.color) || '#eee')}">${esc(initialsOf(t.tech))}</span>
+          <div class="prod-row-id"><b>${esc(t.tech)}</b><small>${esc(t.visits)} ziyaret · ort. saha ${esc(t.avgOnSiteMin)} dk · ort. yol ${esc(t.avgTravelMin)} dk</small></div>
+          <span class="prod-util ${utilClass(u)}">%${esc(u)}</span>
         </div>
         <div class="prod-bar" title="Saha ${hours(t.onSiteMin)} sa · Yol ${hours(t.travelMin)} sa">
           <span class="prod-bar-on" style="width:${u}%"></span>
@@ -710,84 +597,255 @@ function renderProductivity() {
 
   body.innerHTML = `
     <div class="prod-summary">
-      <div class="prod-stat"><span>Ekip verimliliği</span><strong class="${teamUtil >= 70 ? 'good' : teamUtil >= 60 ? 'mid' : 'bad'}">%${teamUtil}</strong><small>saha / toplam mesai</small></div>
-      <div class="prod-stat"><span>Toplam saha süresi</span><strong>${hours(totalOn)} sa</strong><small>faturalanabilir</small></div>
-      <div class="prod-stat"><span>Toplam yol süresi</span><strong>${hours(totalTravel)} sa</strong><small>windshield / gayri-faturalı</small></div>
-      <div class="prod-stat"><span>Toplam ziyaret</span><strong>${totalVisits}</strong><small>12 ay</small></div>
+      <div class="prod-stat"><span>Ekip verimliliği</span><strong class="${esc(teamUtil >= 70 ? 'good' : teamUtil >= 60 ? 'mid' : 'bad')}">%${esc(teamUtil)}</strong><small>saha / toplam mesai</small></div>
+      <div class="prod-stat"><span>Toplam saha süresi</span><strong>${esc(hours(totalOn))} sa</strong><small>faturalanabilir</small></div>
+      <div class="prod-stat"><span>Toplam yol süresi</span><strong>${esc(hours(totalTravel))} sa</strong><small>windshield / gayri-faturalı</small></div>
+      <div class="prod-stat"><span>Tamamlanan ziyaret</span><strong>${esc(totalVisits)}</strong><small>tüm zamanlar</small></div>
     </div>
-    <div class="prod-chart-wrap"><div id="teamProductivityChart" class="prod-chart"></div></div>
     <div class="prod-legend"><span><i class="on"></i> Saha (faturalanabilir)</span><span><i class="travel"></i> Yol (windshield)</span></div>
     <div class="prod-rows">${rows}</div>`;
-
-  mountChart('#teamProductivityChart', stackedBarChart({
-    labels: stats.map((t) => firstName(t.tech)),
-    series: [
-      { name: 'Saha', values: stats.map((t) => hours(t.onSiteMin)), color: '#10b981' },
-      { name: 'Yol', values: stats.map((t) => hours(t.travelMin)), color: '#f59e0b' }
-    ],
-    height: 220,
-    legend: false,
-    format: (n) => `${n} sa`
-  }));
 }
 
-// ---- main view rendering ----
+// ---- technician detail + roster -----------------------------------------
 
-export function renderTeam(){
-  const d=techData[state.selectedTech];
-  const stats = technicianStats().find((t) => t.tech === state.selectedTech);
+// What the technician is doing right now, from evidence rather than a stored
+// status string: a live fix means they are in the field, and the geofence
+// verdict on that fix says whether they are actually at the site.
+function liveStatusOf(techName) {
+  const p = livePositions[techName];
+  if (!p) return { status: 'Sahada değil', detail: 'Canlı konum bildirimi yok' };
+  if (p.insideGeofence === false) {
+    return {
+      status: 'Tesis dışında',
+      detail: `${p.siteName || 'Tesis'} sınırının ${fmtDistance(p.distanceM)} dışında`
+    };
+  }
+  return {
+    status: 'Müşteride',
+    detail: p.siteName ? `${p.siteName} · geofence içinde` : 'Geofence içinde'
+  };
+}
+
+function renderTechDetail() {
+  const host = $('#techDetail');
+  if (!host) return;
+
+  const tech = technicianByName(state.selectedTech);
+  if (!tech) {
+    host.innerHTML = '<p class="empty">Henüz teknisyen kaydı yok. Aşağıdaki <b>Teknisyen ekle</b> ile ekibinize teknisyen davet edin.</p>';
+    return;
+  }
+
+  const live = liveStatusOf(tech.name);
+  const p = livePositions[tech.name];
+  const stats = technicianStatsRows.find((s) => s.tech === tech.name);
   const statLine = stats
     ? `${stats.visits} ziyaret · saha ort. ${stats.avgOnSiteMin} dk · yol ort. ${stats.avgTravelMin} dk`
+    : 'Henüz tamamlanmış ziyaret yok';
+  const stopNames = todaysStopsFor(tech.name).map((s) => s.company || s.name).join(' → ');
+  const lastSignal = p
+    ? new Date(p.at).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
     : '—';
-  const stopNames = (TECH_STOPS[state.selectedTech] || [])
-    .map((id) => (siteById(id) || {}).company || id).join(' → ');
 
-  $('#techDetail').innerHTML=`
+  host.innerHTML = `
     <div class="tech-summary">
-      <span class="tech-avatar" style="background:${d[5]}">${d[0]}</span>
-      <div><b>${state.selectedTech}</b><span>${d[1]} · ${d[2]}</span></div>
+      <span class="tech-avatar" style="background:${esc(tech.color || '#eee')}">${esc(tech.initials || initialsOf(tech.name))}</span>
+      <div><b>${esc(tech.name)}</b><span>${esc(live.status)}${tech.phone ? ` · ${esc(tech.phone)}` : ''}</span></div>
     </div>
     <div class="tech-rows">
-      <div><span>Mevcut durum</span><b>${d[1]}</b></div>
-      <div><span>Servis doğrulaması</span><b>${d[3]}</b></div>
-      <div><span>Son konum sinyali</span><b>${d[4]}</b></div>
-      <div><span>Bugünkü rota</span><b>${stopNames || '—'}</b></div>
-      <div><span>12 aylık saha özeti</span><b>${statLine}</b></div>
+      <div><span>Mevcut durum</span><b>${esc(live.detail)}</b></div>
+      <div><span>Son konum sinyali</span><b>${esc(lastSignal)}</b></div>
+      <div><span>Bugünkü rota</span><b>${esc(stopNames || 'Bugün planlı ziyaret yok')}</b></div>
+      <div><span>Saha özeti</span><b>${esc(statLine)}</b></div>
+      ${tech.email ? `<div><span>E-posta</span><b>${esc(tech.email)}</b></div>` : ''}
     </div>
     <button class="secondary-btn map-access" data-action="facilityMap">⌖ Tesis planını görüntüle</button>
     <p class="map-hint">Plan uygulama içinde çevrimiçi görüntülenir; teknisyen isterse offline kullanım için ayrıca indirebilir.</p>
   `;
-  $('#roster').innerHTML=Object.entries(techData).map(([n,x])=>`
-    <div class="roster-item" data-tech="${n}" style="cursor:pointer; background:${state.selectedTech===n?'#f0f4f8':''}">
-      <span class="tech-avatar" style="background:${x[5]}">${x[0]}</span>
-      <div><b>${n}</b><span>${x[1]} · ${x[2]}</span></div>
-    </div>
-  `).join('');
-
-  renderCredentials(state.selectedTech);
-  renderProductivity();
-  startFieldSimulation();
-  renderRouteOptimization();
-  refreshTechMarkers();
 }
 
+function renderRoster() {
+  const host = $('#roster');
+  if (!host) return;
+  const techs = technicianList();
+  if (!techs.length) {
+    host.innerHTML = '<p class="empty">Ekibinizde henüz teknisyen yok.</p>';
+    return;
+  }
+  host.innerHTML = techs.map((t) => {
+    const live = liveStatusOf(t.name);
+    return `
+    <div class="roster-item" data-tech="${esc(t.name)}" style="cursor:pointer; background:${state.selectedTech === t.name ? '#f0f4f8' : ''}">
+      <span class="tech-avatar" style="background:${esc(t.color || '#eee')}">${esc(t.initials || initialsOf(t.name))}</span>
+      <div><b>${esc(t.name)}</b><span>${esc(live.status)}</span></div>
+    </div>`;
+  }).join('');
+}
+
+// ---- main view rendering ------------------------------------------------
+
+export function renderTeam() {
+  // The selected technician is stored by name (app.js and finance.js both
+  // compare against it). The seed left "Ayşe Demir" there, so anything not in
+  // the real roster falls back to the first real technician.
+  const techs = technicianList();
+  if (!technicianByName(state.selectedTech)) {
+    // Falls back to the first real technician, or to nothing at all: an org
+    // with no technicians yet must not keep showing the seeded "Ayse Demir",
+    // which leaked into the route panel's copy.
+    state.selectedTech = techs.length ? techs[0].name : '';
+  }
+
+  renderRoster();
+  renderTechDetail();
+  renderCredentials(state.selectedTech);
+  // The rate table lists every technician, so it belongs on the render path and
+  // not only in loadTeamAux(): that runs once and had already run — against an
+  // empty roster — by the time the technicians finished loading.
+  renderTechRates();
+  renderProductivity();
+  renderFieldCount();
+  renderLiveGpsNote();
+  renderGeofenceFeed();
+  startFieldTracking();
+  plotSites();
+  renderRouteOptimization();
+  refreshTechMarkers();
+  loadTeamAux();
+}
 
 export function teamRosterClicks(e) {
-    // Route optimization before/after toggle (task 3-5).
-    if (e.target.id === 'btnRouteOptimize') {
-      routeOptimized = !routeOptimized;
-      renderRouteOptimization();
-      return true;
-    }
+  if (e.target.id === 'btnRouteOptimize') {
+    routeOptimized = !routeOptimized;
+    const btn = $('#btnRouteOptimize');
+    if (btn) btn.textContent = routeOptimized ? '↺ Planlanan sırayı göster' : '⚡ Rotayı optimize et';
+    renderRouteOptimization();
+    return true;
+  }
 
-    const tech=e.target.closest('[data-tech]');
-    if(tech){
-      state.selectedTech=tech.dataset.tech;
-      save();
-      refreshTechMarkers();
-      renderTeam();
-      return true;
-    }
+  const tech = e.target.closest('[data-tech]');
+  if (tech) {
+    state.selectedTech = tech.dataset.tech;
+    save();
+    refreshTechMarkers();
+    renderTeam();
+    return true;
+  }
 
   return false;
+}
+
+// ---- hourly rates -------------------------------------------------------
+//
+// technician_rates was readable but had no write path, so a technician with no
+// rate on file stayed out of every labour cost and margin. That exclusion is
+// deliberate — an invented rate produces an invented margin — which made this
+// table the missing half of the finance page rather than a convenience.
+
+function renderTechRates() {
+  const body = $('#techRatesBody');
+  if (!body) return;
+
+  const techs = technicianList();
+  if (!techs.length) {
+    body.innerHTML = '<tr><td colspan="4" class="empty" style="text-align:center;">Kayıtlı teknisyen bulunmuyor.</td></tr>';
+    return;
+  }
+
+  body.innerHTML = techs.map((t) => {
+    const rate = ratesByTechnician[t.id];
+    return `
+      <tr>
+        <td><b>${esc(t.name)}</b></td>
+        <td>
+          <input type="number" min="1" step="any" class="form-input tech-rate-input"
+                 data-tech="${esc(t.id)}" value="${rate ? esc(rate.hourlyRate) : ''}"
+                 placeholder="tanımsız" style="height:28px; font-size:11px; max-width:120px;">
+        </td>
+        <td><small class="text-muted">${rate?.validFrom
+          ? esc(new Date(rate.validFrom).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' }))
+          : '—'}</small></td>
+        <td><button type="button" class="text-btn tech-rate-save" data-tech="${esc(t.id)}" style="padding:0; font-size:10px; font-weight:700; color:var(--blue);">Kaydet</button></td>
+      </tr>`;
+  }).join('');
+}
+
+export function teamAdminClicks(e) {
+  const openDoc = e.target.closest('.cred-open-btn');
+  if (openDoc) {
+    signedCredentialUrl(openDoc.dataset.path).then((url) => {
+      if (url) window.open(url, '_blank', 'noopener');
+      else toast('Belge bağlantısı alınamadı.');
+    });
+    return true;
+  }
+
+  const saveRate = e.target.closest('.tech-rate-save');
+  if (saveRate) {
+    const technicianId = saveRate.dataset.tech;
+    const input = document.querySelector(`.tech-rate-input[data-tech="${technicianId}"]`);
+    const orgId = state.currentUser?.orgId;
+    if (!orgId) { toast('Kuruma bağlı bir hesapla giriş yapmalısınız.'); return true; }
+
+    const hourlyRate = parseFloat(input && input.value);
+    if (!(hourlyRate > 0)) { toast('Saatlik ücret sıfırdan büyük olmalıdır.'); return true; }
+
+    saveRate.disabled = true;
+    setTechnicianRate({ orgId, technicianId, hourlyRate })
+      .then((saved) => {
+        ratesByTechnician[technicianId] = saved;
+        // The finance page prices labour by technician *name*, so the store it
+        // reads is updated here too rather than waiting for the next sign-in.
+        const tech = technicianList().find((t) => t.id === technicianId);
+        if (tech) setTechRates({ ...(state.techRates || {}), [tech.name]: saved.hourlyRate });
+        renderTechRates();
+        toast(`${tech ? tech.name : 'Teknisyen'} saatlik ücreti kaydedildi.`);
+      })
+      .catch((err) => toast(err.message || 'Ücret kaydedilemedi.'))
+      .finally(() => { saveRate.disabled = false; });
+    return true;
+  }
+
+  return false;
+}
+
+export function techCredentialSubmit(e) {
+  if (e.target.id !== 'techCredentialForm') return false;
+  e.preventDefault();
+
+  const tech = technicianByName(state.selectedTech);
+  const orgId = state.currentUser?.orgId;
+  if (!tech) { toast('Önce bir teknisyen seçin.'); return true; }
+  if (!orgId) { toast('Kuruma bağlı bir hesapla giriş yapmalısınız.'); return true; }
+
+  const f = new FormData(e.target);
+  const title = String(f.get('title') || '').trim();
+  if (!title) { toast('Belge başlığı zorunludur.'); return true; }
+
+  const fileInput = $('#inpCredentialFile');
+  const file = fileInput && fileInput.files && fileInput.files[0];
+
+  const button = e.target.querySelector('button[type="submit"]');
+  if (button) button.disabled = true;
+
+  saveTechnicianCredential({
+    orgId,
+    technicianId: tech.id,
+    kind: String(f.get('kind') || 'permit'),
+    title,
+    referenceNo: String(f.get('referenceNo') || '').trim(),
+    validUntil: String(f.get('validUntil') || ''),
+    file: file || null
+  })
+    .then(() => fetchTechnicianCredentials())
+    .then((byTech) => {
+      credentialsByTech = byTech;
+      renderCredentials(state.selectedTech);
+      e.target.reset();
+      toast(`${tech.name} için belge kaydedildi.`);
+    })
+    .catch((err) => toast(err.message || 'Belge kaydedilemedi.'))
+    .finally(() => { if (button) button.disabled = false; });
+
+  return true;
 }

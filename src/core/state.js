@@ -51,6 +51,18 @@ export function load(){
         if (site[key] === undefined) site[key] = structuredClone(value);
       }
     }
+    // Stock and its movement log are owned by the server. A session saved
+    // while the old seed shipped nine invented products would otherwise keep
+    // showing them in this browser forever, and a failed load would leave
+    // that fabrication on screen. Dropping the persisted copy means the
+    // warehouse is either the database's answer or visibly empty.
+    merged.inventory = [];
+    merged.inventoryTransactions = [];
+    // Same reasoning for the ledger: a session saved while the old seed
+    // shipped INV-1001/INV-1002 would keep showing two invented invoices,
+    // and rates saved under the demo names would price real technicians.
+    merged.invoices = [];
+    merged.techRates = {};
     return merged;
   } catch { return structuredClone(initial); }
 }
@@ -67,10 +79,13 @@ export const state = load();
  * product (it appeared in the sites list but had no plan, no report scope and no
  * ranking row).
  *
- * Falls back to the seed if state is somehow empty, so a lookup never returns
- * an empty portfolio.
+ * There is deliberately no fallback to the seed. It used to return
+ * `initial.sites` whenever the live list was empty, which on a real account
+ * with no facilities yet meant the seeded demo customers (Acme Foods, Kuzey
+ * Lojistik...) leaked into the site ranking, the report scopes and the
+ * insights charts. An empty portfolio is a real state and must render as one.
  */
-export const allSites = () => (state.sites && state.sites.length ? state.sites : initial.sites);
+export const allSites = () => state.sites || [];
 
 // Sites the current user is allowed to see. A customer (client role) is scoped
 // to their own company's locations only — the roadmap (§11) is explicit that a
@@ -85,15 +100,131 @@ export function visibleSites() {
   return allSites();
 }
 
+/**
+ * Replace the seeded demo portfolio with real sites loaded from Supabase, in
+ * place — every view holds `state.sites` by reference (visibleSites(),
+ * allSites(), the sites/dashboard/team renderers), so mutating the existing
+ * array's contents is what makes the swap visible everywhere without each
+ * view needing to re-subscribe to anything.
+ *
+ * @param {object[]} sites
+ */
+export function replaceSites(sites) {
+  state.sites.splice(0, state.sites.length, ...sites);
+}
+
+/**
+ * Replace the demo work-order board with real orders loaded from Supabase, in
+ * place — same reasoning as replaceSites() above: every view holds
+ * `state.work` by reference.
+ *
+ * @param {object[]} work
+ */
+export function replaceWork(work) {
+  state.work.splice(0, state.work.length, ...work);
+}
+
+// Real technicians loaded from Supabase for pickers outside the Ekip (team)
+// page — see src/data/repo/technicians.js for why the team simulation itself
+// is not wired here. The seed has no equivalent array, so this starts empty
+// rather than being backfilled by load()'s seed-reconciliation logic.
+if (!state.technicians) state.technicians = [];
+
+// The real work_order_events audit trail behind the dashboard activity feed.
+// Like `technicians` above, the seed has no equivalent — the feed used to be a
+// hardcoded four-row array in views/dashboard.js.
+if (!state.activity) state.activity = [];
+
+/**
+ * Replace the activity feed in place — same pattern as replaceSites().
+ *
+ * @param {object[]} events
+ */
+export function replaceActivity(events) {
+  state.activity.splice(0, state.activity.length, ...events);
+}
+
+/**
+ * Replace the real-technician list in place — same pattern as replaceSites().
+ *
+ * @param {object[]} technicians
+ */
+export function replaceTechnicians(technicians) {
+  state.technicians.splice(0, state.technicians.length, ...technicians);
+}
+
+// Real stock and the org's licensed product list. The seed shipped five
+// invented products; `chemicals` starts empty because a company's licensed
+// range is its own, not a catalogue we can guess at.
+if (!state.chemicals) state.chemicals = [];
+
+/** Replace stock on hand in place — same pattern as replaceSites(). */
+export function replaceInventory(items) {
+  if (!state.inventory) state.inventory = [];
+  state.inventory.splice(0, state.inventory.length, ...items);
+}
+
+/** Replace the licensed product list in place. */
+export function replaceChemicals(chemicals) {
+  state.chemicals.splice(0, state.chemicals.length, ...chemicals);
+}
+
+/**
+ * Replace the stock movement log in place.
+ *
+ * The seed shipped two invented movements that nothing ever appended to, so
+ * the log was frozen fiction. Real movements are written by
+ * record_chemical_usage() and restock_inventory(); this installs what the
+ * database actually holds.
+ */
+// The invoice ledger, the issuing organization and technician hourly rates —
+// all three previously seeded. `organization` is the issuing party printed on
+// every invoice and delivery note; it was a hardcoded string in finance.js.
+if (!state.invoices) state.invoices = [];
+if (!state.organization) state.organization = null;
+if (!state.techRates) state.techRates = {};
+
+/** Replace the invoice ledger in place — same pattern as replaceSites(). */
+export function replaceInvoices(invoices) {
+  if (!state.invoices) state.invoices = [];
+  state.invoices.splice(0, state.invoices.length, ...invoices);
+}
+
+/** The issuing organization, for the document header and party block. */
+export function setOrganization(org) {
+  state.organization = org;
+}
+
+/** Technician hourly rates by name, from technician_rates. */
+export function setTechRates(rates) {
+  state.techRates = rates || {};
+}
+
+export function replaceStockTransactions(txs) {
+  if (!state.inventoryTransactions) state.inventoryTransactions = [];
+  state.inventoryTransactions.splice(0, state.inventoryTransactions.length, ...txs);
+}
+
 export function save(){
   localStorage.setItem("repellent-ops",JSON.stringify(state));
   const persistableState = structuredClone(state);
   delete persistableState.currentUser;
+  // fetch only rejects on a network failure, so a 403 from the server lands in
+  // the success branch. Checking res.ok is what stops a rejected write from
+  // looking identical to a successful one — the browser copy above still holds
+  // the data, but nothing reached the server.
   fetch("./api/state", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(persistableState)
-  }).catch(() => {});
+  }).then((res) => {
+    if (!res.ok) {
+      console.warn(
+        `[repellent] Sunucuya kayit reddedildi (HTTP ${res.status}). ` +
+        'Veri yalnizca bu tarayicida tutuluyor. Gelistirme icin ALLOW_LEGACY_STATE_WRITE=1 gerekir.'
+      );
+    }
+  }).catch(() => { /* offline — localStorage copy above is the fallback */ });
 }
 
 export function recalculateSiteStats(site) {

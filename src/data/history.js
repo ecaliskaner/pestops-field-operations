@@ -6,7 +6,6 @@
 
 import { initial } from './seed.js';
 import { allSites } from '../core/state.js';
-import { chemicalDatabase, pestDatabase } from './catalog.js';
 
 const SEED = 0x1adb69;
 const MONTH_SHORT = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
@@ -90,22 +89,21 @@ function rng(seedStr) {
 
 const pick = (r, arr) => arr[Math.floor(r() * arr.length) % arr.length];
 
-function weightedPick(r, pairs) {
-  const total = pairs.reduce((s, p) => s + p[1], 0);
-  let n = r() * total;
-  for (const [value, weight] of pairs) {
-    n -= weight;
-    if (n <= 0) return value;
-  }
-  return pairs[0][0];
-}
-
 // ---------- calendar ----------
 
+/**
+ * The trailing twelve calendar months, ending with the current one.
+ *
+ * This used to end at WINDOW_END — the seeded dataset's frozen 12 Jul 2026 —
+ * so that the generated numbers stayed reproducible. With real data that
+ * window sits in the past: a visit completed this month lands outside it and
+ * every month-indexed aggregation silently drops it.
+ */
 export function monthWindow() {
+  const now = new Date();
   const out = [];
-  let y = WINDOW_END.year;
-  let m = WINDOW_END.month - (WINDOW_MONTHS - 1);
+  let y = now.getFullYear();
+  let m = now.getMonth() - (WINDOW_MONTHS - 1);
   while (m < 0) { m += 12; y -= 1; }
   for (let i = 0; i < WINDOW_MONTHS; i++) {
     out.push({ year: y, month: m, label: MONTH_SHORT[m], key: `${y}-${String(m + 1).padStart(2, '0')}` });
@@ -117,10 +115,14 @@ export function monthWindow() {
 
 const formatDate = (y, m, d) => `${String(d).padStart(2, '0')} ${MONTH_SHORT[m]} ${y}`;
 
-// The date the seeded dataset treats as "now". Everything in the demo is
-// internally consistent around it, so the calendar and planner anchor here
-// rather than on the wall clock.
-export const demoToday = () => ({ year: WINDOW_END.year, month: WINDOW_END.month, day: LAST_DAY });
+// "Now", for the calendar and the planner. This used to be pinned to the
+// seeded dataset's frozen 12 Jul 2026 so the generated numbers stayed
+// internally consistent; with real data it has to be the actual date, or the
+// planner schedules against a day that has already passed.
+export const demoToday = () => {
+  const d = new Date();
+  return { year: d.getFullYear(), month: d.getMonth(), day: d.getDate() };
+};
 export const monthName = (m) => MONTH_SHORT[m];
 export const monthShortNames = MONTH_SHORT;
 export const formatDayLabel = formatDate;
@@ -131,237 +133,6 @@ const clock = (mins) => `${String(Math.floor(mins / 60)).padStart(2, '0')}:${Str
 // Sites with a worse score carry more pest pressure; this keeps generated
 // history consistent with the scores already shown elsewhere in the demo.
 const pressureOf = (site) => Math.max(0.15, Math.min(1, (100 - site.score) / 45));
-
-function visitsInMonth(site, month, r) {
-  const scope = site.serviceScope;
-  let n = 2;
-  if (scope && scope.flyingPest) {
-    const high = month >= 3 && month <= 9; // Nisan–Ekim
-    n = high ? scope.flyingPest.frequency : Math.max(2, Math.round(scope.flyingPest.frequency / 2));
-  }
-  if (site.score < 70) n += 1;
-  if (r() < 0.15) n -= 1;
-  return Math.max(1, Math.min(5, n));
-}
-
-function readStation(station, month, pressure, r) {
-  const category = STATION_CATEGORY[station.type] || 'crawling';
-  const season = SEASON[category][month];
-  const expected = CATCH_SCALE[category] * season * pressure;
-
-  let count = 0;
-  // Below expected ~1 catch, most inspections come back clean.
-  if (r() < Math.min(0.92, expected / (expected + 1.4))) {
-    count = Math.max(1, Math.round(expected * (0.45 + r() * 1.35)));
-  }
-
-  let status = count > 0 ? 'activity' : 'clean';
-  const fault = r();
-  if (count === 0 && fault < 0.03) status = 'damaged';
-  else if (count === 0 && fault < 0.045) status = 'missing';
-  else if (count === 0 && fault < 0.075) status = 'bait_changed';
-
-  const species = pestDatabase[category === 'crawling' ? 'crawling' : category] || pestDatabase.crawling;
-  const live = species.filter((s) => s.code !== '0');
-
-  // One draw for the species — picking separately for the code and the name
-  // produced readings whose code and name disagreed (e.g. code "ARI" labelled
-  // "Diğer Uçan"), which surfaces anywhere both are shown.
-  const found = count > 0 ? pick(r, live) : null;
-
-  return {
-    code: station.code,
-    type: station.type,
-    category,
-    status,
-    pestCount: count,
-    pestCode: found ? found.code : '0',
-    pestName: found ? found.name : 'Aktivite Yok'
-  };
-}
-
-function buildChemicalUse(site, readings, dateStr, tech, r) {
-  const hot = [...new Set(readings.filter((x) => x.pestCount > 0).map((x) => x.category))];
-  if (!hot.length && r() > 0.25) return [];
-  const categories = hot.length ? hot : ['crawling'];
-  return categories.slice(0, 2).map((cat) => {
-    const id = pick(r, CHEMICALS_BY_CATEGORY[cat]);
-    const chem = chemicalDatabase.find((c) => c.id === id);
-    const qty = chem.unit === 'gr' ? 20 + Math.round(r() * 60) : 120 + Math.round(r() * 380);
-    return {
-      chemicalId: id,
-      name: chem.name,
-      quantity: qty,
-      unit: chem.unit,
-      area: `${100 + Math.round(r() * 500)} m²`,
-      date: dateStr,
-      tech,
-      cost: Math.round(qty * chem.unitCost)
-    };
-  });
-}
-
-function generate() {
-  const months = monthWindow();
-  const visits = [];
-  const recommendations = [];
-  let visitSeq = 0;
-  let recSeq = 0;
-
-  for (const site of initial.sites) {
-    const pressure = pressureOf(site);
-    const stations = site.stations || [];
-    const openRecs = [];
-
-    months.forEach((mo, monthIndex) => {
-      const monthRng = rng(`${site.id}|${mo.key}`);
-      const count = visitsInMonth(site, mo.month, monthRng);
-      const spacing = Math.floor(26 / count);
-
-      for (let v = 0; v < count; v++) {
-        const r = rng(`${site.id}|${mo.key}|${v}`);
-        const day = Math.min(28, 2 + v * spacing + Math.floor(r() * Math.max(1, spacing - 1)));
-        // The seed data's "today" is 12 Tem 2026 — never generate a visit past it.
-        if (monthIndex === WINDOW_MONTHS - 1 && day > LAST_DAY) continue;
-        const dateStr = formatDate(mo.year, mo.month, day);
-        const tech = r() < 0.78 ? PRIMARY_TECH[site.id] || TECHS[0] : pick(r, TECHS);
-
-        const readings = stations.map((st) => readStation(st, mo.month, pressure, r));
-        const totalPests = readings.reduce((s, x) => s + x.pestCount, 0);
-
-        const travelMin = 18 + Math.floor(r() * 42);
-        const onSiteMin = 45 + stations.length * 6 + Math.floor(r() * 40) + Math.round(totalPests * 0.8);
-        const startMin = 8 * 60 + Math.floor(r() * 7) * 30;
-
-        const chemicals = buildChemicalUse(site, readings, dateStr, tech, r);
-
-        const visit = {
-          id: `VH-${String(++visitSeq).padStart(4, '0')}`,
-          siteId: site.id,
-          company: site.company,
-          siteName: site.name,
-          city: site.city,
-          monthKey: mo.key,
-          monthIndex,
-          calendarMonth: mo.month,
-          year: mo.year,
-          date: dateStr,
-          day,
-          visitType: weightedPick(r, VISIT_TYPE_WEIGHTS),
-          tech,
-          arrival: clock(startMin),
-          departure: clock(startMin + onSiteMin),
-          travelMin,
-          onSiteMin,
-          readings,
-          totals: {
-            all: totalPests,
-            rodent: readings.filter((x) => x.category === 'rodent').reduce((s, x) => s + x.pestCount, 0),
-            flying: readings.filter((x) => x.category === 'flying').reduce((s, x) => s + x.pestCount, 0),
-            crawler: readings.filter((x) => x.category === 'crawling').reduce((s, x) => s + x.pestCount, 0)
-          },
-          chemicals,
-          recommendationsRaised: [],
-          recommendationsClosed: []
-        };
-
-        // A bad reading day is what actually triggers a written recommendation.
-        const raiseChance = 0.08 + Math.min(0.42, totalPests / 60);
-        if (r() < raiseChance) {
-          const template = pick(r, RECOMMENDATIONS);
-          // Point the finding at a real station where possible, so the
-          // "photograph the problem area" step has somewhere to refer to.
-          const hotReading = readings.find((x) => x.pestCount > 0);
-          const rec = {
-            id: `RH-${String(++recSeq).padStart(4, '0')}`,
-            siteId: site.id,
-            category: template.category,
-            desc: template.desc,
-            date: dateStr,
-            raisedMonth: monthIndex,
-            tech,
-            status: 'open',
-            closedDate: null,
-            closedMonth: null,
-            // ---- closed-loop fields (1-6). Additive: `status` keeps its
-            // original open/resolved meaning, `stage` carries the detail.
-            stage: 'raised',
-            dueDate: formatDate(mo.year, mo.month, Math.min(28, day + 14)),
-            stationCode: hotReading ? hotReading.code : null,
-            photoBefore: null,
-            photoAfter: null,
-            customerNote: null,
-            customerRespondedDate: null,
-            approvedBy: null,
-            approvedDate: null,
-            rejectionNote: null
-          };
-          recommendations.push(rec);
-          openRecs.push(rec);
-          visit.recommendationsRaised.push(rec.id);
-        }
-
-        // Older open items get closed off as the technician re-inspects.
-        for (let i = openRecs.length - 1; i >= 0; i--) {
-          const rec = openRecs[i];
-          if (monthIndex - rec.raisedMonth < 1) continue;
-          if (r() < 0.35) {
-            rec.status = 'resolved';
-            rec.closedDate = dateStr;
-            rec.closedMonth = monthIndex;
-            // A historically closed finding went the whole way round the loop:
-            // the customer acted, and the technician signed the closure off.
-            rec.stage = 'approved';
-            rec.customerRespondedDate = dateStr;
-            rec.approvedBy = tech;
-            rec.approvedDate = dateStr;
-            visit.recommendationsClosed.push(rec.id);
-            openRecs.splice(i, 1);
-          }
-        }
-
-        visits.push(visit);
-      }
-    });
-  }
-
-  // ---- closed-loop stage spread (1-6) ----
-  // Every finding carries a "before" photo, because the roadmap requires the
-  // technician to photograph the problem area when raising it. Photos are held
-  // as small descriptors, not image data — the view draws them — so stored
-  // data stays light and a real upload slots into the same field shape.
-  for (const rec of recommendations) {
-    rec.photoBefore = { kind: 'simulated', label: 'Tespit anı', ref: `${rec.id}-before` };
-
-    if (rec.stage === 'approved') {
-      rec.photoAfter = { kind: 'simulated', label: 'Aksiyon sonrası', ref: `${rec.id}-after` };
-      rec.customerNote = 'Belirtilen aksiyon tamamlandı, alan temizlendi ve kontrol edildi.';
-      continue;
-    }
-
-    // Open findings are spread across the remaining stages so the demo shows
-    // every stage at once. `status` deliberately stays 'open' for all of them,
-    // which keeps the existing open/resolved counts unchanged.
-    const r = rng(`loop|${rec.id}`);
-    const roll = r();
-    if (roll < 0.34) {
-      rec.stage = 'customer_actioned';
-      rec.customerRespondedDate = rec.dueDate;
-      rec.customerNote = 'Aksiyon tarafımızca tamamlandı, onayınıza sunulmuştur.';
-      rec.photoAfter = { kind: 'simulated', label: 'Aksiyon sonrası', ref: `${rec.id}-after` };
-    } else if (roll < 0.44) {
-      rec.stage = 'rejected';
-      rec.customerRespondedDate = rec.dueDate;
-      rec.customerNote = 'Alan temizlendi.';
-      rec.photoAfter = { kind: 'simulated', label: 'Aksiyon sonrası', ref: `${rec.id}-after` };
-      rec.rejectionNote = 'Gönderilen görselde uygunsuzluk devam ediyor; tekrar aksiyon alınmalı.';
-    }
-  }
-
-  assignCrews(visits);
-
-  return { months, visits, recommendations, deviceReplacements: buildDeviceReplacements() };
-}
 
 // ---- visit crew, description and report number (7-1) ----
 //
@@ -421,59 +192,82 @@ function assignCrews(visits) {
   }
 }
 
-// ---- equipment replacement history (1-2) ----
+// ---- equipment replacement history ----
 //
 // Roadmap §8: when a device is lost, broken or renewed, a new barcode is
 // issued to the *same point number*, and the old device's readings must stay
-// attached to that point for measurement and comparison. So the identity that
-// history hangs off is the point code, never the barcode.
+// attached to that point. So the identity history hangs off is the point code,
+// never the barcode.
+//
+// barcodeFor() used to live here and produced `RP-<SITEID>-<CODE>-<5 digits>`
+// from a hash. A barcode is a label physically on a box; deriving one means the
+// report prints an identifier no one can scan. Replacements are now
+// station_replacements rows, installed by setStationReplacements() below, and
+// the reason labels come from src/data/repo/stations.js.
 
-const REPLACEMENT_REASONS = {
-  KA: { code: 'KA', name: 'Kayıp', en: 'Lost' },
-  KI: { code: 'KI', name: 'Kırık', en: 'Broken' },
-  Y:  { code: 'Y',  name: 'İstasyon Yenilendi', en: 'Renewed' }
-};
 
-export const replacementReasons = REPLACEMENT_REASONS;
 
-/** Deterministic barcode for a device generation at a point. */
-export function barcodeFor(siteId, code, generation = 1) {
-  const n = hash(`${siteId}|${code}|${generation}`) % 100000;
-  return `RP-${siteId.toUpperCase()}-${code}-${String(n).padStart(5, '0')}`;
-}
-
-// A couple of seeded mid-window replacements, so the "history survives the
-// swap" claim is visible on screen before anyone clicks anything.
-function buildDeviceReplacements() {
-  const months = monthWindow();
-  const out = [];
-  const seeded = [
-    { siteId: 's1', code: 'F-01', monthIndex: 5, reason: 'KI' },
-    { siteId: 's2', code: 'R-04', monthIndex: 7, reason: 'KA' }
-  ];
-  for (const s of seeded) {
-    const mo = months[s.monthIndex];
-    const r = rng(`swap|${s.siteId}|${s.code}`);
-    const day = 6 + Math.floor(r() * 16);
-    out.push({
-      siteId: s.siteId,
-      code: s.code,
-      date: formatDate(mo.year, mo.month, day),
-      monthIndex: s.monthIndex,
-      day,
-      reasonCode: s.reason,
-      reason: REPLACEMENT_REASONS[s.reason].name,
-      oldBarcode: barcodeFor(s.siteId, s.code, 1),
-      newBarcode: barcodeFor(s.siteId, s.code, 2),
-      generation: 2,
-      note: 'Saha ziyaretinde tespit edildi, aynı noktaya yeni cihaz tanımlandı.'
-    });
-  }
-  return out;
-}
-
+// The synthetic visit generator that used to live above this line has been
+// deleted, not merely disconnected: a fabrication engine left callable in a
+// shipped file is one import away from coming back.
+//
+// ---------- the live history store ----------
+//
+// This used to be `cache || (cache = generate())` — twelve months of
+// deterministic synthetic visits for the six seeded facilities. Every report
+// body, insights chart, finance margin and productivity figure derives from
+// here, so that one line made a customer's printed visit report and audit
+// package fabrications end to end: documents that leave the building and get
+// filed against a BRCGS or IFS audit.
+//
+// It now serves whatever src/data/repo/visits.js loaded from the database.
+// Until that resolves — and for an org with no completed visits, which is the
+// correct state for a new account — it serves an empty history, and every
+// derived helper below degrades to zero rather than to invented numbers.
 let cache = null;
-const history = () => (cache || (cache = generate()));
+
+const emptyHistory = () => ({
+  months: monthWindow(),
+  visits: [],
+  recommendations: [],
+  // Device replacement has no table yet, so point timelines render as a
+  // single generation. Tracked with the rest of the station history work.
+  deviceReplacements: []
+});
+
+const history = () => cache || emptyHistory();
+
+/**
+ * Install the real visit history. Called once per session from core/auth.js
+ * after sign-in.
+ *
+ * @param {{months: object[], visits: object[], recommendations?: object[]}} data
+ */
+export function setVisitHistory(data) {
+  cache = {
+    months: data.months || monthWindow(),
+    visits: data.visits || [],
+    recommendations: data.recommendations || [],
+    // Preserved across a visit-history reload so the two can be installed
+    // independently; core/auth.js loads both, but a refresh of one must not
+    // silently blank the other.
+    deviceReplacements: (cache && cache.deviceReplacements) || []
+  };
+}
+
+/**
+ * Install the real device replacement log (repo/stations.js).
+ *
+ * The printed report builders are synchronous and read this store; the facility
+ * page fetches per point directly, because right after a swap it needs the row
+ * that was just written rather than the snapshot taken at sign-in.
+ *
+ * @param {object[]} rows
+ */
+export function setStationReplacements(rows) {
+  if (!cache) cache = emptyHistory();
+  cache.deviceReplacements = rows || [];
+}
 
 // ---------- public API ----------
 
@@ -529,9 +323,12 @@ export function recommendationStats(siteId) {
 
 // ---- point history across device replacements (1-2) ----
 
+// The loaded replacement rows, optionally narrowed to one point. Rows carry
+// `siteId` only when the loader scoped them; a store filled per facility is
+// already narrowed, so a missing siteId is not treated as a mismatch.
 export const deviceReplacements = (siteId, code) =>
   history().deviceReplacements.filter(
-    (d) => (!siteId || d.siteId === siteId) && (!code || d.code === code)
+    (d) => (!siteId || !d.siteId || d.siteId === siteId) && (!code || d.code === code)
   );
 
 /**
@@ -543,21 +340,28 @@ export function readingsForPoint(siteId, code) {
   const swaps = deviceReplacements(siteId, code);
   const visits = visitsForSite(siteId);
 
-  // Walk the window in order and advance the device generation as each
-  // replacement date is passed.
   const ordered = visits
     .slice()
     .sort((a, b) => a.monthIndex - b.monthIndex || a.day - b.day);
+
+  // The barcode before the first recorded replacement. Blank when the org has
+  // never recorded one — the old code derived it from a hash, which printed an
+  // identifier nobody could scan.
+  const originalBarcode = swaps.length ? swaps[0].oldBarcode : '';
 
   const out = [];
   for (const v of ordered) {
     const reading = v.readings.find((x) => x.code === code);
     if (!reading) continue;
 
+    // Walk forward through the replacements: each one the visit date has
+    // passed advances the generation and moves the barcode.
     let generation = 1;
-    for (const s of swaps) {
-      if (v.monthIndex > s.monthIndex || (v.monthIndex === s.monthIndex && v.day >= s.day)) {
-        generation = Math.max(generation, s.generation);
+    let barcode = originalBarcode;
+    for (const swap of swaps) {
+      if (v.completedAt && swap.replacedOn && new Date(v.completedAt) >= new Date(swap.replacedOn)) {
+        generation += 1;
+        barcode = swap.newBarcode;
       }
     }
 
@@ -569,7 +373,7 @@ export function readingsForPoint(siteId, code) {
       tech: v.tech,
       visitType: v.visitType,
       generation,
-      barcode: barcodeFor(siteId, code, generation),
+      barcode,
       status: reading.status,
       pestCount: reading.pestCount,
       pestCode: reading.pestCode,

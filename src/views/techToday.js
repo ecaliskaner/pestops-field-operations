@@ -14,16 +14,13 @@
 // contract-driven planner the office publishes from, so what the technician
 // sees is exactly what was dispatched.
 
-import { $ } from '../core/dom.js';
+import { $, esc } from '../core/dom.js';
 import { state } from '../core/state.js';
 import { allSites } from '../core/state.js';
 import { nextVisitFor, plannedVisits } from '../data/schedule.js';
 import { demoToday, technicianStats } from '../data/history.js';
-import { getCredential } from '../data/credentials.js';
+import { fetchTechnicianCredentials } from '../data/repo/technicians.js';
 import { notificationsFor, unreadFor } from '../core/notify.js';
-
-const esc = (s) => String(s ?? '')
-  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 const siteById = (id) => allSites().find((s) => s.id === id);
 
@@ -43,9 +40,14 @@ function parseTrDate(s) {
   return new Date(Number(m[3]), idx, Number(m[1]));
 }
 
+// Accepts either an ISO date from the database or the Turkish display form
+// the older cards still pass. The credential rows are ISO now; parseTrDate is
+// kept for the callers that are not.
 function daysUntil(dateStr) {
-  const d = parseTrDate(dateStr);
-  if (!d) return null;
+  const d = /^\d{4}-\d{2}-\d{2}/.test(String(dateStr))
+    ? new Date(dateStr)
+    : parseTrDate(dateStr);
+  if (!d || Number.isNaN(d.getTime())) return null;
   const t = demoToday();
   const now = new Date(t.year, t.month, t.day);
   return Math.round((d - now) / 86400000);
@@ -83,8 +85,14 @@ export function renderTechToday() {
     <div class="tt-grid">
       ${nextStopCard(myNext, openJobs)}
       ${dayStatsCard(todays.length, openJobs.length, doneJobs.length, unreadFor(user.name))}
-      ${credentialsCard(user.name)}
+      ${credentialsCard()}
     </div>`;
+
+  // The card renders its shell synchronously and fills in once the rows
+  // arrive; the technician row is matched by name because the signed-in
+  // profile and the technicians table are linked through it.
+  const me = (state.technicians || []).find((t) => t.name === user.name);
+  loadTechnicianCredentials(me?.id || null);
 }
 
 function nextStopCard(next, openJobs) {
@@ -157,32 +165,65 @@ function dayStatsCard(todayCount, open, done, unread) {
     </article>`;
 }
 
-function credentialsCard(tech) {
-  const c = getCredential(tech);
-  const rows = [
-    { label: 'İş güvenliği belgesi', date: c.certExp },
-    { label: 'Sağlık raporu (portör)', date: c.health }
-  ];
-
-  const items = rows.map((r) => {
-    const left = daysUntil(r.date);
-    // Colour alone must not carry the status, so each row states its condition
-    // in words as well.
-    const state = left === null ? { cls: '', text: r.date }
-      : left < 0 ? { cls: 'expired', text: `Süresi doldu · ${r.date}` }
-      : left <= EXPIRY_WARN_DAYS ? { cls: 'soon', text: `${left} gün kaldı · ${r.date}` }
-      : { cls: 'ok', text: `Geçerli · ${r.date}` };
-    return `
-      <li class="tt-cred ${state.cls}">
-        <span class="tt-cred-name">${esc(r.label)}</span>
-        <span class="tt-cred-state">${esc(state.text)}</span>
-      </li>`;
-  }).join('');
-
+// The technician's own compliance documents.
+//
+// These came from data/credentials.js — a map of four demo names to invented
+// certificate numbers and expiry dates, with getCredential() falling back to
+// "Ayşe Demir" for anyone not in it. A technician was therefore shown someone
+// else's paperwork and, worse, someone else's expiry dates: the whole purpose
+// of this card is to warn them before a document lapses.
+//
+// It reads technician_credentials now. Rendering is deferred until the rows
+// arrive, and a technician with nothing on file is told that rather than shown
+// a reassuring green row.
+function credentialsCard() {
   return `
-    <article class="panel tt-card tt-creds">
+    <article class="panel tt-card" id="ttCredentials">
       <p class="overline">BELGELERİM</p>
-      <ul class="tt-cred-list">${items}</ul>
-      <p class="tt-cred-note">Bu belgeler hizmet verdiğiniz müşterilerin portalında görüntülenebilir.</p>
+      <ul class="tt-cred-list" id="ttCredentialList">
+        <li class="tt-cred"><span class="tt-cred-name">Yükleniyor…</span></li>
+      </ul>
     </article>`;
+}
+
+/** Fill the card once the rows are in; called after the card is in the DOM. */
+export function loadTechnicianCredentials(techId) {
+  const host = document.querySelector('#ttCredentialList');
+  if (!host) return;
+  if (!techId) {
+    host.innerHTML = '<li class="tt-cred"><span class="tt-cred-name">Teknisyen kaydı bulunamadı.</span></li>';
+    return;
+  }
+
+  fetchTechnicianCredentials()
+    .then((byTech) => {
+      const docs = byTech[techId] || [];
+      if (!docs.length) {
+        host.innerHTML = '<li class="tt-cred"><span class="tt-cred-name">Yüklenmiş belge yok</span>'
+          + '<span class="tt-cred-state">Ofisten talep edin</span></li>';
+        return;
+      }
+      host.innerHTML = docs.map((d) => {
+        const left = d.validUntil ? daysUntil(d.validUntil) : null;
+        const shown = d.validUntil
+          ? new Date(d.validUntil).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' })
+          : 'tarih yok';
+        // Colour alone must not carry the status, so each row states its
+        // condition in words as well.
+        const state = !d.isValid ? { cls: 'expired', text: `Geçersiz · ${shown}` }
+          : left === null ? { cls: '', text: shown }
+          : left < 0 ? { cls: 'expired', text: `Süresi doldu · ${shown}` }
+          : left <= EXPIRY_WARN_DAYS ? { cls: 'soon', text: `${left} gün kaldı · ${shown}` }
+          : { cls: 'ok', text: `Geçerli · ${shown}` };
+        return `
+          <li class="tt-cred ${state.cls}">
+            <span class="tt-cred-name">${esc(d.title)}</span>
+            <span class="tt-cred-state">${esc(state.text)}</span>
+          </li>`;
+      }).join('');
+    })
+    .catch((err) => {
+      console.error('[repellent] belgeler yuklenemedi', err);
+      host.innerHTML = '<li class="tt-cred"><span class="tt-cred-name">Belgeler yüklenemedi.</span></li>';
+    });
 }

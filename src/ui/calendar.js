@@ -10,7 +10,7 @@
 // what is to be done and who is assigned, and publishes that assignment to the
 // technicians' phones via core/notify.js.
 
-import { $, $$, toast } from '../core/dom.js';
+import { $, $$, toast, esc } from '../core/dom.js';
 import { state } from '../core/state.js';
 import { visibleSites } from '../core/state.js';
 import { demoToday, getVisits } from '../data/history.js';
@@ -18,9 +18,6 @@ import { monthEntries, daysInMonth } from '../data/schedule.js';
 import { notifyTechnicians } from '../core/notify.js';
 import { visitTypes } from '../data/catalog.js';
 import { openReport } from '../views/reports.js';
-
-const esc = (s) => String(s ?? '')
-  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 const MONTH_LONG = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
   'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
@@ -127,10 +124,10 @@ function renderCalendarSummary(year, month) {
   const crew = new Set(entries.flatMap((e) => e.team || []));
 
   host.innerHTML = `
-    <div class="rep-stat"><span>Tamamlanan</span><strong style="color:var(--green)">${done}</strong></div>
-    <div class="rep-stat"><span>Planlı</span><strong style="color:var(--blue)">${planned.length}</strong></div>
-    <div class="rep-stat"><span>Teyit bekleyen</span><strong style="color:var(--amber)">${tentative}</strong></div>
-    <div class="rep-stat"><span>Görevli personel</span><strong>${crew.size}</strong></div>`;
+    <div class="rep-stat"><span>Tamamlanan</span><strong style="color:var(--green)">${esc(done)}</strong></div>
+    <div class="rep-stat"><span>Planlı</span><strong style="color:var(--blue)">${esc(planned.length)}</strong></div>
+    <div class="rep-stat"><span>Teyit bekleyen</span><strong style="color:var(--amber)">${esc(tentative)}</strong></div>
+    <div class="rep-stat"><span>Görevli personel</span><strong>${esc(crew.size)}</strong></div>`;
 }
 
 /* ------------------------------------------------------------- day detail */

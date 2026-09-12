@@ -25,7 +25,7 @@
 
         <div class="workspace-switcher">
           <span class="workspace-avatar">AO</span>
-          <span><b>Apex Operations</b><small>12 müşteri · 34 tesis</small></span>
+          <span><b id="workspaceName">—</b><small id="workspaceMeta">—</small></span>
           <button class="icon-btn" data-action="workspace" aria-label="Çalışma alanını değiştir">⌄</button>
         </div>
 
@@ -36,13 +36,14 @@
           <button class="nav-item" data-view="sites"><span>⌖</span> Tesisler <em id="siteAlertCount">0</em></button>
           <button class="nav-item" data-view="work"><span>✓</span> İş emirleri <em id="sidebarWorkCount">0</em></button>
           <button class="nav-item" data-view="team"><span>◉</span> Ekip & rota</button>
-          <button class="nav-item" data-view="mobileSim"><span>📱</span> Mobil Uygulama</button>
+          <a class="nav-item" href="./technician/" target="_blank" rel="noopener"><span>📱</span> Teknisyen Uygulaması ↗</a>
           <p class="nav-label">YÖNETİM</p>
           <button class="nav-item" data-view="visitReports"><span>🗒</span> Ziyaret Raporları</button>
           <button class="nav-item" data-view="insights"><span>↗</span> Analizler</button>
           <button class="nav-item" data-view="reports"><span>▤</span> Raporlar</button>
           <button class="nav-item" data-view="inventory" id="navInventoryBtn"><span>📦</span> Stok & Envanter</button>
           <button class="nav-item" data-view="finance" id="navFinanceBtn"><span>🧾</span> Finans & Fatura</button>
+          <button class="nav-item" data-view="settings" id="navSettingsBtn"><span>⚙</span> Kurum Ayarları</button>
         </nav>
 
         <div class="sidebar-footer" id="sidebarUserProfileBlock">
@@ -52,7 +53,7 @@
       <main>
         <header class="topbar">
           <button id="mobileMenu" class="icon-btn mobile-only" aria-label="Menüyü aç">☰</button>
-          <div class="breadcrumb"><span>Apex Operations</span><b>/</b><strong id="pageCrumb">Genel bakış</strong></div>
+          <div class="breadcrumb"><span id="orgCrumb">—</span><b>/</b><strong id="pageCrumb">Genel bakış</strong></div>
           <div class="topbar-actions">
             <button class="icon-btn" data-action="search" aria-label="Ara">🔍</button>
             <button class="icon-btn notification" data-action="notifications" aria-label="Bildirimler">🔔<i></i></button>
@@ -62,15 +63,15 @@
 
         <section id="dashboard" class="view active">
           <div class="page-heading">
-            <div><p class="overline">13 TEMMUZ 2026 · OPERASYON ÖZETİ</p><h1>Kontrol sizde.</h1><p>Portföyünüzdeki tesisleri, saha ekibini ve riskleri tek yerden yönetin.</p></div>
+            <div><p class="overline" id="dashDate">OPERASYON ÖZETİ</p><h1>Kontrol sizde.</h1><p>Portföyünüzdeki tesisleri, saha ekibini ve riskleri tek yerden yönetin.</p></div>
             <div class="range-control"><button class="active" data-range="today">Bugün</button><button data-range="week">Bu hafta</button><button data-range="month">Bu ay</button></div>
           </div>
 
           <div class="metric-grid">
-            <article class="metric-card"><div class="metric-icon blue">⌖</div><div><span>Aktif tesis</span><strong>34</strong><small><i class="up">↑ 3</i> bu ay eklendi</small></div></article>
+            <article class="metric-card"><div class="metric-icon blue">⌖</div><div><span>Aktif tesis</span><strong id="activeSitesMetric">0</strong><small id="activeSitesNote">portföyde kayıtlı</small></div></article>
             <article class="metric-card"><div class="metric-icon amber">!</div><div><span>Açık kritik bulgu</span><strong id="criticalMetric">6</strong><small class="attention">Müdahale gerektiriyor</small></div></article>
-            <article class="metric-card"><div class="metric-icon green">✓</div><div><span>Tamamlanan servis</span><strong id="completedMetric">27</strong><small><i class="up">↑ %12</i> geçen haftaya göre</small></div></article>
-            <article class="metric-card"><div class="metric-icon violet">◉</div><div><span>Sahadaki teknisyen</span><strong>11/14</strong><small>3 kişi bir sonraki rotada</small></div></article>
+            <article class="metric-card"><div class="metric-icon green">✓</div><div><span>Tamamlanan servis</span><strong id="completedMetric">0</strong><small id="completedNote">seçili dönemde</small></div></article>
+            <article class="metric-card"><div class="metric-icon violet">◉</div><div><span>Saha ekibi</span><strong id="fieldTechMetric">0</strong><small id="fieldTechNote">kayıtlı teknisyen</small></div></article>
           </div>
 
           <div class="dashboard-grid">
@@ -81,7 +82,7 @@
             <article class="panel portfolio-panel">
               <div class="panel-header"><div><p class="overline">PORTFÖY SAĞLIĞI</p><h2>Tesis durumları</h2></div><button class="icon-btn subtle" data-action="portfolio">•••</button></div>
               <div class="donut-wrap"><div class="donut"><span id="portfolioScore">87</span><small>ortalama skor</small></div><div class="score-legend"><p><i class="legend-dot good"></i><b>22</b> Sağlıklı</p><p><i class="legend-dot watch"></i><b>6</b> İzlenmeli</p><p><i class="legend-dot risk"></i><b>6</b> Riskli</p></div></div>
-              <div class="portfolio-footer"><span>Geçen aya göre <b class="positive">+4 puan</b></span><button class="text-btn" data-view-target="sites">Tesisleri incele →</button></div>
+              <div class="portfolio-footer"><span id="portfolioFooterNote">Skor, istasyon denetim sonuçlarından hesaplanır</span><button class="text-btn" data-view-target="sites">Tesisleri incele →</button></div>
             </article>
           </div>
 
@@ -93,7 +94,7 @@
 
         <section id="sites" class="view">
           <div class="page-heading compact"><div><p class="overline">TESİS YÖNETİMİ</p><h1>Portföy ve tesisler</h1><p>Birden fazla müşteri ve lokasyon için risk, servis ve istasyon takibi.</p></div><button class="primary-btn" id="addSite">＋ Tesis ekle</button></div>
-          <div class="filterbar"><div class="search-field">⌕ <input id="siteSearch" placeholder="Müşteri veya tesis ara" /></div><button class="filter-btn active" data-site-filter="all">Tümü <b>34</b></button><button class="filter-btn" data-site-filter="risk">Riskli <b>6</b></button><button class="filter-btn" data-site-filter="watch">İzlenmeli <b>6</b></button><button class="filter-btn" data-site-filter="healthy">Sağlıklı <b>22</b></button><button class="filter-btn right" data-action="filters">⚙ Filtreler</button></div>
+          <div class="filterbar"><div class="search-field">⌕ <input id="siteSearch" placeholder="Müşteri veya tesis ara" /></div><button class="filter-btn active" data-site-filter="all">Tümü <b>0</b></button><button class="filter-btn" data-site-filter="risk">Riskli <b>0</b></button><button class="filter-btn" data-site-filter="watch">İzlenmeli <b>0</b></button><button class="filter-btn" data-site-filter="healthy">Sağlıklı <b>0</b></button><button class="filter-btn right" data-action="filters">⚙ Filtreler</button></div>
           <article class="panel table-panel"><table><thead><tr><th>Tesis</th><th>Durum</th><th>Sağlık skoru</th><th>Son servis</th><th>Açık bulgu</th><th>Sonraki servis</th><th></th></tr></thead><tbody id="siteTable"></tbody></table></article>
         </section>
 
@@ -183,7 +184,7 @@
 
         <section id="team" class="view">
           <div class="page-heading compact"><div><p class="overline">EKİP & ROTA</p><h1>Saha görünürlüğü</h1><p>Teknisyenlerin rota, zaman ve doğrulama durumları.</p></div><span class="live-pill" style="font-size:11px;"><i></i> Canlı GPS simülasyonu</span></div>
-          <div class="team-layout"><article class="panel map-panel"><div class="map-toolbar"><b>İstanbul saha bölgesi · canlı konum</b><span class="live-pill"><i></i> 4 teknisyen sahada</span></div><div id="fieldMap" class="field-map"></div><div id="liveGpsNote" class="live-gps-note"></div></article><aside class="panel tech-panel"><p class="overline">CANLI DURUM</p><div id="techDetail"></div><div class="verification-note"><span>✓</span><p><b>İlk QR doğrulaması</b><br />Gerçek servis başlangıcı, tesiste ilk QR okutulduğunda kayda alınır.</p></div></aside></div>
+          <div class="team-layout"><article class="panel map-panel"><div class="map-toolbar"><b>Saha ekibi · canlı konum</b><span class="live-pill"><i></i> <span id="fieldLiveCount">Sahada canlı konum yok</span></span></div><div id="fieldMap" class="field-map"></div><div id="liveGpsNote" class="live-gps-note"></div></article><aside class="panel tech-panel"><p class="overline">CANLI DURUM</p><div id="techDetail"></div><div class="verification-note"><span>✓</span><p><b>İlk QR doğrulaması</b><br />Gerçek servis başlangıcı, tesiste ilk QR okutulduğunda kayda alınır.</p></div></aside></div>
 
           <div class="field-realism-grid">
             <article class="panel geofence-panel">
@@ -204,9 +205,60 @@
           <article class="panel cred-panel">
             <div class="panel-header"><div><p class="overline">TEKNİSYEN BELGELERİ</p><h2>Yetkinlik & uygunluk kartları</h2></div><span class="status-chip healthy">KVKK uyumlu</span></div>
             <div id="techCredentials" class="tech-credentials"></div>
+
+            <form class="form-grid" id="techCredentialForm" style="margin-top:14px; border-top:1px solid var(--line); padding-top:12px;">
+              <p class="overline" style="margin:0;">BELGE EKLE</p>
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                <label class="form-label">
+                  Belge Türü
+                  <select name="kind" class="form-select">
+                    <option value="sgk">SGK Kaydı</option>
+                    <option value="safety_cert">İş Güvenliği Sertifikası</option>
+                    <option value="permit">Uygulama İzin Belgesi</option>
+                    <option value="health_report">Sağlık Raporu (Portör)</option>
+                  </select>
+                </label>
+                <label class="form-label">
+                  Geçerlilik Bitişi
+                  <input type="date" name="validUntil" class="form-input">
+                </label>
+              </div>
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                <label class="form-label">
+                  Belge Başlığı
+                  <input required type="text" name="title" class="form-input" placeholder="Örn: İş Güvenliği Sertifikası">
+                </label>
+                <label class="form-label">
+                  Belge No
+                  <input type="text" name="referenceNo" class="form-input" placeholder="İsteğe bağlı">
+                </label>
+              </div>
+              <label class="form-label">
+                Belge Dosyası (PDF / görsel)
+                <input type="file" name="file" id="inpCredentialFile" accept="application/pdf,image/png,image/jpeg" class="form-input">
+              </label>
+              <button type="submit" class="primary-btn" style="justify-content:center; width:100%;">＋ Belgeyi Kaydet</button>
+            </form>
           </article>
 
-          <article class="panel roster-panel"><div class="panel-header"><h2>Bugünkü ekip</h2><button class="text-btn">Ekip yönetimi →</button></div><div id="roster" class="roster"></div></article>
+          <article class="panel">
+            <div class="panel-header">
+              <div><p class="overline">İŞGÜCÜ MALİYETİ</p><h2>Teknisyen saatlik ücretleri</h2></div>
+            </div>
+            <p class="text-muted" style="font-size:11px; margin:0 0 10px;">
+              Ücreti tanımlı olmayan teknisyen işgücü maliyetine ve kâr marjı hesabına <b>dahil edilmez</b> — uydurma bir ücret uydurma bir marj üretir.
+            </p>
+            <div class="table-panel" style="border:1px solid var(--line); border-radius:8px; overflow:auto;">
+              <table>
+                <thead>
+                  <tr><th>Teknisyen</th><th>Saatlik Ücret (₺)</th><th>Geçerlilik</th><th></th></tr>
+                </thead>
+                <tbody id="techRatesBody"></tbody>
+              </table>
+            </div>
+          </article>
+
+          <article class="panel roster-panel"><div class="panel-header"><h2>Bugünkü ekip</h2><button class="text-btn" id="btnInviteTechnician">＋ Teknisyen ekle</button></div><div id="roster" class="roster"></div></article>
         </section>
 
         <section id="customerHome" class="view">
@@ -440,11 +492,11 @@
           <div class="metric-grid" style="margin-bottom:16px;">
             <div class="metric-card">
               <div class="metric-icon blue">📦</div>
-              <div><span>Toplam Ürün Türü</span><strong id="invTotalProducts">0</strong></div>
+              <div><span>Ruhsatlı Ürün</span><strong id="invTotalProducts">0</strong></div>
             </div>
             <div class="metric-card">
-              <div class="metric-icon green">✓</div>
-              <div><span>Kritik Eşik Üstü</span><strong id="invHealthyStock">0</strong></div>
+              <div class="metric-icon red">⛔</div>
+              <div><span>Ruhsatı Dolan Ürün</span><strong id="invExpiredLicenses">0</strong></div>
             </div>
             <div class="metric-card">
               <div class="metric-icon amber">⚠</div>
@@ -452,11 +504,35 @@
             </div>
             <div class="metric-card">
               <div class="metric-icon violet">⇅</div>
-              <div><span>Son Hareket</span><strong style="font-size:12px;" id="invLastTransaction">Refill (10 lt)</strong></div>
+              <div><span>Son Hareket</span><strong style="font-size:12px;" id="invLastTransaction">—</strong></div>
             </div>
           </div>
 
           <div style="display:grid; grid-template-columns: 1.5fr 1fr; gap:16px;">
+            <div style="display:grid; gap:16px;">
+            <!-- Licensed products: what this org may legally apply -->
+            <article class="panel">
+              <p class="overline">RUHSATLI ÜRÜNLER</p>
+              <div class="table-panel" style="margin-top:10px; border:1px solid var(--line); border-radius:8px; max-height:260px; overflow:auto;">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Ürün Adı</th>
+                      <th>Etkin Madde</th>
+                      <th>Ruhsat No</th>
+                      <th>Ruhsat Bitişi</th>
+                      <th>Birim</th>
+                      <th>Durum</th>
+                      <th>MSDS</th>
+                    </tr>
+                  </thead>
+                  <tbody id="invChemicalTableBody">
+                    <!-- Dynamically populated -->
+                  </tbody>
+                </table>
+              </div>
+            </article>
+
             <!-- Stock Levels Table -->
             <article class="panel">
               <p class="overline">GÜNCEL STOK SEVİYELERİ</p>
@@ -478,9 +554,53 @@
                 </table>
               </div>
             </article>
+            </div>
 
             <!-- Refill & Logs Panel -->
             <div style="display:grid; gap:16px;">
+              <article class="panel">
+                <p class="overline">YENİ ÜRÜN TANIMLA</p>
+                <p class="text-muted" style="font-size:11px; margin:4px 0 0;">Bir ürünü stoka alabilmek ve uygulamada seçebilmek için önce biyosidal ruhsat bilgisiyle tanımlayın.</p>
+                <form class="form-grid" id="invChemicalForm" style="margin-top:10px;">
+                  <label class="form-label">
+                    Ürün Adı
+                    <input required type="text" name="name" placeholder="Örn: K-Othrine SC 25" class="form-input">
+                  </label>
+                  <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                    <label class="form-label">
+                      Etkin Madde
+                      <input type="text" name="activeIngredient" placeholder="Örn: Deltamethrin" class="form-input">
+                    </label>
+                    <label class="form-label">
+                      Birim
+                      <select name="unit" class="form-select">
+                        <option value="lt">lt</option>
+                        <option value="ml">ml</option>
+                        <option value="kg">kg</option>
+                        <option value="gr">gr</option>
+                        <option value="tüp">tüp</option>
+                        <option value="adet">adet</option>
+                      </select>
+                    </label>
+                  </div>
+                  <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                    <label class="form-label">
+                      Ruhsat No
+                      <input type="text" name="licenseNo" placeholder="Biyosidal ruhsat no" class="form-input">
+                    </label>
+                    <label class="form-label">
+                      Ruhsat Bitiş Tarihi
+                      <input type="date" name="licenseUntil" class="form-input">
+                    </label>
+                  </div>
+                  <label class="form-label">
+                    Hedef Zararlılar
+                    <input type="text" name="targetPests" placeholder="Virgülle ayrın: Hamamböceği, Karınca" class="form-input">
+                  </label>
+                  <button type="submit" class="primary-btn" style="justify-content:center; width:100%;">＋ Ürünü Tanımla</button>
+                </form>
+              </article>
+
               <article class="panel">
                 <p class="overline">STOK EKLE / REFILL</p>
                 <form class="form-grid" id="invRefillForm">
@@ -525,6 +645,64 @@
                 </div>
               </article>
             </div>
+          </div>
+        </section>
+
+        <section id="settings" class="view">
+          <div class="page-heading compact">
+            <div>
+              <p class="overline">KURUM</p>
+              <h1>Kurum Ayarları</h1>
+              <p>Faturada ve sevk irsaliyesinde <b>düzenleyen taraf</b> olarak basilan bilgiler. Boş bırakılan alan belgede boşluk olarak görünür.</p>
+            </div>
+          </div>
+
+          <div style="display:grid; grid-template-columns: 1.2fr 1fr; gap:16px; align-items:start;">
+            <article class="panel">
+              <p class="overline">DÜZENLEYEN BİLGİLERİ</p>
+              <form class="form-grid" id="orgSettingsForm" style="margin-top:10px;">
+                <label class="form-label">
+                  Kurum Unvanı
+                  <input required type="text" name="name" id="inpOrgName" class="form-input" placeholder="Örn: Örnek İlaçlama Ltd. Şti.">
+                </label>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                  <label class="form-label">
+                    Vergi Dairesi
+                    <input type="text" name="taxOffice" id="inpOrgTaxOffice" class="form-input" placeholder="Örn: Gebze VD">
+                  </label>
+                  <label class="form-label">
+                    Vergi Numarası (VKN)
+                    <input type="text" name="taxNo" id="inpOrgTaxNo" class="form-input" inputmode="numeric" placeholder="10 haneli">
+                  </label>
+                </div>
+                <label class="form-label">
+                  Adres
+                  <input type="text" name="address" id="inpOrgAddress" class="form-input" placeholder="Fatura üzerinde görünecek açık adres">
+                </label>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                  <label class="form-label">
+                    Telefon
+                    <input type="text" name="phone" id="inpOrgPhone" class="form-input">
+                  </label>
+                  <label class="form-label">
+                    E-Posta
+                    <input type="email" name="email" id="inpOrgEmail" class="form-input">
+                  </label>
+                </div>
+                <button type="submit" class="primary-btn" style="justify-content:center; width:100%;">Kaydet</button>
+              </form>
+            </article>
+
+            <article class="panel">
+              <p class="overline">BELGEDE NASIL GÖRÜNECEK</p>
+              <p class="text-muted" style="font-size:11px; margin:4px 0 10px;">Fatura ve irsaliyenin “DÜZENLEYEN” köşesinin önizlemesi.</p>
+              <div class="bill-parties" style="grid-template-columns:1fr;">
+                <div id="orgPreview"></div>
+              </div>
+              <p class="text-muted" style="font-size:10px; margin-top:12px;">
+                Vergi bilgisi girilmeden kesilen bir fatura, bu alanları boş basar. Sabit kodlanmış bir unvan ya da VKN kullanılmaz.
+              </p>
+            </article>
           </div>
         </section>
 
@@ -899,9 +1077,9 @@
                           <label class="placement-field">
                             <span class="placement-label">Değişim Nedeni<small>Reason</small></span>
                             <select name="reasonCode" class="form-select" required>
-                              <option value="KI">Kırık (KI — Broken)</option>
-                              <option value="KA">Kayıp (KA — Lost)</option>
-                              <option value="Y">İstasyon Yenilendi (Y — Renewed)</option>
+                              <option value="broken">Kırık</option>
+                              <option value="lost">Kayıp</option>
+                              <option value="renewed">İstasyon Yenilendi</option>
                             </select>
                           </label>
                           <label class="placement-field">
@@ -927,6 +1105,11 @@
                       <hr class="divider" style="margin:10px 0;">
 
                       <form id="adminInspectionForm">
+                        <label class="form-label">
+                          Bağlı Ziyaret (İş Emri)
+                          <select required name="workOrderId" id="inpInspectionWorkOrder" class="form-select"></select>
+                          <small class="text-muted" style="font-size:10px;">Denetim kaydı bir ziyarete bağlanır; müşteri raporu ve denetim izi bunun üzerinden kurulur.</small>
+                        </label>
                         <label class="form-label">
                           Yem Tüketim Durumu
                           <select name="baitStatus" id="inpBaitStatus" class="form-select">
@@ -1171,17 +1354,17 @@
               <div class="tab-pane hidden" id="paneCompChemicals">
                 <article class="panel" style="margin-bottom:16px;">
                   <h2>Kimyasal Kullanım Kayıtları</h2>
-                  <p class="text-muted" style="font-size:12px; margin-bottom:20px;">Ziyaretlerde kullanılan pestisit ve biyosidal ürünlerin uygulama kayıtları, dozaj hesaplamaları ve sorumlu teknisyen bilgileri.</p>
+                  <p class="text-muted" style="font-size:12px; margin-bottom:20px;">Ziyaretlerde kullanılan pestisit ve biyosidal ürünlerin uygulama kayıtları, bağlı oldukları iş emri ve sorumlu teknisyen bilgileri.</p>
                   
                   <div class="table-panel" style="border:1px solid var(--line); border-radius:8px; margin-bottom:20px; overflow:auto;">
                     <table>
                       <thead>
                         <tr>
                           <th>Kimyasal / Etken Madde</th>
-                          <th>Kategori</th>
+                          <th>Ruhsat No</th>
                           <th>Kullanım Miktarı</th>
                           <th>Uygulama Alanı</th>
-                          <th>Referans Dozaj</th>
+                          <th>İş Emri</th>
                           <th>Uygulayan</th>
                           <th>Tarih</th>
                         </tr>
@@ -1195,39 +1378,12 @@
 
                 <article class="panel">
                   <p class="overline">YENİ KİMYASAL KULLANIM KAYDI</p>
-                  <form class="form-grid" id="companyChemicalForm" style="grid-template-columns: 1.5fr 1fr 1fr 1fr auto; align-items: end; gap:12px; margin-top:8px;">
-                    <label class="form-label" style="margin-bottom:0;">
-                      Kimyasal Seçin
-                      <select required id="inpChemicalSelect" class="form-select" style="margin-top:4px; height:37px; padding:0 8px; font-size:12px;">
-                        <option value="">-- Kimyasal seçin --</option>
-                        <option value="ch1">K-Othrine SC 25 (Deltamethrin)</option>
-                        <option value="ch2">Goliath Gel (Fipronil)</option>
-                        <option value="ch3">Racumin Paste (Coumatetralyl)</option>
-                        <option value="ch4">Storm Secure (Flocoumafen)</option>
-                        <option value="ch5">Aqua K-Othrine EW 20 (Deltamethrin)</option>
-                        <option value="ch6">Icon 10 CS (Lambda-cyhalothrin)</option>
-                        <option value="ch7">Maxforce White IC (Imidacloprid)</option>
-                        <option value="ch8">Cislin 2.5 UL (Deltamethrin)</option>
-                        <option value="ch9">Steri-Fab (İzopropil Alkol)</option>
-                        <option value="ch10">Actellic 50 EC (Pirimiphos-methyl)</option>
-                        <option value="ch11">Demand CS (Lambda-cyhalothrin)</option>
-                        <option value="ch12">Responsar SC (Alfasipermetrin)</option>
-                      </select>
-                    </label>
-                    <label class="form-label" style="margin-bottom:0;">
-                      Kullanım Miktarı
-                      <input required type="text" id="inpChemicalQty" placeholder="Örn: 250 ml" class="form-input" style="margin-top:4px;">
-                    </label>
-                    <label class="form-label" style="margin-bottom:0;">
-                      Uygulama Alanı
-                      <input required type="text" id="inpChemicalArea" placeholder="Örn: 500 m²" class="form-input" style="margin-top:4px;">
-                    </label>
-                    <label class="form-label" style="margin-bottom:0;">
-                      Açıklama
-                      <input type="text" id="inpChemicalNotes" placeholder="Uygulama notu" class="form-input" style="margin-top:4px;">
-                    </label>
-                    <button type="submit" class="primary-btn" style="height:37px; padding:0 20px;">💊 Kaydet</button>
-                  </form>
+                  <p class="text-muted" style="font-size:12px; margin-top:8px;">
+                    Kimyasal uygulaması bir ziyarete bağlı olarak kaydedilir: müşteri raporuna
+                    basilan kayıt da, stoktan düşen miktar da uygulamanın hangi iş emrinde
+                    yapıldığını gerektirir. Kaydı <b>İş Emirleri</b> sayfasından ilgili ziyareti
+                    açarak girin.
+                  </p>
                 </article>
 
                 <!-- Roadmap §9: the automatic usage report depends on every
@@ -1236,11 +1392,11 @@
                   <div class="panel-header" style="margin-bottom:6px;">
                     <div>
                       <p class="overline">KİMYASAL BELGE KÜTÜPHANESİ</p>
-                      <h2>MSDS · Etiket Örneği · Bakanlık İzinleri</h2>
+                      <h2>Ruhsatlı Ürünler ve Belge Durumu</h2>
                     </div>
                     <span class="status-chip healthy" id="compChemDocsCount">0 ürün</span>
                   </div>
-                  <p class="text-muted" style="font-size:12px; margin-bottom:16px;">Kullanılan her biyosidal ürün için güvenlik bilgi formu, onaylı etiket örneği ve T.C. Sağlık Bakanlığı ruhsatı sistemde tutulur. Bu kayıtlar Repellent yöneticileri tarafından güncellenebilir.</p>
+                  <p class="text-muted" style="font-size:12px; margin-bottom:16px;">Kurumunuzun tanımlı biyosidal ürünleri, ruhsat numaraları ve geçerlilik tarihleri. Bu tesiste uygulanan ürünler işaretlenir. Ürünler Stok &amp; Envanter sayfasından tanımlanır.</p>
                   <div class="chem-doc-grid" id="compChemDocsGrid">
                     <!-- Dynamically populated -->
                   </div>
@@ -1304,337 +1460,6 @@
           </div>
         </section>
 
-        <section id="mobileSim" class="view">
-          <div class="page-heading compact">
-            <div>
-              <p class="overline">MOBİL SAHA OPERASYONLARI</p>
-              <h1>Mobil Teknisyen Uygulaması</h1>
-              <p>Teknisyenlerinizin sahada kullandığı mobil iş akışı — GPS doğrulama, QR okutma, kat planı ve denetim formları.</p>
-              <p style="margin-top:8px;"><a href="./technician/" target="_blank" rel="noopener" class="btn-outline" style="display:inline-flex; align-items:center; gap:6px; text-decoration:none; padding:8px 14px; border-radius:8px; border:1px solid var(--line); font-size:13px; font-weight:600;">📱 Gerçek Repellent Saha uygulamasını deneyin →</a></p>
-            </div>
-          </div>
-
-          <div class="mobile-sim-layout">
-            <div class="sim-instructions panel">
-              <h2>İş Akışı Adımları</h2>
-              <ol class="sim-steps-list">
-                <li id="step1" class="active-step">
-                  <b>1. Rota Seçin</b>
-                  <p>Teknisyenin günlük rotasından bir iş emri seçerek ziyareti başlatın.</p>
-                </li>
-                <li id="step2">
-                  <b>2. GPS Ziyaret Doğrulaması</b>
-                  <p>"Müşteriye Vardım" butonuna basarak konum kontrolünü doğrulayın.</p>
-                </li>
-                <li id="step3">
-                  <b>3. Gerçek Mesai Başlangıcı (İlk QR)</b>
-                  <p>Tesis girişindeki ilk kontrol ünitesine QR kodunu tarayın. Bu adım yönetim panelindeki mesai logunu başlatır.</p>
-                </li>
-                <li id="step4">
-                  <b>4. İstasyon Kontrolleri</b>
-                  <p>İnteraktif haritayı veya istasyon listesini açarak yem durumlarını ve zararlı türlerini girip kaydedin.</p>
-                </li>
-                <li id="step5">
-                  <b>5. İmza & Raporu Gönder</b>
-                  <p>Dijital imzaları alın, "Formu Kaydet" butonuna basarak verileri sunucuya gönderin.</p>
-                </li>
-              </ol>
-
-              <div class="simulation-logs">
-                <p class="overline">SAHA TELEMETRİ LOGLARI</p>
-                <div class="log-output" id="telemetryLogs">
-                  <div class="log-line text-muted">[08:00:00] Mobil uygulama yerel veri tabanı başlatıldı (SQLite/Drift).</div>
-                  <div class="log-line text-muted">[08:05:00] Rota verileri indirildi. Çevrimdışı kullanıma hazır.</div>
-                </div>
-              </div>
-            </div>
-
-            <!-- The smartphone chassis -->
-            <div class="phone-wrapper">
-              <div class="phone-container">
-                <div class="phone-notch"></div>
-                <div class="phone-status-bar">
-                  <span class="phone-time" id="phoneTime">14:30</span>
-                  <div class="phone-status-icons">
-                    <button type="button" id="btnToggleOffline" class="phone-net-toggle" title="Bağlantıyı aç/kapat">
-                      <span id="phoneNetworkState">📶 Online</span>
-                      <span id="offlineQueueBadge" class="offline-queue-badge hidden">0</span>
-                    </button>
-                    <span>🔋 85%</span>
-                  </div>
-                </div>
-                
-                <div class="phone-screen">
-                  <!-- Screen 1: Route List -->
-                  <div class="phone-page" id="pageMobileRoute">
-                    <div class="phone-header">
-                      <h3>Günlük Rotam</h3>
-                      <small>Teknisyen: Ayşe Demir</small>
-                    </div>
-                    <div class="phone-content">
-                      <div class="mobile-summary-card">
-                        <div>
-                          <span>Bugünkü Rota</span>
-                          <strong>3 Ziyaret</strong>
-                        </div>
-                        <div class="align-right">
-                          <span class="status-chip success">1 Tamamlandı</span>
-                        </div>
-                      </div>
-                      
-                      <p class="overline">SIRADAKİ GÖREVLER</p>
-                      <div class="mobile-work-orders" id="mobileWorkOrdersList">
-                        <!-- Filled by JS -->
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <!-- Screen 2: Job Detail -->
-                  <div class="phone-page hidden" id="pageMobileJobDetail">
-                    <div class="phone-header">
-                      <button class="phone-back-btn" id="btnMobileBackToRoute">←</button>
-                      <h3 id="mobJobHeaderTitle">İş Detayı</h3>
-                    </div>
-                    <div class="phone-content" style="padding-bottom: 80px;">
-                      <div class="mob-job-card">
-                        <p class="overline" id="mobJobCompany">ACME FOODS</p>
-                        <h4 id="mobJobSiteName">Gebze Üretim Tesisi</h4>
-                        <p class="mob-job-meta" id="mobJobTime">Randevu: Bugün, 14:30</p>
-                        <span class="status-chip" id="mobJobStatusBadge">Planlandı</span>
-                      </div>
-
-                      <!-- GPS Arrival Card -->
-                      <div class="mob-action-card" id="cardGpsArrival">
-                        <div class="mob-card-desc">
-                          <b>1. Tesis Giriş Konumu (GPS)</b>
-                          <p>Tesis etrafındaki 150m geofence sınırları kontrol edilir.</p>
-                        </div>
-                        <button class="primary-btn mob-btn" id="btnMobArrived">📍 Müşteriye Vardım</button>
-                        <div class="verified-indicator hidden" id="indicatorGpsVerified">
-                          <span>✓</span> GPS Konumu Doğrulandı <small id="gpsCoordsText" style="display:block; font-size:9px; font-weight:normal; margin-top:2px; color:inherit; opacity:0.8;"></small>
-                        </div>
-                      </div>
-
-                      <!-- QR Start Card -->
-                      <div class="mob-action-card disabled" id="cardQrStart">
-                        <div class="mob-card-desc">
-                          <b>2. Giriş QR / NFC Kilidi</b>
-                          <p>Mesai gerçek anlamda başlaması için ilk istasyon QR kodu taranmalı veya NFC etiketi okutulmalıdır.</p>
-                        </div>
-                        <div class="mob-buttons-row">
-                          <button class="primary-btn mob-half-btn" id="btnMobScanFirstQr" disabled>📷 İlk QR Tara</button>
-                          <button class="secondary-btn mob-half-btn" id="btnMobScanFirstNfc" disabled>📡 NFC Oku</button>
-                        </div>
-                        <div class="verified-indicator hidden" id="indicatorQrVerified">
-                          <span>✓</span> İlk QR/NFC ile İş Başlatıldı
-                        </div>
-                      </div>
-
-                      <!-- Offline Map Card -->
-                      <div class="mob-action-card disabled" id="cardOfflineMap">
-                        <div class="mob-card-desc">
-                          <b>3. Tesis Kat Planı & İndirme</b>
-                          <p>Krokiyi çevrimiçi görüntüleyebilir veya offline kullanım için indirebilirsiniz.</p>
-                        </div>
-                        <div class="mob-buttons-row">
-                          <button class="secondary-btn mob-half-btn" id="btnMobViewPlan" disabled>⌖ Kat Planını Gör</button>
-                          <button class="secondary-btn mob-half-btn" id="btnMobDownloadOffline" disabled>↓ Offline İndir</button>
-                        </div>
-                        <div class="download-progress-bar hidden" id="mobDownloadProgress">
-                          <div class="download-progress-fill" style="width:0%"></div>
-                        </div>
-                        <div class="verified-indicator hidden" id="indicatorOfflineReady">
-                          <span>✓</span> Çevrimdışı Kroki Hazır
-                        </div>
-                      </div>
-
-                      <!-- Control Units Checklist -->
-                      <div class="mob-action-card disabled" id="cardStationsList">
-                        <div class="mob-card-desc" style="margin-bottom:10px;">
-                          <b>4. İstasyon Denetim Kontrol Listesi</b>
-                          <p>Cihazları kontrol edin. (Kontrol Edilen: <span id="mobCheckedCount">0/8</span>)</p>
-                        </div>
-                        
-                        <div class="mob-stations-mini-grid" id="mobStationsMiniGrid">
-                          <!-- List of stations -->
-                        </div>
-                      </div>
-
-                      <!-- Chemical Usage Capture -->
-                      <div class="mob-action-card disabled" id="cardMobChemicalUsage">
-                        <div class="mob-card-desc" style="margin-bottom:10px;">
-                          <b>4b. Kimyasal / Biyosidal Kullanımı</b>
-                          <p>Uygulanan kimyasalları, miktarlarını ve uygulama alanlarını girin.</p>
-                        </div>
-                        
-                        <div id="mobChemicalList" style="margin-bottom:10px; font-size:11px; display:grid; gap:4px;">
-                          <!-- Already added chemicals list -->
-                        </div>
-
-                        <!-- Options are generated from chemicalDatabase; the
-                             technician enters only the treated amount and the
-                             dosage / water volume is calculated for them. -->
-                        <form id="mobChemicalForm" style="display:grid; gap:8px;">
-                          <select required id="mobChemSelect" class="form-select" style="height:32px; padding:0 6px; font-size:11px;">
-                            <option value="">-- Kimyasal Seçin --</option>
-                          </select>
-
-                          <!-- MSDS / label / ministry permit for the selection -->
-                          <div id="mobChemDocs"></div>
-
-                          <label style="font-size:10px; font-weight:700; color:var(--muted); display:grid; gap:4px;">
-                            <span id="mobChemAreaLabel">UYGULAMA ALANI (m²)</span>
-                            <input required type="number" min="0" step="any" id="mobChemArea" placeholder="Örn: 250" class="form-input" style="height:32px; font-size:11px;">
-                          </label>
-
-                          <div class="dose-panel hidden" id="mobDosePanel"></div>
-
-                          <input type="text" id="mobChemNotes" placeholder="Uygulama Notu (Opsiyonel)" class="form-input" style="height:32px; font-size:11px;">
-                          <button type="submit" class="secondary-btn" style="height:32px; padding:0; justify-content:center;">＋ Kimyasal Ekle</button>
-                        </form>
-                      </div>
-
-                      <!-- Digital Signature Capture -->
-                      <div class="mob-action-card disabled" id="cardSignature">
-                        <div class="mob-card-desc" style="margin-bottom:10px;">
-                          <b>5. Dijital İmza</b>
-                          <p>Roadmap §10: ziyaret sonunda müşteriden ad ve imza, teknisyenden imza dijital olarak alınır. Her iki imza olmadan form kapatılamaz.</p>
-                        </div>
-
-                        <label style="font-size:10px; font-weight:700; color:var(--muted); display:block; margin-bottom:4px;">MÜŞTERİ AD SOYAD / ÜNVAN</label>
-                        <input type="text" id="inpSigCustomerName" class="form-input sig-name-input" placeholder="Örn: Mehmet Yılmaz — Kalite Sorumlusu">
-
-                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
-                          <div class="sig-slot">
-                            <div class="sig-slot-head">
-                              <label>MÜŞTERİ İMZASI</label>
-                              <span class="sig-state" id="sigStateCustomer">Bekliyor</span>
-                            </div>
-                            <canvas id="sigCanvasCustomer" width="200" height="80" style="width:100%; height:80px; border:1px dashed var(--line); border-radius:6px; background:#fafafa; touch-action:none; cursor:crosshair;"></canvas>
-                            <button type="button" class="text-btn" id="btnClearSigCustomer" style="font-size:9px; margin-top:2px;">Temizle</button>
-                          </div>
-                          <div class="sig-slot">
-                            <div class="sig-slot-head">
-                              <label>TEKNİSYEN İMZASI</label>
-                              <span class="sig-state" id="sigStateTech">Bekliyor</span>
-                            </div>
-                            <canvas id="sigCanvasTech" width="200" height="80" style="width:100%; height:80px; border:1px dashed var(--line); border-radius:6px; background:#fafafa; touch-action:none; cursor:crosshair;"></canvas>
-                            <button type="button" class="text-btn" id="btnClearSigTech" style="font-size:9px; margin-top:2px;">Temizle</button>
-                          </div>
-                        </div>
-
-                        <div class="sig-gate pending" id="sigGateNotice">İki imza da alınmadan iş emri kapatılamaz.</div>
-                      </div>
-                    </div>
-                    <!-- Footer action bar -->
-                    <div class="mob-footer-actions">
-                      <button class="primary-btn mob-btn" id="btnMobSaveForm" disabled>💾 Formu Kaydet & Gönder</button>
-                    </div>
-                  </div>
-
-                  <!-- Screen 3: Mobile Interactive Floor Plan Map -->
-                  <div class="phone-page hidden" id="pageMobileMap">
-                    <div class="phone-header">
-                      <button class="phone-back-btn" id="btnMobileBackToJob">←</button>
-                      <h3>Tesis Kat Planı</h3>
-                    </div>
-                    <div class="phone-content" style="padding: 10px; overflow: hidden; display: flex; flex-direction: column;">
-                      <div class="mob-map-legend">
-                        <span><i class="legend-dot good"></i> Temiz</span>
-                        <span><i class="legend-dot risk"></i> Aktivite</span>
-                        <span><i class="legend-dot watch"></i> Bekliyor</span>
-                      </div>
-                      <div class="mobile-map-viewport">
-                        <div class="blueprint-svg-wrap" id="mobileBlueprintWrapper" style="transform: scale(0.95); transform-origin: top left;">
-                          <!-- We will mirror the facility blueprint SVG here dynamically -->
-                        </div>
-                      </div>
-                      <p class="mob-map-hint">Konumuzu doğrulamak için kat üzerindeki istasyonlara dokunarak denetleyin.</p>
-                    </div>
-                  </div>
-
-                  <!-- Screen 4: Mobile Inspection Form -->
-                  <div class="phone-page hidden" id="pageMobileInspect">
-                    <div class="phone-header">
-                      <button class="phone-back-btn" id="btnMobileBackToMap">←</button>
-                      <h3 id="mobInspectTitle">R-01 Kontrolü</h3>
-                    </div>
-                    <div class="phone-content" style="padding-bottom: 70px;">
-                      <form id="mobileInspectionForm" class="form-grid" style="padding:15px; margin-top:0;">
-                        <label class="form-label">
-                          Yem Tüketim Durumu
-                          <select name="baitStatus" id="mobInpBaitStatus" class="form-select">
-                            <option value="intact">Sağlam (Tüketilmedi)</option>
-                            <option value="consumed">Tüketildi (Yenmiş)</option>
-                            <option value="replaced">Yem Yenilendi</option>
-                            <option value="missing">Yem Yok / Eksik</option>
-                          </select>
-                        </label>
-
-                        <!-- Multi-pest, multi-count entry. Species options are
-                             generated from the device's equipment type, so a
-                             fly unit offers the flying-insect sheet only. -->
-                        <div class="form-label">
-                          Gözlenen Zararlılar & Adetleri
-                          <div class="findings-list" id="mobFindingsList"></div>
-                          <button type="button" class="secondary-btn btn-add-finding" id="btnAddFinding">＋ Zararlı Türü Ekle</button>
-                          <div class="findings-total" id="mobFindingsTotal"></div>
-                        </div>
-
-                        <label class="form-label">
-                          Fiziksel Cihaz Durumu
-                          <select name="status" id="mobInpStatus" class="form-select">
-                            <option value="clean">Temiz & Sağlam</option>
-                            <option value="activity">Aktivite Var</option>
-                            <option value="damaged">Hasarlı / Kırık (KI)</option>
-                            <option value="missing">Kayıp / Eksik (KA)</option>
-                            <option value="not_accessible">Ulaşılamadı (U)</option>
-                            <option value="renewed">İstasyon Yenilendi (Y)</option>
-                            <option value="bait_changed">Yem Değişti (YD)</option>
-                            <option value="glue_changed">Yapışkan Plaka Değişti</option>
-                          </select>
-                        </label>
-
-                        <label class="form-label">
-                          Açıklama / Not
-                          <textarea name="notes" id="mobInpNotes" rows="2" class="form-textarea" placeholder="Teknisyen gözlemleri..."></textarea>
-                        </label>
-                      </form>
-                    </div>
-                    <div class="mob-footer-actions">
-                      <button class="primary-btn mob-btn" id="btnMobSaveInspection">✓ İstasyonu Kaydet</button>
-                    </div>
-                  </div>
-
-                  <!-- Screen 5: QR Scanner Simulation Animation -->
-                  <div class="phone-page hidden" id="pageMobileScanAnimation" style="background:#000;">
-                    <div class="phone-header" style="background:#222; border-bottom:0; color:#fff;">
-                      <button class="phone-back-btn" id="btnCancelScan" style="color:#fff;">×</button>
-                      <h3 id="mobScanTitle">Barkod / QR Kod Tara</h3>
-                    </div>
-                    <div class="phone-content" style="display:flex; flex-direction:column; align-items:center; justify-content:center; padding:20px; color:#fff;">
-                      <div id="qr-reader" style="width:100%; max-width:220px; min-height:160px; margin:0 auto; border-radius:8px; overflow:hidden; background:#111; display:flex; align-items:center; justify-content:center; border:2px dashed #444; position:relative;">
-                        <div class="scanner-laser" style="z-index:2;"></div>
-                        <span style="font-size:12px; color:#666; text-align:center; padding:10px; z-index:1;">Kamera aranıyor...</span>
-                      </div>
-                      <p style="text-align:center; font-size:11px; margin-top:20px; color:#aaa;" id="scanInstructions">Giriş kontrol ünitesi üzerindeki QR kodu vizöre ortalayın.</p>
-                      
-                      <div style="margin-top:auto; width:100%; display:grid; gap:8px;">
-                        <label style="font-size:10px; color:#aaa; font-weight:700;">TARANACAK İSTASYON QR KODU</label>
-                        <select id="simScanSelector" class="form-select" style="background:#333; color:#fff; border-color:#555; height:36px;">
-                          <!-- Populated dynamically -->
-                        </select>
-                        <button class="primary-btn mob-btn" id="btnSimulateScanTrigger">Okutmayı Tamamla</button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                
-                <div class="phone-home-indicator"></div>
-              </div>
-            </div>
-          </div>
-        </section>
 
       </main>
     </div>
@@ -1666,25 +1491,6 @@
           <button type="submit" class="primary-btn" style="width:100%; justify-content:center; height:38px; margin-top:12px; font-weight:700;">Giriş Yap</button>
         </form>
         
-        <div class="login-divider" style="margin:20px 0; text-align:center; position:relative; font-size:10px; font-weight:700; color:var(--muted);">
-          <span style="background:#fff; padding:0 8px; position:relative; z-index:1;">VEYA TEST KULLANICISI SEÇİN</span>
-          <div style="position:absolute; top:50%; left:0; right:0; height:1px; background:var(--line); z-index:0;"></div>
-        </div>
-        
-        <div class="quick-login-grid" style="display:grid; grid-template-columns:1fr; gap:8px;">
-          <button class="secondary-btn quick-login-btn" data-login-as="admin" style="display:flex; flex-direction:column; align-items:start; padding:10px; height:auto; text-align:left; gap:2px;">
-            <b style="font-size:12px; color:var(--ink);">🔑 Seda Kaya (Yönetici)</b>
-            <span style="font-size:10px; color:var(--muted); font-weight:normal;">Tam yetkili sistem yöneticisi ve zararlı uzmanı boss.</span>
-          </button>
-          <button class="secondary-btn quick-login-btn" data-login-as="tech" style="display:flex; flex-direction:column; align-items:start; padding:10px; height:auto; text-align:left; gap:2px;">
-            <b style="font-size:12px; color:var(--ink);">🔧 Ayşe Demir (Teknisyen)</b>
-            <span style="font-size:10px; color:var(--muted); font-weight:normal;">Saha çalışanı. Sadece kendi iş emirlerini ve rotasını görür.</span>
-          </button>
-          <button class="secondary-btn quick-login-btn" data-login-as="client" style="display:flex; flex-direction:column; align-items:start; padding:10px; height:auto; text-align:left; gap:2px;">
-            <b style="font-size:12px; color:var(--ink);">🏢 Acme Foods (Müşteri)</b>
-            <span style="font-size:10px; color:var(--muted); font-weight:normal;">Müşteri temsilcisi portalı. Sadece kendi tesisine erişir.</span>
-          </button>
-        </div>
       </div>
     </div>
 
@@ -1702,6 +1508,10 @@
         });
       }
     </script>
+    <!-- Runtime config from the server's environment, then the Supabase SDK.
+         Both must load before any module that talks to the backend. -->
+    <script src="./env.js"></script>
+    <script src="./vendor/supabase.js"></script>
     <script src="./state.js"></script>
     <script type="module" src="./src/app.js"></script>
   </body>

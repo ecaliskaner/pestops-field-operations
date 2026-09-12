@@ -7,3 +7,10 @@ gemini-code-*
 # Anchored with a leading slash so it does not also match src/core/state.js.
 /data/state.json
 /state.js
+
+# Secrets. .env holds the live Supabase keys; .env.example is the committed
+# template and must stay tracked.
+.env
+.env.*
+!.env.example
+

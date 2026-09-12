@@ -1,27 +1,34 @@
 // Facility detail page: profile, tabs, floor plan, stations.
 // Extracted from app.js (Phase 0a-3).
 
-import { $, $$ } from '../core/dom.js';
-import { recalculateSiteStats, state } from '../core/state.js';
+import { $, $$, esc } from '../core/dom.js';
+import { recalculateSiteStats, replaceSites, state } from '../core/state.js';
 import { ui } from '../core/session.js';
-import { chemicalDatabase, equipmentStatusCodes, equipmentTypes, getChemicalDocuments, getPlacementSchema, getStationArea, pestDatabase, placementSummary, stationAreaName, stateLabel } from '../data/catalog.js';
+import { equipmentStatusCodes, equipmentTypes, getPlacementSchema, getStationArea, pestDatabase, placementSummary, stationAreaName, stateLabel } from '../data/catalog.js';
 import { setView } from '../core/router.js';
 import { renderClientAnalytics } from '../views/insights.js';
 import { toast } from '../core/dom.js';
 import { save } from '../core/state.js';
 import { modal, printQrCodeSticker } from '../ui/modal.js';
-import { deductStock } from '../views/inventory.js';
-import { showMobileInspect } from '../views/mobile.js';
 import { renderSites } from '../views/sites.js';
+import { technicianStats } from '../data/history.js';
+import { fetchUsageForSite } from '../data/repo/inventory.js';
+import { parseContractPeriod, updateSite, fetchSites } from '../data/repo/sites.js';
+import { recordInspection } from '../data/repo/work.js';
+import { fetchPointHistory, fetchPointSummary, replaceStationDevice } from '../data/repo/stations.js';
+import { fetchTechnicianCredentials } from '../data/repo/technicians.js';
+import { saveContract } from '../data/repo/customer.js';
 import {
-  barcodeFor, deviceReplacements, pointDeviceSummary, readingsForPoint,
-  recommendationsForSite, replacementReasons, technicianStats
-} from '../data/history.js';
-import { credentialDocs, KVKK_NOTICE } from '../data/credentials.js';
+  fetchRecommendations, respondToRecommendation, approveRecommendation,
+  rejectRecommendation, uploadRecommendationPhoto, signedPhotoUrl
+} from '../data/repo/customer.js';
 import { renderFloorPlan } from './floorPlan.js';
 import { visitsPerMonth } from '../data/schedule.js';
 import { demoToday } from '../data/history.js';
 import { techData } from '../data/seed.js';
+
+// Shared by the chemical-usage table and the licensed-product library below.
+const DAY_FMT = { day: '2-digit', month: 'short', year: 'numeric' };
 
 // Human-readable service cadence, derived from the contracted scope rather
 // than stored as prose — so it can never disagree with the visit plan.
@@ -135,6 +142,7 @@ export function showCompanyDetail(siteId) {
   // Render chemical usage tab
   renderChemicalUsage(site);
   renderChemicalDocLibrary(site);
+  renderInspectionWorkOrders(site);
   
   // Render service scope in overview
   renderServiceScope(site);
@@ -183,32 +191,66 @@ export function switchCompanyTab(tabId) {
 // and see each one's compliance documents (SGK, iş güvenliği, uygulama izni,
 // portör sağlık raporu). Which technicians serviced this facility is derived
 // from the visit history, so the list is honest — no one who never attended
-// appears. Documents are KVKK-safe placeholders (see data/credentials.js).
+// appears. The documents themselves are technician_credentials rows.
 export function renderCompanyCredentials(site) {
   const host = $('#compCredentialsList');
   if (!host) return;
 
-  const stats = technicianStats(site.id);
-  const techs = stats.length ? stats.map(t => t.tech) : ['Ayşe Demir'];
+  // The four document rows used to come from data/credentials.js: a map of four
+  // demo technician names to invented certificate numbers and expiry dates,
+  // with `getCredential()` falling back to "Ayşe Demir" for anyone unknown — so
+  // a real technician was shown another person's paperwork. The rows are
+  // technician_credentials now, and a technician with nothing on file says so.
+  // Technicians who have actually attended this facility, from the visit
+  // history. Falling back to the whole team when none have yet is deliberate:
+  // a customer opening a new facility should still be able to check the
+  // credentials of whoever is about to be sent.
+  const served = new Set(technicianStats(site.id).map((t) => t.tech));
+  const all = state.technicians || [];
+  const technicians = served.size ? all.filter((t) => served.has(t.name)) : all;
 
-  host.innerHTML = techs.map(tech => {
-    const meta = techData[tech] || [];
-    const initials = meta[0] || tech.slice(0, 2).toUpperCase();
-    const stat = stats.find(s => s.tech === tech);
-    const visitNote = stat ? `Bu tesiste ${stat.visits} ziyaret` : 'Atanmış teknisyen';
-    return `
-      <div class="cred-card panel" style="box-shadow:none; border:1px solid var(--line);">
-        <div class="cred-head">
-          <span class="tech-avatar" style="background:${meta[5] || '#eee'}">${initials}</span>
-          <div><b>${tech}</b><span>${visitNote}</span></div>
-        </div>
-        <div class="cred-docs">
-          ${credentialDocs(tech)}
-        </div>
-      </div>`;
-  }).join('');
+  host.innerHTML = '<p class="text-muted" style="font-size:12px;">Yükleniyor…</p>';
 
-  host.insertAdjacentHTML('beforeend', `<p class="cred-kvkk">${KVKK_NOTICE} Belgeler yalnızca hizmet süresince ve yalnızca ilgili tesise gösterilir.</p>`);
+  fetchTechnicianCredentials()
+    .then((byTech) => {
+      const cards = technicians.map((t) => {
+        const docs = byTech[t.id] || [];
+        const initials = t.initials || (t.name || '??').split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
+        const rows = docs.length
+          ? docs.map((d) => {
+              const expired = d.validUntil && new Date(d.validUntil) < new Date();
+              const ok = d.isValid && !expired;
+              const meta = [
+                d.referenceNo,
+                d.validUntil ? `Geçerlilik: ${new Date(d.validUntil).toLocaleDateString('tr-TR', DAY_FMT)}` : ''
+              ].filter(Boolean).join(' · ');
+              return `
+                <div class="cred-doc">
+                  <span class="cred-doc-icon">📄</span>
+                  <div class="cred-doc-body"><b>${esc(d.title)}</b><small>${esc(meta) || '—'}</small></div>
+                  <span class="cred-doc-status ${ok ? 'ok' : 'warn'}">${ok ? 'Geçerli' : (expired ? 'Süresi doldu' : 'Geçersiz')}</span>
+                </div>`;
+            }).join('')
+          : '<div class="cred-doc"><span class="cred-doc-icon">⚠</span><div class="cred-doc-body"><b>Belge kaydı yok</b><small>Bu teknisyen için yüklenmiş belge bulunmuyor.</small></div></div>';
+
+        return `
+          <div class="cred-card panel" style="box-shadow:none; border:1px solid var(--line);">
+            <div class="cred-head">
+              <span class="tech-avatar" style="background:${esc(t.color)};">${esc(initials)}</span>
+              <div><b>${esc(t.name)}</b><span>${served.has(t.name) ? 'Bu tesiste görev aldı' : 'Ekipte'}</span></div>
+            </div>
+            <div class="cred-docs">${rows}</div>
+          </div>`;
+      }).join('') || '<p class="text-muted" style="font-size:12px;">Kayıtlı teknisyen bulunmuyor.</p>';
+
+      host.innerHTML = cards;
+      host.insertAdjacentHTML('beforeend',
+        '<p class="cred-kvkk">🔒 <b>KVKK:</b> Belgeler yalnızca hizmet süresince ve yalnızca ilgili tesise gösterilir. Kimlik numaraları saklanmaz.</p>');
+    })
+    .catch((err) => {
+      console.error('[repellent] teknisyen belgeleri yuklenemedi', err);
+      host.innerHTML = '<p class="text-muted" style="font-size:12px;">Belgeler yüklenemedi.</p>';
+    });
 }
 
 export function renderCompanyMethods(site) {
@@ -287,100 +329,81 @@ export const LOOP_STAGES = {
 // User-driven lifecycle changes live in state (so they survive a reload) and
 // are layered over the generated history when rendering, rather than mutating
 // the history module's cache.
-function lifecycleOverlay() {
-  if (!state.recLifecycle) state.recLifecycle = {};
-  return state.recLifecycle;
+// Real findings for the org, loaded once and refreshed after every loop step.
+//
+// This replaced two fabrications at once: recommendationsForSite() invented
+// findings from the synthetic history, and every lifecycle change the user
+// made was kept in a browser-side `state.recLifecycle` overlay. That overlay
+// meant the customer's response and the operator's approval were visible only
+// in the browser that performed them — a cleared cache destroyed the audit
+// trail of a compliance loop.
+let recommendations = [];
+let recsLoaded = false;
+
+async function loadRecommendations(force = false) {
+  if (recsLoaded && !force) return;
+  recsLoaded = true;
+  try {
+    recommendations = await fetchRecommendations();
+  } catch (err) {
+    console.error('[repellent] bulgular yuklenemedi', err);
+    return;
+  }
+  const site = state.sites.find((x) => x.id === ui.activeSiteId);
+  if (site) {
+    renderCompanyRecommendations(site);
+    if (activeRecId) renderRecLoopDetail(site, activeRecId);
+  }
 }
 
 /**
- * Findings for a site from both sources — the 12-month generated history and
- * any raised by hand during the demo — normalised onto one shape, with the
- * lifecycle overlay applied.
+ * Findings for one site, ordered by where they sit in the loop.
+ *
+ * @param {object} site
+ * @returns {object[]}
  */
 export function loopRecommendations(site) {
-  const overlay = lifecycleOverlay();
-
-  const fromHistory = recommendationsForSite(site.id).map(r => ({
-    id: r.id,
-    source: 'history',
-    desc: r.desc,
-    category: r.category,
-    assignee: r.assignee || 'Tesis Yetkilisi',
-    tech: r.tech,
-    date: r.date,
-    dueDate: r.dueDate,
-    stationCode: r.stationCode,
-    stage: r.stage,
-    status: r.status,
-    photoBefore: r.photoBefore,
-    photoAfter: r.photoAfter,
-    customerNote: r.customerNote,
-    customerRespondedDate: r.customerRespondedDate,
-    approvedBy: r.approvedBy,
-    approvedDate: r.approvedDate,
-    rejectionNote: r.rejectionNote
-  }));
-
-  const fromSite = (site.recommendations || []).map((r, index) => ({
-    id: r.id || `RS-${index}`,
-    source: 'site',
-    siteIndex: index,
-    desc: r.desc,
-    category: r.category,
-    assignee: r.assignee,
-    tech: r.tech || (state.currentUser ? state.currentUser.name : 'Teknisyen'),
-    date: r.date,
-    dueDate: r.due,
-    stationCode: r.stationCode || null,
-    // Hand-raised findings start at the same first step of the loop.
-    stage: r.status === 'resolved' ? 'approved' : 'raised',
-    status: r.status,
-    photoBefore: r.photoBefore || { kind: 'simulated', label: 'Tespit anı', ref: `${r.id || index}-before` },
-    photoAfter: r.photoAfter || null,
-    customerNote: null,
-    customerRespondedDate: null,
-    approvedBy: null,
-    approvedDate: null,
-    rejectionNote: null
-  }));
-
-  return [...fromSite, ...fromHistory]
-    .map(r => ({ ...r, ...(overlay[r.id] || {}) }))
+  return recommendations
+    .filter((r) => r.siteId === site.id)
+    .slice()
     .sort((a, b) => LOOP_STAGES[a.stage].order - LOOP_STAGES[b.stage].order);
 }
 
 // Photos are held as descriptors. A simulated one is drawn as an SVG so the
 // demo always has evidence to show; a real upload carries its own data URL.
-export function recPhotoSrc(photo) {
-  if (!photo) return null;
-  if (photo.kind === 'upload') return photo.dataUrl;
+// Evidence photos live in the private recommendation-photos bucket, so an
+// <img> cannot address them directly. Each tile renders a placeholder and is
+// filled in once its short-lived signed URL comes back.
+//
+// The previous version drew a deterministic SVG for any photo it did not
+// have, which meant a compliance loop could display fabricated evidence.
+const signedUrlCache = new Map();
 
-  // Deterministic tint from the ref, so the same finding always looks the same.
-  let h = 0;
-  for (let i = 0; i < (photo.ref || '').length; i++) h = (h * 31 + photo.ref.charCodeAt(i)) % 360;
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="320" height="200" viewBox="0 0 320 200">
-    <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="hsl(${h},32%,62%)"/><stop offset="1" stop-color="hsl(${(h + 40) % 360},28%,38%)"/>
-    </linearGradient></defs>
-    <rect width="320" height="200" fill="url(#g)"/>
-    <rect x="18" y="18" width="284" height="164" fill="none" stroke="rgba(255,255,255,.45)" stroke-width="2" stroke-dasharray="7 5"/>
-    <circle cx="160" cy="88" r="26" fill="none" stroke="rgba(255,255,255,.75)" stroke-width="3"/>
-    <path d="M147 88h26M160 75v26" stroke="rgba(255,255,255,.75)" stroke-width="3"/>
-    <text x="160" y="140" font-family="DM Sans,sans-serif" font-size="14" font-weight="700" fill="#fff" text-anchor="middle">${photo.label || 'Saha fotoğrafı'}</text>
-    <text x="160" y="160" font-family="DM Sans,sans-serif" font-size="10" fill="rgba(255,255,255,.85)" text-anchor="middle">simüle görsel · ${photo.ref || ''}</text>
-  </svg>`;
-  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+async function fillPhoto(el, path) {
+  if (!el || !path) return;
+  let url = signedUrlCache.get(path);
+  if (!url) {
+    url = await signedPhotoUrl(path);
+    if (url) signedUrlCache.set(path, url);
+  }
+  if (!url) {
+    el.outerHTML = '<div class="rec-photo-missing">Fotoğraf açılamadı</div>';
+    return;
+  }
+  el.innerHTML = `<img src="${url}" alt="" loading="lazy">`;
+  el.classList.remove('rec-photo-pending');
 }
 
-function photoTile(photo, fallbackLabel) {
-  if (!photo) {
-    return `<div class="rec-photo empty"><span>${fallbackLabel}</span></div>`;
-  }
-  const badge = photo.kind === 'upload' ? 'Yüklendi' : 'Simüle';
-  return `<div class="rec-photo">
-      <img src="${recPhotoSrc(photo)}" alt="${photo.label || ''}">
-      <span class="rec-photo-badge">${badge}</span>
-    </div>`;
+// Resolve every pending tile currently on screen.
+function hydratePhotos() {
+  document.querySelectorAll('[data-photo-path]').forEach((el) => {
+    fillPhoto(el, el.dataset.photoPath);
+  });
+}
+
+function photoTile(path, fallbackLabel) {
+  if (!path) return `<div class="rec-photo-missing">${esc(fallbackLabel)}</div>`;
+  return `<div class="rec-photo rec-photo-pending" data-photo-path="${esc(path)}">Yükleniyor…</div>`;
 }
 
 export function renderCompanyRecommendations(site) {
@@ -388,6 +411,7 @@ export function renderCompanyRecommendations(site) {
   if (!tbody) return;
   if (!site.recommendations) site.recommendations = [];
 
+  loadRecommendations();
   const recs = loopRecommendations(site);
   const role = state.currentUser ? state.currentUser.role : 'admin';
 
@@ -400,14 +424,14 @@ export function renderCompanyRecommendations(site) {
     const stage = LOOP_STAGES[r.stage] || LOOP_STAGES.raised;
     const selected = r.id === activeRecId ? ' class="rec-row-selected"' : '';
     return `
-      <tr data-rec-id="${r.id}"${selected} style="cursor:pointer;">
-        <td><b>${r.desc}</b>${r.stationCode ? `<br><small class="text-muted">Nokta: ${r.stationCode}</small>` : ''}</td>
-        <td><span class="status-chip secondary" style="font-size:9px; font-weight:700;">${r.category}</span></td>
-        <td>${r.assignee}</td>
-        <td><small class="text-muted">${r.date}</small></td>
-        <td><small>${r.dueDate || '—'}</small></td>
+      <tr data-rec-id="${esc(r.id)}"${selected} style="cursor:pointer;">
+        <td><b>${esc(r.desc)}</b>${r.stationCode ? `<br><small class="text-muted">Nokta: ${esc(r.stationCode)}</small>` : ''}</td>
+        <td><span class="status-chip secondary" style="font-size:9px; font-weight:700;">${esc(r.category)}</span></td>
+        <td>${esc(r.assignee)}</td>
+        <td><small class="text-muted">${esc(r.date)}</small></td>
+        <td><small>${esc(r.dueDate || '—')}</small></td>
         <td><span class="status-chip ${stage.chip}">${stage.short}</span></td>
-        <td><button class="text-btn rec-open-btn" data-rec-id="${r.id}" style="padding:0; font-size:11px; font-weight:700;">${nextActionLabel(r, role)}</button></td>
+        <td><button class="text-btn rec-open-btn" data-rec-id="${esc(r.id)}" style="padding:0; font-size:11px; font-weight:700;">${nextActionLabel(r, role)}</button></td>
       </tr>`;
   }).join('') || '<tr><td colspan="7" class="empty" style="text-align:center;">Henüz açılmış bir öneri kaydı bulunmuyor.</td></tr>';
 
@@ -456,26 +480,26 @@ export function renderRecLoopDetail(site, recId) {
   const steps = [
     { n: 1, title: 'Teknisyen bulguyu açtı', who: rec.tech, when: rec.date, done: true },
     { n: 2, title: 'Müşteri aksiyon aldı', who: rec.assignee, when: rec.customerRespondedDate, done: !!rec.customerRespondedDate },
-    { n: 3, title: 'Teknisyen onayladı', who: rec.approvedBy, when: rec.approvedDate, done: rec.stage === 'approved' }
+    { n: 3, title: 'Onaylandı', who: rec.approvedDate ? 'Operasyon' : '', when: rec.approvedDate, done: rec.stage === 'approved' }
   ];
 
   const stepper = steps.map(s => `
     <li class="rec-step ${s.done ? 'done' : ''} ${(!s.done && s.n === stage.waitingStep) ? 'current' : ''}">
       <span class="rec-step-no">${s.done ? '✓' : s.n}</span>
       <span class="rec-step-body">
-        <b>${s.title}</b>
-        <small>${s.done ? `${s.who || '—'} · ${s.when || '—'}` : 'bekliyor'}</small>
+        <b>${esc(s.title)}</b>
+        <small>${s.done ? `${esc(s.who || '—')} · ${esc(s.when || '—')}` : 'bekliyor'}</small>
       </span>
     </li>`).join('');
 
   el.innerHTML = `
     <div class="rec-detail-head">
       <div>
-        <p class="overline" style="margin:0;">KAPALI DÖNGÜ · ${rec.id}</p>
-        <h3 class="rec-detail-title">${rec.desc}</h3>
-        <p class="rec-detail-meta">${rec.category}${rec.stationCode ? ` · Nokta ${rec.stationCode}` : ''} · Termin: <b>${rec.dueDate || '—'}</b></p>
+        <p class="overline" style="margin:0;">KAPALI DÖNGÜ · ${esc(rec.id)}</p>
+        <h3 class="rec-detail-title">${esc(rec.desc)}</h3>
+        <p class="rec-detail-meta">${esc(rec.category)}${rec.stationCode ? ` · Nokta ${rec.stationCode}` : ''} · Termin: <b>${esc(rec.dueDate || '—')}</b></p>
       </div>
-      <span class="status-chip ${stage.chip} rec-detail-stage">${stage.label}</span>
+      <span class="status-chip ${esc(stage.chip)} rec-detail-stage">${esc(stage.label)}</span>
     </div>
 
     <ol class="rec-stepper">${stepper}</ol>
@@ -483,20 +507,22 @@ export function renderRecLoopDetail(site, recId) {
     <div class="rec-photos">
       <figure>
         <figcaption>ÖNCE — tespit fotoğrafı</figcaption>
-        ${photoTile(rec.photoBefore, 'Fotoğraf yok')}
+        ${photoTile(rec.photoBeforePath, 'Tespit fotoğrafı yok')}
       </figure>
       <figure>
         <figcaption>SONRA — aksiyon fotoğrafı</figcaption>
-        ${photoTile(rec.photoAfter, 'Müşteri henüz yüklemedi')}
+        ${photoTile(rec.photoAfterPath, 'Müşteri henüz yüklemedi')}
       </figure>
     </div>
 
-    ${rec.customerNote ? `<p class="rec-note customer"><b>Müşteri notu:</b> ${rec.customerNote}</p>` : ''}
-    ${rec.rejectionNote ? `<p class="rec-note reject"><b>Onaylanmama nedeni:</b> ${rec.rejectionNote}</p>` : ''}
+    ${rec.customerNote ? `<p class="rec-note customer"><b>Müşteri notu:</b> ${esc(rec.customerNote)}</p>` : ''}
+    ${rec.rejectionNote ? `<p class="rec-note reject"><b>Onaylanmama nedeni:</b> ${esc(rec.rejectionNote)}</p>` : ''}
 
-    <p class="rec-waiting-on">⏳ ${stage.actor}</p>
+    <p class="rec-waiting-on">⏳ ${esc(stage.actor)}</p>
 
     ${renderRecActions(rec, role)}`;
+
+  hydratePhotos();
 }
 
 // Only the role that owns the current step gets controls; everyone else sees
@@ -505,16 +531,15 @@ function renderRecActions(rec, role) {
   const isTech = role === 'tech' || role === 'admin';
 
   if (rec.stage === 'approved') {
-    return `<div class="rec-actions closed">✓ Bu bulgu ${rec.approvedDate || ''} tarihinde ${rec.approvedBy || 'teknisyen'} tarafından onaylanarak kapatıldı.</div>`;
+    return `<div class="rec-actions closed">✓ Bu bulgu ${esc(rec.approvedDate || '')} tarihinde onaylanarak kapatıldı.</div>`;
   }
 
   if (role === 'client') {
     if (rec.stage === 'raised' || rec.stage === 'rejected') {
       return `
-        <form class="rec-actions rec-customer-form" id="recCustomerForm" data-rec-id="${rec.id}">
+        <form class="rec-actions rec-customer-form" id="recCustomerForm" data-rec-id="${esc(rec.id)}">
           <p class="rec-actions-title">Aksiyonu bildirin — aynı alanın fotoğrafını yükleyin</p>
           <input type="file" accept="image/*" class="form-input rec-file" id="inpRecPhoto">
-          <button type="button" class="secondary-btn rec-sim-photo" id="btnSimulateRecPhoto">📷 Fotoğrafı Simüle Et</button>
           <textarea class="form-textarea" name="customerNote" rows="2" placeholder="Alınan aksiyonu kısaca açıklayın..." required></textarea>
           <div class="rec-photo-preview hidden" id="recPhotoPreview"></div>
           <button type="submit" class="primary-btn">Aksiyonu Gönder →</button>
@@ -709,41 +734,41 @@ export function showStationDetail(code) {
 // Two sources feed the device log: replacements seeded into the 12-month
 // history, and any swap the user performs during the demo (stored on the
 // station so it survives a reload).
-export function pointDevices(site, station) {
-  const seeded = deviceReplacements(site.id, station.code);
-  const runtime = station.deviceLog || [];
-
-  // Generation 1 is the original install; each replacement adds one.
-  const baseGeneration = seeded.reduce((max, s) => Math.max(max, s.generation), 1);
-  const generation = baseGeneration + runtime.length;
-
-  const swaps = [
-    ...seeded.map(s => ({
-      date: s.date,
-      reasonCode: s.reasonCode,
-      reason: s.reason,
-      oldBarcode: s.oldBarcode,
-      newBarcode: s.newBarcode,
-      generation: s.generation,
-      note: s.note,
-      source: 'history'
-    })),
-    ...runtime
-  ].sort((a, b) => a.generation - b.generation);
-
-  const current = swaps.length
-    ? swaps[swaps.length - 1].newBarcode
-    : barcodeFor(site.id, station.code, 1);
-
-  return { generation, current, swaps, installedGeneration: baseGeneration };
-}
-
-export function renderDeviceBlock(site, station) {
+// The point's device, its replacement history and its readings.
+//
+// All three were generated. The barcode came out of `barcodeFor()`, a hash of
+// the site id and point code; replacements lived partly in the synthetic visit
+// store and partly in a `station.deviceLog` array kept on the browser's copy of
+// the station. They are now `station_replacements` rows and `inspections` rows,
+// joined on the point code — see src/data/repo/stations.js for why the code,
+// and not the barcode, is the identity that history hangs off.
+export async function renderDeviceBlock(site, station) {
   const container = $('#detDeviceCurrent');
   if (!container) return;
 
-  const { generation, current, swaps } = pointDevices(site, station);
-  const summary = pointDeviceSummary(site.id, station.code);
+  if (!station.dbId) {
+    container.innerHTML = '<p class="device-timeline-empty">Bu nokta henüz kaydedilmedi.</p>';
+    return;
+  }
+
+  let summary;
+  let readings;
+  try {
+    [summary, readings] = await Promise.all([
+      fetchPointSummary(site.id, station.code),
+      fetchPointHistory(site.id, station.code)
+    ]);
+  } catch (err) {
+    console.error('[repellent] nokta gecmisi yuklenemedi', err);
+    container.innerHTML = '<p class="device-timeline-empty">Nokta geçmişi yüklenemedi.</p>';
+    return;
+  }
+
+  const swaps = summary.replacements;
+  const generation = swaps.length + 1;
+  // The barcode on the device right now, straight off the station row. Blank
+  // until the org records one — there is no sequence to derive it from.
+  const current = station.deviceBarcode || '';
 
   const genBadge = $('#detDeviceGeneration');
   if (genBadge) genBadge.textContent = `${generation}. cihaz`;
@@ -751,54 +776,56 @@ export function renderDeviceBlock(site, station) {
   container.innerHTML = `
     <div class="device-id-row">
       <span class="device-id-label">Nokta No</span>
-      <b class="device-point-no">${station.code}</b>
+      <b class="device-point-no">${esc(station.code)}</b>
       <span class="device-permanent">kalıcı</span>
     </div>
     <div class="device-id-row">
       <span class="device-id-label">Barkod</span>
-      <b class="device-barcode">${current}</b>
+      <b class="device-barcode">${current ? esc(current) : '<span style="color:var(--muted);">kayıtlı değil</span>'}</b>
     </div>
     <div class="device-id-row">
       <span class="device-id-label">Toplam Okuma</span>
-      <b>${summary.totalReadings} ölçüm · ${summary.totalPests} adet bulgu</b>
+      <b>${esc(summary.totalReadings)} ölçüm · ${esc(summary.totalPests)} adet bulgu</b>
     </div>`;
 
-  // Prefill the swap form with the next barcode in the sequence.
+  // The next barcode is not prefilled any more: it comes off the physical
+  // label on the replacement box, and guessing it is how a made-up barcode got
+  // into the record in the first place.
   const barcodeInput = $('#inpNewBarcode');
-  if (barcodeInput) barcodeInput.value = barcodeFor(site.id, station.code, generation + 1);
+  if (barcodeInput) barcodeInput.value = '';
   const hint = $('#deviceSwapHint');
   if (hint) {
     hint.textContent = `Nokta numarası ${station.code} değişmez. ${summary.totalReadings} geçmiş ölçüm bu noktada kalır ve karşılaştırmada kullanılmaya devam eder.`;
   }
 
-  renderDeviceTimeline(site, station, swaps, summary);
-  renderPointHistory(site, station);
+  renderDeviceTimeline(station, swaps, summary);
+  renderPointHistory(station, readings);
 }
 
-function renderDeviceTimeline(site, station, swaps, summary) {
+function renderDeviceTimeline(station, swaps, summary) {
   const el = $('#detDeviceTimeline');
   if (!el) return;
 
   if (!swaps.length) {
-    el.innerHTML = `<p class="device-timeline-empty">Bu noktada henüz cihaz değişimi yapılmadı — ilk cihaz görevde.</p>`;
+    el.innerHTML = '<p class="device-timeline-empty">Bu noktada henüz cihaz değişimi kaydedilmedi — ilk cihaz görevde.</p>';
     return;
   }
 
-  const genRows = summary.generations.map(g =>
+  const genRows = summary.generations.map((g) =>
     `<li class="device-gen">
-       <span class="device-gen-no">${g.generation}</span>
+       <span class="device-gen-no">${esc(g.generation)}</span>
        <span class="device-gen-body">
-         <b>${g.barcode}</b>
-         <small>${g.firstDate} – ${g.lastDate} · ${g.readings} ölçüm · ${g.totalPests} bulgu</small>
+         <b>${g.barcode ? esc(g.barcode) : '<span style="color:var(--muted);">barkod kayıtlı değil</span>'}</b>
+         <small>${esc(g.firstDate)} – ${esc(g.lastDate)} · ${esc(g.readings)} ölçüm · ${esc(g.totalPests)} bulgu</small>
        </span>
      </li>`).join('');
 
-  const swapRows = swaps.map(s =>
+  const swapRows = swaps.map((sw) =>
     `<li class="device-swap">
        <span class="device-swap-icon">⇄</span>
        <span class="device-gen-body">
-         <b>${s.date} — ${s.reason} (${s.reasonCode})</b>
-         <small>${s.oldBarcode} → ${s.newBarcode}${s.note ? ` · ${s.note}` : ''}</small>
+         <b>${esc(sw.date)} — ${esc(sw.reasonName)}</b>
+         <small>${esc(sw.oldBarcode) || '—'} → ${esc(sw.newBarcode)}${sw.notes ? ` · ${esc(sw.notes)}` : ''}</small>
        </span>
      </li>`).join('');
 
@@ -811,13 +838,12 @@ function renderDeviceTimeline(site, station, swaps, summary) {
 // The point's reading timeline, tagged by the device that was in place. A
 // divider marks each swap, making it obvious that the readings either side
 // belong to the same point.
-function renderPointHistory(site, station) {
+function renderPointHistory(station, readings) {
   const el = $('#detPointHistory');
   if (!el) return;
 
-  const readings = readingsForPoint(site.id, station.code);
   if (!readings.length) {
-    el.innerHTML = `<p class="device-timeline-empty">Bu nokta için geçmiş ölçüm kaydı bulunmuyor.</p>`;
+    el.innerHTML = '<p class="device-timeline-empty">Bu nokta için geçmiş ölçüm kaydı bulunmuyor.</p>';
     return;
   }
 
@@ -839,26 +865,26 @@ function renderPointHistory(site, station) {
 
   const shown = [...perGeneration.keys()]
     .sort((a, b) => b - a)
-    .flatMap(g => perGeneration.get(g));
+    .flatMap((g) => perGeneration.get(g));
 
   let lastGen = null;
-  const rows = shown.map(r => {
+  const rows = shown.map((r) => {
     let divider = '';
     if (lastGen !== null && r.generation !== lastGen) {
-      divider = `<li class="point-history-divider">⇄ cihaz değişimi — nokta ${station.code} aynı kaldı, ölçümler devam ediyor</li>`;
+      divider = `<li class="point-history-divider">⇄ cihaz değişimi — nokta ${esc(station.code)} aynı kaldı, ölçümler devam ediyor</li>`;
     }
     lastGen = r.generation;
     const cls = r.pestCount > 0 ? 'activity' : 'clean';
     return `${divider}
       <li class="point-history-row">
-        <span class="ph-date">${r.date}</span>
-        <span class="ph-gen" title="${r.barcode}">${r.generation}. cihaz</span>
-        <span class="ph-count ${cls}">${r.pestCount > 0 ? `${r.pestCount} adet ${r.pestName}` : 'Aktivite yok'}</span>
+        <span class="ph-date">${esc(r.date)}</span>
+        <span class="ph-gen" title="${esc(r.barcode)}">${esc(r.generation)}. cihaz</span>
+        <span class="ph-count ${cls}">${r.pestCount > 0 ? `${esc(r.pestCount)} adet ${esc(r.pestName)}` : 'Aktivite yok'}</span>
       </li>`;
   }).join('');
 
   el.innerHTML = `
-    <p class="overline device-section-title">NOKTA ÖLÇÜM GEÇMİŞİ <span class="ph-total">${shown.length} / ${readings.length} kayıt</span></p>
+    <p class="overline device-section-title">NOKTA ÖLÇÜM GEÇMİŞİ <span class="ph-total">${esc(shown.length)} / ${esc(readings.length)} kayıt</span></p>
     <ul class="point-history-list">${rows}</ul>`;
 }
 
@@ -900,66 +926,100 @@ export function renderPlacementForm(station) {
 
 // Mobile App Workflow
 
+// Chemical applications recorded at this facility.
+//
+// This used to read `site.chemicalsUsed` and resolve product names against
+// data/catalog.js. Neither survives contact with a real account: the array is
+// always empty (repo/sites.js), and the catalogue is a static list of brands
+// this company may not be licensed to apply. Applications are recorded against
+// a work order, so the facility's own record is a query over those rather than
+// a second copy that has to be kept in step.
 export function renderChemicalUsage(site) {
   const tbody = $('#compChemicalsTableBody');
   if (!tbody) return;
-  if (!site.chemicalsUsed) site.chemicalsUsed = [];
-  
-  const countLabel = $('#compChemicalsCount');
-  if (countLabel) countLabel.textContent = site.chemicalsUsed.length;
-  
-  tbody.innerHTML = site.chemicalsUsed.map((cu, index) => {
-    const chem = chemicalDatabase.find(c => c.id === cu.chemicalId);
-    const chemName = chem ? chem.name : 'Bilinmeyen Kimyasal';
-    const chemIngredient = chem ? chem.activeIngredient : '—';
-    const chemCategory = chem ? chem.category : '—';
-    const chemDosage = chem ? chem.dosagePerM2 : '—';
-    
-    return `
+
+  const paint = (rows) => {
+    const countLabel = $('#compChemicalsCount');
+    if (countLabel) countLabel.textContent = rows.length;
+    tbody.innerHTML = rows.map((cu) => `
       <tr>
-        <td><b>${chemName}</b><br><small class="text-muted">${chemIngredient}</small></td>
-        <td><span class="status-chip secondary" style="font-size:9px; font-weight:700;">${chemCategory}</span></td>
-        <td>${cu.quantity}</td>
-        <td>${cu.area}</td>
-        <td><small class="text-muted">${chemDosage}</small></td>
-        <td>${cu.tech}</td>
-        <td><small>${cu.date}</small></td>
+        <td><b>${esc(cu.name)}</b><br><small class="text-muted">${esc(cu.activeIngredient) || '—'}</small></td>
+        <td><code style="font-size:10px;">${esc(cu.licenseNo) || '—'}</code></td>
+        <td>${cu.quantity} ${esc(cu.unit)}</td>
+        <td>${esc(cu.area) || '—'}</td>
+        <td><small class="text-muted">${esc(cu.workOrderCode) || '—'}</small></td>
+        <td>${esc(cu.tech) || '—'}</td>
+        <td><small>${cu.at ? new Date(cu.at).toLocaleDateString('tr-TR', DAY_FMT) : '—'}</small></td>
       </tr>
-    `;
-  }).join('') || '<tr><td colspan="7" class="empty" style="text-align:center;">Henüz kimyasal kullanım kaydı bulunmuyor.</td></tr>';
+    `).join('') || '<tr><td colspan="7" class="empty" style="text-align:center;">Bu tesiste henüz kimyasal kullanım kaydı bulunmuyor.</td></tr>';
+  };
+
+  // A facility created in the browser has no database row yet, so there is
+  // nothing to ask for; painting the empty state is the honest answer.
+  if (!site.dbId) { paint([]); return; }
+
+  tbody.innerHTML = '<tr><td colspan="7" class="empty" style="text-align:center;">Yükleniyor…</td></tr>';
+  fetchUsageForSite(site.dbId)
+    .then(paint)
+    .catch((err) => {
+      console.error('[repellent] kimyasal kullanimlari yuklenemedi', err);
+      tbody.innerHTML = '<tr><td colspan="7" class="empty" style="text-align:center;">Kullanım kayıtları yüklenemedi.</td></tr>';
+    });
 }
 
-// Document library for every product in the catalog. Products actually used at
-// this facility are flagged, so an auditor can see the paperwork behind each
-// application record in the table above.
+// The org's licensed products, and whether this facility has seen them.
+//
+// What stood here was the heaviest fabrication in the app: a document library
+// listing twelve catalogue products, each with an invented "T.C. Sağlık Bak.
+// Ruhsat No", an invented file size and an invented date, under a heading
+// offering MSDS sheets and ministry permits. A "Görüntüle" button sat beside
+// every row with no handler behind it. This is a screen a BRCGS or IFS auditor
+// is shown, so inventing its contents is not a cosmetic problem.
+//
+// It now lists what the org actually registered, with the ruhsat number it
+// entered. MSDS upload does not exist yet, and a product without one says so
+// rather than displaying a reference that was never filed.
 export function renderChemicalDocLibrary(site) {
   const grid = $('#compChemDocsGrid');
   if (!grid) return;
 
-  const usedIds = new Set((site.chemicalsUsed || []).map(cu => cu.chemicalId));
+  const chemicals = state.chemicals || [];
+  const today = new Date();
 
-  grid.innerHTML = chemicalDatabase.map(chem => {
-    const docs = getChemicalDocuments(chem.id);
-    const used = usedIds.has(chem.id);
-    return `
+  const paint = (usedIds) => {
+    grid.innerHTML = chemicals.map((chem) => {
+      const used = usedIds.has(chem.id);
+      const expired = !!chem.licenseUntil && new Date(chem.licenseUntil) < today;
+      const until = chem.licenseUntil
+        ? new Date(chem.licenseUntil).toLocaleDateString('tr-TR', DAY_FMT)
+        : null;
+      return `
       <div class="chem-doc-card">
-        <h4>${chem.name} ${used ? '<span class="status-chip healthy" style="font-size:8px; font-weight:700;">BU TESİSTE KULLANILDI</span>' : ''}</h4>
-        <p class="chem-doc-sub">${chem.activeIngredient} · ${chem.concentration} · ${chem.category}</p>
-        ${docs.length ? docs.map(d => `
-          <div class="chem-doc-row">
-            <span>${d.icon}</span>
-            <span>
-              <b>${d.label}</b>
-              <span class="chem-doc-meta">${d.ref} · ${d.size} · ${d.date}</span>
-            </span>
-            <button type="button" class="text-btn chem-doc-btn" data-chem-doc="${chem.id}:${d.kind}">Görüntüle ↗</button>
-          </div>`).join('')
-        : '<div class="chem-doc-row"><span class="chem-doc-missing">⚠ Belge eksik — kullanım raporu üretilemez.</span></div>'}
+        <h4>${esc(chem.name)} ${used ? '<span class="status-chip healthy" style="font-size:8px; font-weight:700;">BU TESİSTE KULLANILDI</span>' : ''}</h4>
+        <p class="chem-doc-sub">${esc(chem.activeIngredient) || 'Etkin madde girilmemiş'}${chem.unit ? ' · ' + esc(chem.unit) : ''}</p>
+        <div class="chem-doc-row">
+          <span>📜</span>
+          <span>
+            <b>Biyosidal Ruhsat</b>
+            <span class="chem-doc-meta">${esc(chem.licenseNo) || 'Ruhsat no girilmemiş'}${until ? ' · geçerlilik ' + until : ''}</span>
+          </span>
+          ${expired ? '<span class="status-chip critical" style="font-size:8px;">SÜRESİ DOLDU</span>' : ''}
+        </div>
+        <div class="chem-doc-row">
+          <span class="chem-doc-missing">⚠ MSDS / güvenlik bilgi formu henüz yüklenmedi.</span>
+        </div>
       </div>`;
-  }).join('');
+    }).join('') ||
+      '<p class="text-muted" style="font-size:12px;">Henüz ruhsatlı ürün tanımlanmamış. Stok &amp; Envanter sayfasından ekleyin.</p>';
 
-  const count = $('#compChemDocsCount');
-  if (count) count.textContent = `${chemicalDatabase.length} ürün · ${chemicalDatabase.length * 3} belge`;
+    const count = $('#compChemDocsCount');
+    if (count) count.textContent = `${chemicals.length} ürün`;
+  };
+
+  if (!site.dbId) { paint(new Set()); return; }
+  fetchUsageForSite(site.dbId)
+    .then((rows) => paint(new Set(rows.map((r) => r.chemicalId))))
+    .catch(() => paint(new Set()));
 }
 
 export function renderServiceScope(site) {
@@ -1011,8 +1071,8 @@ export function renderServiceScope(site) {
         </div>
       </div>
       <div style="margin-top:10px; display:flex; gap:16px; font-size:11px; color:var(--muted); justify-content:center;">
-        <span><b>Vergi Dairesi:</b> ${c.taxOffice || '—'}</span>
-        <span><b>Vergi No:</b> ${c.taxNo || '—'}</span>
+        <span><b>Vergi Dairesi:</b> ${esc(c.taxOffice || '—')}</span>
+        <span><b>Vergi No:</b> ${esc(c.taxNo || '—')}</span>
       </div>
     `;
   }
@@ -1087,7 +1147,14 @@ function showPhotoPreview(photo) {
   const preview = $('#recPhotoPreview');
   if (!preview) return;
   preview.classList.remove('hidden');
-  preview.innerHTML = `<img src="${recPhotoSrc(photo)}" alt="önizleme"><span>Yüklenecek görsel</span>`;
+  preview.innerHTML = '';
+  const img = document.createElement('img');
+  img.alt = 'önizleme';
+  img.src = URL.createObjectURL(photo.blob);
+  img.addEventListener('load', () => URL.revokeObjectURL(img.src), { once: true });
+  const cap = document.createElement('span');
+  cap.textContent = 'Yüklenecek görsel';
+  preview.append(img, cap);
 }
 
 // The app's delegator listens for click and submit only, so the photo input
@@ -1097,13 +1164,16 @@ document.addEventListener('change', async (e) => {
   const file = e.target.files && e.target.files[0];
   if (!file) return;
   try {
+    // Downscaled before upload: a phone camera original is several megabytes
+    // and the bucket caps objects at 10 MB.
     const dataUrl = await readImageDownscaled(file);
-    pendingCustomerPhoto = { kind: 'upload', label: 'Aksiyon sonrası', dataUrl };
+    const blob = await (await fetch(dataUrl)).blob();
+    pendingCustomerPhoto = { blob, ext: (blob.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg') };
     showPhotoPreview(pendingCustomerPhoto);
-    toast('Fotoğraf yüklendi, göndermek için formu tamamlayın.');
+    toast('Fotoğraf hazır, göndermek için formu tamamlayın.');
   } catch (err) {
-    console.warn('photo read failed', err);
-    toast('Fotoğraf okunamadı. Simüle seçeneğini kullanabilirsiniz.');
+    console.error('[repellent] fotograf okunamadi', err);
+    toast('Fotoğraf okunamadı. Lütfen başka bir görsel deneyin.');
   }
 });
 
@@ -1115,18 +1185,6 @@ export function lifecycleClicks(e) {
     }
     if (e.target.id === 'btnCancelDeviceSwap') {
       $('#deviceReplacementForm')?.classList.add('hidden');
-      return true;
-    }
-
-    // Not every demo machine has a photo to hand — offer a simulated capture.
-    if (e.target.id === 'btnSimulateRecPhoto') {
-      pendingCustomerPhoto = {
-        kind: 'simulated',
-        label: 'Aksiyon sonrası',
-        ref: `${activeRecId || 'rec'}-after-${Date.now() % 1000}`
-      };
-      showPhotoPreview(pendingCustomerPhoto);
-      toast('Saha fotoğrafı simüle edildi.');
       return true;
     }
 
@@ -1151,105 +1209,97 @@ export function lifecycleClicks(e) {
 // Step 2 of the loop: the customer reports the action they took, with a photo
 // of the same area.
 export function recCustomerResponseSubmit(e) {
-    if (e.target.id === 'recCustomerForm') {
-      e.preventDefault();
-      const site = state.sites.find(s => s.id === ui.activeSiteId);
-      if (!site) return true;
+  if (e.target.id !== 'recCustomerForm') return false;
+  e.preventDefault();
 
-      const recId = e.target.dataset.recId;
-      const note = (new FormData(e.target).get('customerNote') || '').trim();
-      if (!note) {
-        toast('Alınan aksiyonu kısaca açıklayın.');
-        return true;
-      }
-      if (!pendingCustomerPhoto) {
-        toast('Aksiyon fotoğrafı yüklenmeli — dosya seçin veya simüle edin.');
-        return true;
-      }
+  const site = state.sites.find((s) => s.id === ui.activeSiteId);
+  if (!site) return true;
 
-      const overlay = lifecycleOverlay();
-      overlay[recId] = {
-        ...(overlay[recId] || {}),
-        stage: 'customer_actioned',
-        status: 'open',
-        photoAfter: pendingCustomerPhoto,
-        customerNote: note,
-        customerRespondedDate: new Date().toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' }),
-        // A fresh response clears any previous rejection.
-        rejectionNote: null
-      };
+  const recId = e.target.dataset.recId;
+  const note = String(new FormData(e.target).get('customerNote') || '').trim();
+  if (!note) {
+    toast('Alınan aksiyonu kısaca açıklayın.');
+    return true;
+  }
+  if (!pendingCustomerPhoto || !pendingCustomerPhoto.blob) {
+    toast('Aksiyon fotoğrafı yüklenmeli — cihazınızdan bir fotoğraf seçin.');
+    return true;
+  }
+
+  const orgId = state.currentUser?.orgId;
+  if (!orgId) {
+    toast('Kuruma bağlı bir hesapla giriş yapmalısınız.');
+    return true;
+  }
+
+  const button = e.target.querySelector('button[type="submit"]');
+  if (button) { button.disabled = true; button.textContent = 'Gönderiliyor…'; }
+  const photo = pendingCustomerPhoto;
+
+  uploadRecommendationPhoto({ orgId, siteId: site.id, recId, blob: photo.blob, ext: photo.ext })
+    .then((photoPath) => respondToRecommendation({ recId, note, photoPath }))
+    .then(() => loadRecommendations(true))
+    .then(() => {
       pendingCustomerPhoto = null;
-      save();
+      toast('Aksiyonunuz iletildi. Onay bekleniyor.');
+    })
+    .catch((err) => {
+      toast(err.message || 'Aksiyonunuz gönderilemedi. Lütfen tekrar deneyin.');
+    })
+    .finally(() => {
+      if (button) { button.disabled = false; button.textContent = 'Aksiyonu Gönder →'; }
+    });
 
-      renderCompanyRecommendations(site);
-      renderRecLoopDetail(site, recId);
-      toast('Aksiyonunuz iletildi. Teknisyen onayı bekleniyor.');
-      return true;
-    }
-  return false;
+  return true;
 }
 
-// Step 3: the technician who serves the point decides whether the completed
-// action is adequate. Approval is the only thing that closes the loop.
+// Step 3: the operator decides whether the completed action is adequate.
+// Approval is the only thing that closes the loop, and it is deliberately not
+// something the customer can do to their own finding.
 export function recApprovalSubmit(e) {
-    if (e.target.id === 'recApprovalForm') {
-      e.preventDefault();
-      const site = state.sites.find(s => s.id === ui.activeSiteId);
-      if (!site) return true;
+  if (e.target.id !== 'recApprovalForm') return false;
+  e.preventDefault();
 
-      const recId = e.target.dataset.recId;
-      const note = (new FormData(e.target).get('decisionNote') || '').trim();
-      // Which button submitted the form.
-      const decision = (e.submitter && e.submitter.value) || 'approve';
-      const who = state.currentUser ? state.currentUser.name : 'Teknisyen';
-      const today = new Date().toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' });
+  const site = state.sites.find((s) => s.id === ui.activeSiteId);
+  if (!site) return true;
 
-      const overlay = lifecycleOverlay();
+  const recId = e.target.dataset.recId;
+  const note = String(new FormData(e.target).get('decisionNote') || '').trim();
+  const decision = (e.submitter && e.submitter.value) || 'approve';
 
-      if (decision === 'reject') {
-        if (!note) {
-          toast('Reddetme gerekçesi yazılmalıdır.');
-          return true;
-        }
-        overlay[recId] = {
-          ...(overlay[recId] || {}),
-          stage: 'rejected',
-          status: 'open',
-          rejectionNote: note,
-          approvedBy: null,
-          approvedDate: null
-        };
-        toast('Aksiyon reddedildi. Müşteriden tekrar aksiyon istendi.');
-      } else {
-        overlay[recId] = {
-          ...(overlay[recId] || {}),
-          stage: 'approved',
-          status: 'resolved',
-          approvedBy: who,
-          approvedDate: today,
-          rejectionNote: null
-        };
-        toast('Aksiyon onaylandı — bulgu kapatıldı.');
-      }
+  if (decision === 'reject' && !note) {
+    toast('Reddetme gerekçesi yazılmalıdır.');
+    return true;
+  }
 
-      save();
-      renderCompanyRecommendations(site);
-      renderRecLoopDetail(site, recId);
-      return true;
-    }
-  return false;
+  const buttons = [...e.target.querySelectorAll('button[type="submit"]')];
+  buttons.forEach((b) => { b.disabled = true; });
+
+  const action = decision === 'reject'
+    ? rejectRecommendation({ recId, note })
+    : approveRecommendation({ recId, approverId: state.currentUser?.id });
+
+  action
+    .then(() => loadRecommendations(true))
+    .then(() => {
+      toast(decision === 'reject'
+        ? 'Aksiyon reddedildi. Müşteriden tekrar aksiyon istendi.'
+        : 'Aksiyon onaylandı — bulgu kapatıldı.');
+    })
+    .catch((err) => {
+      toast(err.message || 'İşlem tamamlanamadı.');
+    })
+    .finally(() => {
+      buttons.forEach((b) => { b.disabled = false; });
+    });
+
+  return true;
 }
 
 export function planCanvasClicks(e) {
     const marker = e.target.closest('[data-station-code]');
     if (marker) {
-      const stationCode = marker.dataset.stationCode;
-      const isMobile = e.target.closest('#mobileBlueprintWrapper');
-      if (isMobile) {
-        showMobileInspect(stationCode);
-      } else {
-        showStationDetail(stationCode);
-      }
+      showStationDetail(marker.dataset.stationCode);
     }
     
     // Station filters click in facility plan
@@ -1319,53 +1369,101 @@ export function fileDownloadClicks(e) {
   return false;
 }
 
+// Facility and contract details.
+//
+// This wrote every field to browser state and called save(), so a corrected
+// price or phone number survived only in the browser it was typed in. The
+// contract prices matter most: billing.js refuses to invoice a site whose
+// contract has no monthly price, and until now that price could only be set
+// while creating the site — an existing facility's fee could not be corrected
+// from the app at all.
 export function editSiteSubmit(e) {
-    if(e.target.id==='editSiteForm'){
-      e.preventDefault();
-      const siteId = e.target.dataset.siteId;
-      const s = state.sites.find(site => site.id === siteId);
-      if(!s) return true;
-      
-      const f = new FormData(e.target);
-      s.contact = {
-        name: f.get('contactName'),
-        phone: f.get('contactPhone'),
-        email: f.get('contactEmail')
+  if (e.target.id !== 'editSiteForm') return false;
+  e.preventDefault();
+
+  const siteId = e.target.dataset.siteId;
+  const site = state.sites.find((x) => x.id === siteId);
+  if (!site) return true;
+
+  const f = new FormData(e.target);
+  const orgId = state.currentUser?.orgId;
+  if (!orgId) { toast('Kuruma bağlı bir hesapla giriş yapmalısınız.'); return true; }
+
+  const periodText = String(f.get('contractPeriod') || '');
+  const period = parseContractPeriod(periodText);
+  if (!period) {
+    toast('Sözleşme dönemini GG.AA.YYYY - GG.AA.YYYY biçiminde girin.');
+    return true;
+  }
+
+  const num = (key) => {
+    const v = parseFloat(f.get(key));
+    return Number.isFinite(v) ? v : null;
+  };
+
+  // Built before the write so the same object is stored and installed; two
+  // constructions of it would be one edit away from disagreeing.
+  const serviceScope = {
+    outdoorRodent: { frequency: parseFloat(f.get('freqOutdoorRodent')) || 0, unit: 'ay' },
+    indoorRodent: { frequency: parseFloat(f.get('freqIndoorRodent')) || 0, unit: 'ay' },
+    crawlingPest: { frequency: parseFloat(f.get('freqCrawlingPest')) || 0, unit: 'ay' },
+    flyingPest: { frequency: parseFloat(f.get('freqFlyingPest')) || 0, unit: 'ay' },
+    storagePest: { frequency: parseFloat(f.get('freqStoragePest')) || 0, unit: 'ay' }
+  };
+
+  const button = e.target.querySelector('button[type="submit"]');
+  if (button) button.disabled = true;
+
+  Promise.all([
+    updateSite({
+      siteId,
+      customerId: site.customerId,
+      serviceScope,
+      address: String(f.get('address') || '').trim(),
+      contactName: String(f.get('contactName') || '').trim(),
+      contactPhone: String(f.get('contactPhone') || '').trim(),
+      contactEmail: String(f.get('contactEmail') || '').trim()
+    }),
+    saveContract({
+      // An existing period is edited; a site with no contract yet opens one.
+      id: site.contract?.id,
+      orgId,
+      siteId,
+      periodStart: period[0],
+      periodEnd: period[1],
+      monthlyPrice: num('monthlyPrice'),
+      annualPrice: num('annualPrice'),
+      extraVisitPrice: num('extraVisitPrice'),
+      emergencyCallPrice: num('emergencyCallPrice'),
+      taxOffice: String(f.get('taxOffice') || '').trim(),
+      taxNo: String(f.get('taxNo') || '').trim()
+    })
+  ])
+    .then(([, contract]) => {
+      // The stored contract is installed on the site so billing.js sees the new
+      // price immediately, rather than the figure that was just typed in.
+      site.contract = contract;
+      site.address = String(f.get('address') || '').trim();
+      site.contact = {
+        name: String(f.get('contactName') || '').trim(),
+        phone: String(f.get('contactPhone') || '').trim(),
+        email: String(f.get('contactEmail') || '').trim()
       };
-      s.address = f.get('address');
-      s.serviceFrequency = f.get('serviceFrequency');
-      
-      const annualPrice = parseFloat(f.get('annualPrice')) || 0;
-      const monthlyPrice = parseFloat(f.get('monthlyPrice')) || 0;
-      const extraVisitPrice = parseFloat(f.get('extraVisitPrice')) || 0;
-      const emergencyCallPrice = parseFloat(f.get('emergencyCallPrice')) || 0;
-      
-      s.contract = {
-        period: f.get('contractPeriod'),
-        taxOffice: f.get('taxOffice'),
-        taxNo: f.get('taxNo'),
-        annualPrice: annualPrice,
-        monthlyPrice: monthlyPrice,
-        extraVisitPrice: extraVisitPrice,
-        emergencyCallPrice: emergencyCallPrice
-      };
-      
-      s.serviceScope = {
-        outdoorRodent: { frequency: parseFloat(f.get('freqOutdoorRodent')) || 0, unit: 'ay' },
-        indoorRodent: { frequency: parseFloat(f.get('freqIndoorRodent')) || 0, unit: 'ay' },
-        crawlingPest: { frequency: parseFloat(f.get('freqCrawlingPest')) || 0, unit: 'ay' },
-        flyingPest: { frequency: parseFloat(f.get('freqFlyingPest')) || 0, unit: 'ay' },
-        storagePest: { frequency: parseFloat(f.get('freqStoragePest')) || 0, unit: 'ay' }
-      };
-      
+      site.serviceScope = serviceScope;
+      // The prose cadence ("15 Günde Bir") is a label with no column; the plan
+      // is computed from serviceScope above, so this is display only.
+      site.serviceFrequency = f.get('serviceFrequency');
       save();
+
       $('#modal').classList.add('hidden');
-      
-      showCompanyDetail(s.id);
+      showCompanyDetail(site.id);
       renderSites();
-      toast('Tesis ve sözleşme detayları başarıyla güncellendi.');
-    }
-  return false;
+      toast('Tesis ve sözleşme bilgileri kaydedildi.');
+    })
+    .catch((err) => toast(err.message || 'Kaydedilemedi.'))
+    .finally(() => { if (button) button.disabled = false; });
+
+  return true;
 }
 
 // Records a device swap: the point keeps its code and its whole reading
@@ -1375,52 +1473,44 @@ export function deviceReplacementSubmit(e) {
       e.preventDefault();
       if (!ui.activeSiteId || !ui.activeStationCode) return true;
 
-      const site = state.sites.find(s => s.id === ui.activeSiteId);
+      const site = state.sites.find((x) => x.id === ui.activeSiteId);
       if (!site) return true;
-      const s = site.stations.find(st => st.code === ui.activeStationCode);
-      if (!s) return true;
+      const station = (site.stations || []).find((st) => st.code === ui.activeStationCode);
+      if (!station) return true;
+      if (!station.dbId) { toast('Bu nokta henüz kaydedilmedi.'); return true; }
 
       const f = new FormData(e.target);
-      const reasonCode = f.get('reasonCode');
-      const newBarcode = (f.get('newBarcode') || '').trim();
-      const note = (f.get('note') || '').trim();
-      if (!newBarcode) {
-        toast('Yeni barkod girilmelidir.');
-        return true;
-      }
+      const reason = String(f.get('reasonCode') || '');
+      const newBarcode = String(f.get('newBarcode') || '').trim();
+      const notes = String(f.get('note') || '').trim();
+      if (!newBarcode) { toast('Yeni barkod girilmelidir.'); return true; }
 
-      const before = pointDevices(site, s);
-      const readingsKept = readingsForPoint(site.id, s.code).length;
+      const button = e.target.querySelector('button[type="submit"]');
+      if (button) button.disabled = true;
 
-      if (!s.deviceLog) s.deviceLog = [];
-      s.deviceLog.push({
-        date: new Date().toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' }),
-        reasonCode,
-        reason: (replacementReasons[reasonCode] || {}).name || reasonCode,
-        oldBarcode: before.current,
-        newBarcode,
-        generation: before.generation + 1,
-        note,
-        recordedBy: state.currentUser ? state.currentUser.name : 'Operatör',
-        source: 'runtime'
-      });
+      // The replacement row and the barcode on the station are written together
+      // by replace_station_device(); a record whose station still carries the
+      // old barcode would misreport what is physically at the point.
+      replaceStationDevice({ stationId: station.dbId, reason, newBarcode, notes })
+        .then(() => {
+          station.deviceBarcode = newBarcode;
+          // A replaced device is back in service: clear the lost/broken status
+          // so the point does not keep reporting a fault it no longer has.
+          if (station.status === 'damaged' || station.status === 'missing') {
+            station.status = 'clean';
+            station.checked = true;
+          }
+          recalculateSiteStats(site);
+          e.target.reset();
+          e.target.classList.add('hidden');
+          renderCompanyStationsTable(site);
+          renderStationMarkers(site.stations, $$('[data-station-filter].active')[0]?.dataset.stationFilter || 'all');
+          toast(`${station.code} noktasına yeni cihaz tanımlandı (${newBarcode}). Geçmiş ölçümler bu noktada kaldı.`);
+          return renderDeviceBlock(site, station);
+        })
+        .catch((err) => toast(err.message || 'Cihaz değişimi kaydedilemedi.'))
+        .finally(() => { if (button) button.disabled = false; });
 
-      // A replaced device is back in service: clear the lost/broken status so
-      // the point does not keep reporting a fault it no longer has.
-      if (s.status === 'damaged' || s.status === 'missing') {
-        s.status = 'clean';
-        s.checked = true;
-      }
-
-      recalculateSiteStats(site);
-      save();
-
-      renderDeviceBlock(site, s);
-      renderCompanyStationsTable(site);
-      renderStationMarkers(site.stations, $$('[data-station-filter].active')[0]?.dataset.stationFilter || 'all');
-      e.target.classList.add('hidden');
-
-      toast(`${s.code} noktasına yeni cihaz tanımlandı (${newBarcode}). ${readingsKept} geçmiş ölçüm korundu.`);
       return true;
     }
   return false;
@@ -1454,59 +1544,94 @@ export function placementSubmit(e) {
   return false;
 }
 
+// Office-entered station inspection.
+//
+// This wrote the reading onto the browser's copy of the station and stamped it
+// `controlledBy: "Seda Kaya (Yönetici)"` — a person who does not work at any
+// customer's company. Nothing reached the database, so the reading never
+// appeared in a visit report, a point's history or an audit trail.
+//
+// An inspection belongs to a visit: `inspections.work_order_id` is NOT NULL,
+// and that is the right constraint rather than an obstacle — a station reading
+// with no visit behind it cannot be placed in time or attributed to anyone. So
+// the form asks which visit, and says so when the site has none open.
 export function adminInspectionSubmit(e) {
-    if (e.target.id === 'adminInspectionForm') {
-      e.preventDefault();
-      if (!ui.activeSiteId || !ui.activeStationCode) return true;
-      
-      const site = state.sites.find(s => s.id === ui.activeSiteId);
-      if (!site) return true;
-      const s = site.stations.find(st => st.code === ui.activeStationCode);
-      if (!s) return true;
-      
-      const f = new FormData(e.target);
-      s.checked = true;
-      s.baitStatus = f.get('baitStatus');
-      s.pestType = f.get('pestType');
-      s.pestCount = parseInt(f.get('pestCount')) || 0;
-      s.status = f.get('status');
-      s.notes = f.get('notes');
-      
-      const localPestLabels = { none: 'Yok', mouse: 'Fare', rat: 'Sıçan', cockroach: 'Hamamböceği', fly: 'Sinek', other: 'Diğer' };
-      Object.values(pestDatabase).forEach(category => {
-        category.forEach(p => {
-          localPestLabels[p.code] = p.name;
-        });
-      });
-      
-      if (s.pestType !== 'none' && s.pestCount > 0) {
-        const pestName = localPestLabels[s.pestType] || s.pestType;
-        s.findings = [{
-          pestCode: s.pestType,
-          pestName: pestName,
-          count: s.pestCount
-        }];
-      } else {
-        s.findings = [];
-      }
-      
-      s.controlledBy = "Seda Kaya (Yönetici)";
-      s.lastControl = "Bugün, " + new Date().toLocaleTimeString('tr-TR', {hour: '2-digit', minute:'2-digit'});
-      
-      if (s.pestType !== 'none') {
-        s.status = 'activity';
-      } else if (s.status === 'activity') {
-        s.status = 'clean';
-      }
-      
-      recalculateSiteStats(site);
-      save();
-      showCompanyDetail(ui.activeSiteId);
-      toast(`İstasyon ${s.code} denetimi başarıyla kaydedildi.`);
-    }
+  if (e.target.id !== 'adminInspectionForm') return false;
+  e.preventDefault();
+  if (!ui.activeSiteId || !ui.activeStationCode) return true;
 
-    // Company profile file upload form submit
-  return false;
+  const site = state.sites.find((x) => x.id === ui.activeSiteId);
+  if (!site) return true;
+  const station = (site.stations || []).find((st) => st.code === ui.activeStationCode);
+  if (!station) return true;
+
+  const f = new FormData(e.target);
+  const workOrderId = String(f.get('workOrderId') || '');
+  const orgId = state.currentUser?.orgId;
+  if (!workOrderId) { toast('Denetimin bağlanacağı iş emrini seçin.'); return true; }
+  if (!orgId) { toast('Kuruma bağlı bir hesapla giriş yapmalısınız.'); return true; }
+
+  const pestType = String(f.get('pestType') || 'none');
+  const status = String(f.get('status') || 'clean');
+  const button = e.target.querySelector('button[type="submit"]');
+  if (button) button.disabled = true;
+
+  recordInspection({
+    orgId,
+    workOrderId,
+    stationId: station.dbId || null,
+    stationCode: station.code,
+    // A recorded pest is activity, whatever the status dropdown says; letting
+    // the two disagree is how a site's score drifts away from its readings.
+    status: pestType !== 'none' ? 'activity' : status,
+    baitStatus: String(f.get('baitStatus') || 'intact'),
+    pestType,
+    activityCount: parseInt(f.get('pestCount'), 10) || 0,
+    notes: String(f.get('notes') || '').trim(),
+    createdBy: state.currentUser?.id || null
+  })
+    .then(() => {
+      e.target.reset();
+      toast(`İstasyon ${station.code} denetimi kaydedildi.`);
+      // Re-read rather than patch the local copy: the station's status is
+      // recomputed from its readings, and guessing at it here is what let the
+      // browser and the database disagree in the first place.
+      return refreshSiteStations(site.id);
+    })
+    .catch((err) => toast(err.message || 'Denetim kaydedilemedi.'))
+    .finally(() => { if (button) button.disabled = false; });
+
+  return true;
+}
+
+/**
+ * The visits this station's reading can be attached to.
+ *
+ * Only work orders for this facility that are not yet closed: a completed visit
+ * is a finished record and a reading added to it afterwards would change what
+ * the customer was already shown.
+ */
+export function renderInspectionWorkOrders(site) {
+  const select = $('#inpInspectionWorkOrder');
+  if (!select) return;
+  const open = (state.work || []).filter(
+    (w) => w.siteId === site.id && w.status !== 'completed' && w.status !== 'cancelled' && w.dbId
+  );
+  select.innerHTML = open.length
+    ? open.map((w) => `<option value="${esc(w.dbId)}">${esc(w.id)} · ${esc(w.tech || 'atanmamış')}</option>`).join('')
+    : '<option value="">Bu tesis için açık iş emri yok</option>';
+  select.disabled = !open.length;
+}
+
+/** Re-read one facility's stations after a write. */
+async function refreshSiteStations(siteId) {
+  try {
+    const sites = await fetchSites();
+    replaceSites(sites);
+  } catch (err) {
+    console.error('[repellent] sahalar yenilenemedi', err);
+  }
+  showCompanyDetail(siteId);
 }
 
 export function fileUploadSubmit(e) {
@@ -1599,52 +1724,14 @@ export function recommendationSubmit(e) {
   return false;
 }
 
-export function chemicalUsageSubmit(e) {
-    if (e.target.id === 'companyChemicalForm') {
-      e.preventDefault();
-      if (!ui.activeSiteId) return true;
-      const site = state.sites.find(s => s.id === ui.activeSiteId);
-      if (!site) return true;
-      
-      const inpChemSelect = $('#inpChemicalSelect');
-      const inpChemQty = $('#inpChemicalQty');
-      const inpChemArea = $('#inpChemicalArea');
-      const inpChemNotes = $('#inpChemicalNotes');
-      if (!inpChemSelect || !inpChemQty || !inpChemArea || !inpChemNotes) return true;
-      
-      const chemicalId = inpChemSelect.value;
-      const quantity = inpChemQty.value.trim();
-      const area = inpChemArea.value.trim();
-      const notes = inpChemNotes.value.trim();
-      
-      if (!chemicalId || !quantity || !area) return true;
-      
-      const dateStr = new Date().toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' });
-      const newChemUse = {
-        id: `cu${Date.now()}`,
-        chemicalId: chemicalId,
-        date: dateStr,
-        quantity: quantity,
-        area: area,
-        tech: state.currentUser ? state.currentUser.name : "Operatör",
-        notes: notes
-      };
-      
-      if (!site.chemicalsUsed) site.chemicalsUsed = [];
-      site.chemicalsUsed.unshift(newChemUse);
-      
-      // Auto-deduct stock from inventory
-      deductStock(chemicalId, quantity);
-      
-      save();
-      renderChemicalUsage(site);
-      
-      inpChemSelect.value = '';
-      inpChemQty.value = '';
-      inpChemArea.value = '';
-      inpChemNotes.value = '';
-    }
-
-    // Stock Refill Form submit
-  return false;
-}
+// chemicalUsageSubmit() used to live here. The facility page carried a form
+// that recorded an application against the *site* and deducted seeded stock in
+// the browser, backed by a hardcoded twelve-product picker in index.html. An
+// application belongs to a visit — chemical_usages is what the customer report
+// prints and what the stock ledger is written from, and both need the work
+// order it happened on — so the form was left refusing every submission with a
+// pointer to the work order flow.
+//
+// A form that looks usable and always refuses is worse than no form, so the
+// markup and this handler are both gone; the panel now just says where the
+// entry is made.
