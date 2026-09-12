@@ -240,4 +240,8 @@ export const initial = {
 };
 
 export const techData={"Ayşe Demir":['AD','Müşteride','Gebze Üretim Tesisi','İlk QR 10:11','2 dk önce','#efe5d8'],"Mert Kaya":['MK','Yolda','Hadımköy Dağıtım Merkezi','Son QR 09:42','4 dk önce','#dce9f7'],"Ece Yılmaz":['EY','Müşteride','Taksim Otel','İlk QR 09:36','1 dk önce','#e8dff4'],"Can Öztürk":['CÖ','Rotada','Levent Merkez Mağaza','Son QR 08:58','6 dk önce','#f1e4d5']};
-export const techSites = {"Ayşe Demir":"s1","Mert Kaya":"s2","Ece Yılmaz":"s6","Can Öztürk":"s4"};
+// techSites used to live here: four demo technician names mapped to four
+// seeded site ids, used by the Ekip page's "Tesis planını görüntüle" button
+// with a hardcoded 's1' fallback for every technician not in the map — which
+// was every real one. The button now reads the real site off the technician's
+// actual first stop for the day (team.js's todaysStopsFor()).

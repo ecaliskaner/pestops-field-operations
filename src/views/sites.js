@@ -7,6 +7,29 @@ import { toast } from '../core/dom.js';
 import { modal } from '../ui/modal.js';
 import { createSite } from '../data/repo/sites.js';
 
+// City / sector filters. The "⚙ Filtreler" button used to pop a toast that
+// claimed "Şehir, Sektör ve Risk seviyesi filtreleri uygulandı" while applying
+// none of them — a fabricated success message for an action that never
+// happened. Held here rather than in `state` because it is view-only UI
+// state; nothing about it belongs in the saved/synced session.
+let cityFilter = 'all';
+let sectorFilter = 'all';
+
+export function setSiteFilters({ city, sector }) {
+  if (city !== undefined) cityFilter = city;
+  if (sector !== undefined) sectorFilter = sector;
+  renderSites();
+}
+
+export function clearSiteFilters() {
+  cityFilter = 'all';
+  sectorFilter = 'all';
+  renderSites();
+}
+
+export const activeSiteFilters = () => ({ city: cityFilter, sector: sectorFilter });
+export const hasActiveSiteFilters = () => cityFilter !== 'all' || sectorFilter !== 'all';
+
 export function renderSites(){
   const query=$('#siteSearch')?.value.toLocaleLowerCase('tr')||'';
   const filter=$('[data-site-filter].active')?.dataset.siteFilter||'all';
@@ -17,6 +40,9 @@ export function renderSites(){
   // list); admin/technician see the whole portfolio. Everything below — counts,
   // search and filters — works off this scoped set.
   const scope = visibleSites();
+
+  const filterBtn = $('[data-action="filters"]');
+  if (filterBtn) filterBtn.classList.toggle('active', hasActiveSiteFilters());
 
   // Calculate dynamic filter counts
   const totalCount = scope.length;
@@ -34,7 +60,12 @@ export function renderSites(){
   const healthyBtn = $('[data-site-filter="healthy"] b');
   if (healthyBtn) healthyBtn.textContent = healthyCount;
   
-  const sites=scope.filter(s=>(filter==='all'||s.state===filter)&&(`${s.company} ${s.name}`.toLocaleLowerCase('tr').includes(query)));
+  const sites=scope.filter(s=>
+    (filter==='all'||s.state===filter) &&
+    (cityFilter==='all'||s.city===cityFilter) &&
+    (sectorFilter==='all'||s.sector===sectorFilter) &&
+    (`${s.company} ${s.name}`.toLocaleLowerCase('tr').includes(query))
+  );
   
   $('#siteTable').innerHTML=sites.map(s=>`
     <tr>

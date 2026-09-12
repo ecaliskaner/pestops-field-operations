@@ -9,11 +9,10 @@ import { save, state } from './core/state.js';
 import { signIn, signOut, restoreSession, watchSession } from './core/auth.js';
 import { ui } from './core/session.js';
 import { checkSession } from './core/roles.js';
-import { techSites } from './data/seed.js';
 import { render, setView } from './core/router.js';
-import { modal } from './ui/modal.js';
+import { modal, registerSiteFilters } from './ui/modal.js';
 import { dashboardRangeClicks } from './views/dashboard.js';
-import { renderSites } from './views/sites.js';
+import { renderSites, activeSiteFilters, setSiteFilters, clearSiteFilters } from './views/sites.js';
 import { renderInsights } from './views/insights.js';
 import {
   workListClicks, workCardClicks, completeWorkClicks, calendarToggleClicks,
@@ -77,15 +76,33 @@ export function shellClicks(e) {
         return true;
       }
       if (action === 'workspace') {
-        toast("Aktif Çalışma Alanı: Apex Operations (12 Müşteri, 34 Tesis)");
+        // This used to pop a hardcoded "Apex Operations (12 Müşteri, 34 Tesis)"
+        // toast regardless of who was actually signed in — a fabricated demo
+        // company name surviving in front of a real one. There is no second
+        // workspace to switch to (this app is single-org per account), so the
+        // chevron cannot do more than confirm which one is active; it now says
+        // so with the real org's own data instead of inventing different data.
+        const org = state.currentUser?.orgName || state.currentUser?.company || '—';
+        const customerCount = new Set(state.sites.map((s) => s.company).filter(Boolean)).size;
+        toast(`Aktif çalışma alanı: ${org} (${customerCount} müşteri, ${state.sites.length} tesis)`);
         return true;
       }
       if (action === 'portfolio') {
-        toast("Sistem genelinde ortalama tesis güvenlik skoru: %87 (İyi)");
+        // Same fabrication: a fixed "%87 (İyi)" no matter what the portfolio
+        // actually looked like. The donut right below this button already
+        // computes the real distribution; this reads the same numbers.
+        const scored = state.sites.filter((s) => Number.isFinite(s.score));
+        if (!scored.length) {
+          toast('Portföyde henüz skorlanmış tesis yok.');
+        } else {
+          const avg = Math.round(scored.reduce((s, x) => s + x.score, 0) / scored.length);
+          const label = avg >= 85 ? 'İyi' : avg >= 70 ? 'İzlenmeli' : 'Riskli';
+          toast(`Sistem genelinde ortalama tesis güvenlik skoru: %${avg} (${label})`);
+        }
         return true;
       }
       if (action === 'filters') {
-        toast("Gelişmiş filtreleme seçenekleri: Şehir, Sektör ve Risk seviyesi filtreleri uygulandı.");
+        modal('siteFilters');
         return true;
       }
       if (action === 'sort') {
@@ -102,15 +119,17 @@ export function shellClicks(e) {
         toast(`İş emirleri öncelik sırasına göre ${state.workSortAsc ? 'artan' : 'azalan'} sıralandı.`);
         return true;
       }
-      if (action === 'route') {
-        toast("Yapay zeka rota optimizasyon algoritması çalıştırılıyor...");
-        setTimeout(() => {
-          toast("Saha teknisyenleri için en verimli 4 rota optimize edildi ve güncellendi!");
-        }, 1200);
-        return true;
-      }
+      // action === 'route' used to live here: a fake two-stage toast claiming an
+      // "AI route optimization algorithm" ran and updated four routes, computing
+      // nothing. No markup anywhere triggers it any more — the real nearest-
+      // neighbour optimizer lives on the Ekip page's own "Rotayı optimize et"
+      // button (team.js, wired to the org's actual today's stops).
       if (action === 'facilityMap') {
-        const siteId = techSites[state.selectedTech] || 's1';
+        // The site comes from the button itself now — see team.js's
+        // renderTechDetail() for why techSites (four demo names mapped to four
+        // seeded site ids, 's1' as the fallback for everyone else) is gone.
+        const siteId = actionEl.dataset.siteId;
+        if (!siteId) { toast('Bugün için planlı ziyaret olmadığından tesis planı yok.'); return true; }
         showCompanyDetail(siteId);
         // Switch to map tab
         setTimeout(() => {
@@ -314,6 +333,11 @@ function bind() {
 
 // Inline onclick handlers in generated markup need global scope.
 Object.assign(window, { showStationDetail, switchCompanyTab });
+
+// Lets the siteFilters modal branch (ui/modal.js) prefill and apply real
+// city/sector filters without modal.js importing views/sites.js, which
+// already imports `modal` from there — a reverse import would be circular.
+registerSiteFilters({ get: activeSiteFilters, apply: setSiteFilters, clear: clearSiteFilters });
 
 bind();
 
