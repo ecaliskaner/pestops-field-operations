@@ -774,6 +774,83 @@ begin
 end $$;
 
 
+-- ============== UCRET, BELGE VE HIZMET KAPSAMI YAZIMI ==================
+--
+-- Ucu de okunabiliyordu ama yazma yolu yoktu. Ucret ozellikle onemli: ucreti
+-- tanimsiz teknisyen isgucu maliyetine dahil edilmiyor, cunku uydurma ucret
+-- uydurma marj uretir. Bu yuzden ucreti girebilmek finans sayfasinin eksik
+-- yarisidir.
+
+do $$
+declare
+  tech_b1 uuid := '00000000-0000-0000-0000-0000000000b1';
+  site_a  uuid := '00000000-0000-0000-0000-000000000551';
+  cred_id uuid;
+begin
+  perform t_admin_reset();
+
+  -- Cost data is admin-only: a technician must not see or set their own rate.
+  perform t_login('00000000-0000-0000-0000-0000000000e2');
+  perform t_ok((select count(*) from technician_rates) = 0,
+    'Teknisyen ucret tablosunu goremiyor');
+  perform t_denied(
+    format($q$insert into technician_rates (technician_id, org_id, hourly_rate)
+              values (%L, '00000000-0000-0000-0000-0000000000a1', 999)$q$, tech_b1),
+    'Teknisyen kendi ucretini belirleyemiyor');
+
+  perform t_login('00000000-0000-0000-0000-0000000000e4');
+  perform t_denied(
+    format($q$insert into technician_rates (technician_id, org_id, hourly_rate)
+              values (%L, '00000000-0000-0000-0000-0000000000a1', 999)$q$, tech_b1),
+    'Musteri ucret belirleyemiyor');
+
+  -- The admin sets it; the table holds the current rate, so this is an upsert.
+  perform t_login('00000000-0000-0000-0000-0000000000e1');
+  insert into technician_rates (technician_id, org_id, hourly_rate)
+  values (tech_b1, '00000000-0000-0000-0000-0000000000a1', 200)
+  on conflict (technician_id) do update set hourly_rate = excluded.hourly_rate;
+  perform t_admin_reset();
+  perform t_ok((select hourly_rate from technician_rates where technician_id = tech_b1) = 200,
+    'Yonetici saatlik ucreti guncelleyebiliyor (180 -> 200)');
+
+  -- Compliance documents: admin writes, staff reads, customer reads only for a
+  -- technician who actually served them.
+  perform t_login('00000000-0000-0000-0000-0000000000e2');
+  perform t_denied(
+    format($q$insert into technician_credentials (org_id, technician_id, kind, title)
+              values ('00000000-0000-0000-0000-0000000000a1', %L, 'permit', 'Kendi belgem')$q$, tech_b1),
+    'Teknisyen kendine belge tanimlayamiyor');
+
+  perform t_login('00000000-0000-0000-0000-0000000000e1');
+  insert into technician_credentials (org_id, technician_id, kind, title, reference_no, valid_until)
+  values ('00000000-0000-0000-0000-0000000000a1', tech_b1, 'safety_cert',
+          'Is Guvenligi Sertifikasi', 'ENH-TEST-01', '2027-01-01')
+  returning id into cred_id;
+  perform t_admin_reset();
+  perform t_ok(exists (select 1 from technician_credentials where id = cred_id),
+    'Yonetici teknisyen belgesi kaydedebiliyor');
+
+  perform t_login('00000000-0000-0000-0000-0000000000e2');
+  perform t_ok((select count(*) from technician_credentials where id = cred_id) = 1,
+    'Personel belgeyi gorebiliyor');
+
+  -- Service scope lives on the site row and drives the visit plan; it was
+  -- written on create but never on edit.
+  perform t_login('00000000-0000-0000-0000-0000000000e2');
+  perform t_no_effect(
+    format($q$update sites set service_scope = '{"indoorRodent":{"frequency":99}}'::jsonb where id = %L$q$, site_a),
+    'Teknisyen hizmet kapsamini degistiremiyor');
+
+  perform t_login('00000000-0000-0000-0000-0000000000e1');
+  update sites set service_scope = '{"indoorRodent":{"frequency":4,"unit":"ay"}}'::jsonb where id = site_a;
+  perform t_admin_reset();
+  perform t_ok((select service_scope->'indoorRodent'->>'frequency' from sites where id = site_a) = '4',
+    'Yonetici hizmet kapsamini kaydedebiliyor');
+
+  perform t_admin_reset();
+end $$;
+
+
 do $$ begin perform t_admin_reset(); end $$;
 
 rollback;

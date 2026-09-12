@@ -202,14 +202,22 @@ export async function createSite(input) {
  * to the site, the contact to the customer.
  *
  * @param {{siteId: string, customerId?: string, address?: string,
- *   contactName?: string, contactPhone?: string, contactEmail?: string}} input
+ *   serviceScope?: object, contactName?: string, contactPhone?: string,
+ *   contactEmail?: string}} input
  * @returns {Promise<void>}
  */
 export async function updateSite(input) {
   const siteRows = await run(
     supabase
       .from('sites')
-      .update({ address: input.address || null })
+      .update({
+        address: input.address || null,
+        // The contracted visit frequencies. `sites.service_scope` is a jsonb
+        // column that has existed since the core schema and was written on
+        // create but never on edit, so a corrected frequency lived only in the
+        // browser that typed it — while data/schedule.js plans visits from it.
+        ...(input.serviceScope ? { service_scope: input.serviceScope } : {})
+      })
       .eq('id', input.siteId)
       .select('id')
   );

@@ -205,6 +205,57 @@
           <article class="panel cred-panel">
             <div class="panel-header"><div><p class="overline">TEKNİSYEN BELGELERİ</p><h2>Yetkinlik & uygunluk kartları</h2></div><span class="status-chip healthy">KVKK uyumlu</span></div>
             <div id="techCredentials" class="tech-credentials"></div>
+
+            <form class="form-grid" id="techCredentialForm" style="margin-top:14px; border-top:1px solid var(--line); padding-top:12px;">
+              <p class="overline" style="margin:0;">BELGE EKLE</p>
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                <label class="form-label">
+                  Belge Türü
+                  <select name="kind" class="form-select">
+                    <option value="sgk">SGK Kaydı</option>
+                    <option value="safety_cert">İş Güvenliği Sertifikası</option>
+                    <option value="permit">Uygulama İzin Belgesi</option>
+                    <option value="health_report">Sağlık Raporu (Portör)</option>
+                  </select>
+                </label>
+                <label class="form-label">
+                  Geçerlilik Bitişi
+                  <input type="date" name="validUntil" class="form-input">
+                </label>
+              </div>
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                <label class="form-label">
+                  Belge Başlığı
+                  <input required type="text" name="title" class="form-input" placeholder="Örn: İş Güvenliği Sertifikası">
+                </label>
+                <label class="form-label">
+                  Belge No
+                  <input type="text" name="referenceNo" class="form-input" placeholder="İsteğe bağlı">
+                </label>
+              </div>
+              <label class="form-label">
+                Belge Dosyası (PDF / görsel)
+                <input type="file" name="file" id="inpCredentialFile" accept="application/pdf,image/png,image/jpeg" class="form-input">
+              </label>
+              <button type="submit" class="primary-btn" style="justify-content:center; width:100%;">＋ Belgeyi Kaydet</button>
+            </form>
+          </article>
+
+          <article class="panel">
+            <div class="panel-header">
+              <div><p class="overline">İŞGÜCÜ MALİYETİ</p><h2>Teknisyen saatlik ücretleri</h2></div>
+            </div>
+            <p class="text-muted" style="font-size:11px; margin:0 0 10px;">
+              Ücreti tanımlı olmayan teknisyen işgücü maliyetine ve kâr marjı hesabına <b>dahil edilmez</b> — uydurma bir ücret uydurma bir marj üretir.
+            </p>
+            <div class="table-panel" style="border:1px solid var(--line); border-radius:8px; overflow:auto;">
+              <table>
+                <thead>
+                  <tr><th>Teknisyen</th><th>Saatlik Ücret (₺)</th><th>Geçerlilik</th><th></th></tr>
+                </thead>
+                <tbody id="techRatesBody"></tbody>
+              </table>
+            </div>
           </article>
 
           <article class="panel roster-panel"><div class="panel-header"><h2>Bugünkü ekip</h2><button class="text-btn" id="btnInviteTechnician">＋ Teknisyen ekle</button></div><div id="roster" class="roster"></div></article>

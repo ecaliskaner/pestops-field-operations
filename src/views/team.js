@@ -17,13 +17,16 @@
 // instead of inventing traffic. Every panel degrades to an honest empty state
 // rather than a plausible fiction.
 //
-// Still seeded elsewhere: companyDetail / finance / reportBodies / techToday
-// keep reading data/history.js and data/credentials.js. Those views are their
-// own migration passes.
+// Technician rates and compliance documents are edited here: this is the only
+// page that already knows which technician is selected, and both are read
+// straight back by the finance page and the customer portal.
 
-import { $, esc } from '../core/dom.js';
-import { state, save } from '../core/state.js';
-import { fetchLivePositions, fetchTechnicianCredentials } from '../data/repo/technicians.js';
+import { $, esc, toast } from '../core/dom.js';
+import { state, save, setTechRates } from '../core/state.js';
+import {
+  fetchLivePositions, fetchTechnicianCredentials, fetchRatesByTechnician,
+  setTechnicianRate, saveTechnicianCredential, signedCredentialUrl
+} from '../data/repo/technicians.js';
 import { fetchTechnicianStats, fetchGeofenceEvents } from '../data/repo/work.js';
 import { setGpsAlerts } from '../core/gpsAlerts.js';
 import { updateNotifBadge } from '../ui/demo.js';
@@ -40,6 +43,7 @@ let plottedSiteKey = '';      // guards against re-plotting an identical site se
 
 let livePositions = {};       // technician name -> live fix from the RPC
 let credentialsByTech = {};   // technician id -> credential rows
+let ratesByTechnician = {};   // technician id -> current hourly rate
 let technicianStatsRows = [];
 let geofenceEvents = [];
 let routeOptimized = false;
@@ -100,6 +104,13 @@ async function loadTeamAux() {
     console.error('[repellent] teknisyen belgeleri yuklenemedi', err);
   }
   try {
+    ratesByTechnician = await fetchRatesByTechnician();
+  } catch (err) {
+    // Rates are admin-only; a technician signing in gets denied here and the
+    // table simply does not render for them.
+    console.error('[repellent] teknisyen ucretleri yuklenemedi', err);
+  }
+  try {
     technicianStatsRows = await fetchTechnicianStats();
   } catch (err) {
     console.error('[repellent] teknisyen istatistikleri yuklenemedi', err);
@@ -110,6 +121,7 @@ async function loadTeamAux() {
     console.error('[repellent] geofence olaylari yuklenemedi', err);
   }
   renderCredentials(state.selectedTech);
+  renderTechRates();
   renderProductivity();
   renderGeofenceFeed();
   renderTechDetail();
@@ -504,6 +516,9 @@ function credentialRow(doc) {
       <span class="cred-doc-icon">${icon}</span>
       <div class="cred-doc-body"><b>${esc(doc.title)}</b><small>${esc(parts.join(' · ') || '—')}</small></div>
       <span class="cred-doc-status ${ok ? 'ok' : 'warn'}">${label}</span>
+      ${doc.documentPath
+        ? `<button type="button" class="text-btn cred-open-btn" data-path="${esc(doc.documentPath)}" style="padding:0 0 0 8px; font-size:10px; font-weight:700; color:var(--violet);">Aç ↗</button>`
+        : '<span style="color:var(--muted); font-size:10px; padding-left:8px;">dosya yok</span>'}
     </div>`;
 }
 
@@ -684,6 +699,10 @@ export function renderTeam() {
   renderRoster();
   renderTechDetail();
   renderCredentials(state.selectedTech);
+  // The rate table lists every technician, so it belongs on the render path and
+  // not only in loadTeamAux(): that runs once and had already run — against an
+  // empty roster — by the time the technicians finished loading.
+  renderTechRates();
   renderProductivity();
   renderFieldCount();
   renderLiveGpsNote();
@@ -714,4 +733,119 @@ export function teamRosterClicks(e) {
   }
 
   return false;
+}
+
+// ---- hourly rates -------------------------------------------------------
+//
+// technician_rates was readable but had no write path, so a technician with no
+// rate on file stayed out of every labour cost and margin. That exclusion is
+// deliberate — an invented rate produces an invented margin — which made this
+// table the missing half of the finance page rather than a convenience.
+
+function renderTechRates() {
+  const body = $('#techRatesBody');
+  if (!body) return;
+
+  const techs = technicianList();
+  if (!techs.length) {
+    body.innerHTML = '<tr><td colspan="4" class="empty" style="text-align:center;">Kayıtlı teknisyen bulunmuyor.</td></tr>';
+    return;
+  }
+
+  body.innerHTML = techs.map((t) => {
+    const rate = ratesByTechnician[t.id];
+    return `
+      <tr>
+        <td><b>${esc(t.name)}</b></td>
+        <td>
+          <input type="number" min="1" step="any" class="form-input tech-rate-input"
+                 data-tech="${esc(t.id)}" value="${rate ? esc(rate.hourlyRate) : ''}"
+                 placeholder="tanımsız" style="height:28px; font-size:11px; max-width:120px;">
+        </td>
+        <td><small class="text-muted">${rate?.validFrom
+          ? esc(new Date(rate.validFrom).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' }))
+          : '—'}</small></td>
+        <td><button type="button" class="text-btn tech-rate-save" data-tech="${esc(t.id)}" style="padding:0; font-size:10px; font-weight:700; color:var(--blue);">Kaydet</button></td>
+      </tr>`;
+  }).join('');
+}
+
+export function teamAdminClicks(e) {
+  const openDoc = e.target.closest('.cred-open-btn');
+  if (openDoc) {
+    signedCredentialUrl(openDoc.dataset.path).then((url) => {
+      if (url) window.open(url, '_blank', 'noopener');
+      else toast('Belge bağlantısı alınamadı.');
+    });
+    return true;
+  }
+
+  const saveRate = e.target.closest('.tech-rate-save');
+  if (saveRate) {
+    const technicianId = saveRate.dataset.tech;
+    const input = document.querySelector(`.tech-rate-input[data-tech="${technicianId}"]`);
+    const orgId = state.currentUser?.orgId;
+    if (!orgId) { toast('Kuruma bağlı bir hesapla giriş yapmalısınız.'); return true; }
+
+    const hourlyRate = parseFloat(input && input.value);
+    if (!(hourlyRate > 0)) { toast('Saatlik ücret sıfırdan büyük olmalıdır.'); return true; }
+
+    saveRate.disabled = true;
+    setTechnicianRate({ orgId, technicianId, hourlyRate })
+      .then((saved) => {
+        ratesByTechnician[technicianId] = saved;
+        // The finance page prices labour by technician *name*, so the store it
+        // reads is updated here too rather than waiting for the next sign-in.
+        const tech = technicianList().find((t) => t.id === technicianId);
+        if (tech) setTechRates({ ...(state.techRates || {}), [tech.name]: saved.hourlyRate });
+        renderTechRates();
+        toast(`${tech ? tech.name : 'Teknisyen'} saatlik ücreti kaydedildi.`);
+      })
+      .catch((err) => toast(err.message || 'Ücret kaydedilemedi.'))
+      .finally(() => { saveRate.disabled = false; });
+    return true;
+  }
+
+  return false;
+}
+
+export function techCredentialSubmit(e) {
+  if (e.target.id !== 'techCredentialForm') return false;
+  e.preventDefault();
+
+  const tech = technicianByName(state.selectedTech);
+  const orgId = state.currentUser?.orgId;
+  if (!tech) { toast('Önce bir teknisyen seçin.'); return true; }
+  if (!orgId) { toast('Kuruma bağlı bir hesapla giriş yapmalısınız.'); return true; }
+
+  const f = new FormData(e.target);
+  const title = String(f.get('title') || '').trim();
+  if (!title) { toast('Belge başlığı zorunludur.'); return true; }
+
+  const fileInput = $('#inpCredentialFile');
+  const file = fileInput && fileInput.files && fileInput.files[0];
+
+  const button = e.target.querySelector('button[type="submit"]');
+  if (button) button.disabled = true;
+
+  saveTechnicianCredential({
+    orgId,
+    technicianId: tech.id,
+    kind: String(f.get('kind') || 'permit'),
+    title,
+    referenceNo: String(f.get('referenceNo') || '').trim(),
+    validUntil: String(f.get('validUntil') || ''),
+    file: file || null
+  })
+    .then(() => fetchTechnicianCredentials())
+    .then((byTech) => {
+      credentialsByTech = byTech;
+      renderCredentials(state.selectedTech);
+      e.target.reset();
+      toast(`${tech.name} için belge kaydedildi.`);
+    })
+    .catch((err) => toast(err.message || 'Belge kaydedilemedi.'))
+    .finally(() => { if (button) button.disabled = false; });
+
+  return true;
 }

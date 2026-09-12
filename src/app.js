@@ -33,6 +33,7 @@ import { invoiceActionClicks, invoiceFilterClicks, billingClicks } from './views
 import { stockRefillSubmit, chemicalDefineSubmit } from './views/inventory.js';
 import { orgSettingsSubmit } from './views/settings.js';
 import { msdsClicks } from './views/inventory.js';
+import { teamAdminClicks, techCredentialSubmit } from './views/team.js';
 import { createSiteSubmit } from './views/sites.js';
 import { demoClicks, openNotificationCenter, updateNotifBadge, mountPresenterBar } from './ui/demo.js';
 import { visitReportClicks, bindVisitReportFilters } from './views/visitReports.js';
@@ -230,6 +231,7 @@ export function loginSubmit(e) {
 // original single delegator, including blocks that deliberately fall through
 // to later ones. A handler returns true to stop processing the event.
 const CLICK_CHAIN = [
+  teamAdminClicks,
   msdsClicks,
   demoClicks,
   dashboardRangeClicks,
@@ -280,6 +282,7 @@ const SUBMIT_CHAIN = [
   stockRefillSubmit,
   chemicalDefineSubmit,
   orgSettingsSubmit,
+  techCredentialSubmit,
   taskChemicalSubmit
 ];
 

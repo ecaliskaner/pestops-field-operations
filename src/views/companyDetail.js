@@ -1401,6 +1401,16 @@ export function editSiteSubmit(e) {
     return Number.isFinite(v) ? v : null;
   };
 
+  // Built before the write so the same object is stored and installed; two
+  // constructions of it would be one edit away from disagreeing.
+  const serviceScope = {
+    outdoorRodent: { frequency: parseFloat(f.get('freqOutdoorRodent')) || 0, unit: 'ay' },
+    indoorRodent: { frequency: parseFloat(f.get('freqIndoorRodent')) || 0, unit: 'ay' },
+    crawlingPest: { frequency: parseFloat(f.get('freqCrawlingPest')) || 0, unit: 'ay' },
+    flyingPest: { frequency: parseFloat(f.get('freqFlyingPest')) || 0, unit: 'ay' },
+    storagePest: { frequency: parseFloat(f.get('freqStoragePest')) || 0, unit: 'ay' }
+  };
+
   const button = e.target.querySelector('button[type="submit"]');
   if (button) button.disabled = true;
 
@@ -1408,6 +1418,7 @@ export function editSiteSubmit(e) {
     updateSite({
       siteId,
       customerId: site.customerId,
+      serviceScope,
       address: String(f.get('address') || '').trim(),
       contactName: String(f.get('contactName') || '').trim(),
       contactPhone: String(f.get('contactPhone') || '').trim(),
@@ -1438,16 +1449,10 @@ export function editSiteSubmit(e) {
         phone: String(f.get('contactPhone') || '').trim(),
         email: String(f.get('contactEmail') || '').trim()
       };
-      // The service scope drives the visit plan and has no table of its own
-      // yet; it stays browser-local and is the one part of this form that does.
+      site.serviceScope = serviceScope;
+      // The prose cadence ("15 Günde Bir") is a label with no column; the plan
+      // is computed from serviceScope above, so this is display only.
       site.serviceFrequency = f.get('serviceFrequency');
-      site.serviceScope = {
-        outdoorRodent: { frequency: parseFloat(f.get('freqOutdoorRodent')) || 0, unit: 'ay' },
-        indoorRodent: { frequency: parseFloat(f.get('freqIndoorRodent')) || 0, unit: 'ay' },
-        crawlingPest: { frequency: parseFloat(f.get('freqCrawlingPest')) || 0, unit: 'ay' },
-        flyingPest: { frequency: parseFloat(f.get('freqFlyingPest')) || 0, unit: 'ay' },
-        storagePest: { frequency: parseFloat(f.get('freqStoragePest')) || 0, unit: 'ay' }
-      };
       save();
 
       $('#modal').classList.add('hidden');
