@@ -39,8 +39,11 @@ values ('recommendation-photos', 'recommendation-photos', false, 10485760,
         array['image/png','image/jpeg','image/webp'])
 on conflict (id) do nothing;
 
+-- search_path is pinned to match storage_path_org(): both are used inside
+-- storage RLS predicates, and a mutable search_path on one of a matched pair
+-- is the kind of asymmetry that is easy to miss.
 create or replace function storage_path_site(p_name text) returns uuid
-language sql immutable as $fn$
+language sql immutable set search_path = public as $fn$
   select nullif(split_part(p_name, '/', 2), '')::uuid
 $fn$;
 
