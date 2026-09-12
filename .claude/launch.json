@@ -24,6 +24,12 @@
       "runtimeExecutable": "node",
       "runtimeArgs": ["-e", "process.env.PORT='4176';require('./server.js')"],
       "port": 4176
+    },
+    {
+      "name": "technician-app",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["scripts/serve-technician-web.js"],
+      "port": 4180
     }
   ]
 }
