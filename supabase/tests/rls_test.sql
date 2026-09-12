@@ -611,6 +611,116 @@ begin
 end $$;
 
 
+-- ============== FATURA KESME VE YASAM DONGUSU ==========================
+--
+-- Faturanin kimligi sunucuya, tutari yoneticiye aittir. issue_invoice()
+-- musteriyi sahadan okur, numarayi kendisi atar ve ayni donemin ikinci kez
+-- faturalanmasini reddeder; ucunu de disaridan almaz.
+
+do $$
+declare
+  site_a   uuid := '00000000-0000-0000-0000-000000000551';
+  first_inv  invoices;
+  second_inv invoices;
+begin
+  perform t_admin_reset();
+
+  -- Neither a technician nor a customer may cut an invoice.
+  perform t_login('00000000-0000-0000-0000-0000000000e2');
+  perform t_denied(
+    format($q$select issue_invoice(%L, '2026-07-01', '2026-07-31', 4000, 700, 300, 'test', 30)$q$, site_a),
+    'Teknisyen fatura kesemiyor');
+
+  perform t_login('00000000-0000-0000-0000-0000000000e4');
+  perform t_denied(
+    format($q$select issue_invoice(%L, '2026-07-01', '2026-07-31', 4000, 700, 300, 'test', 30)$q$, site_a),
+    'Musteri fatura kesemiyor');
+
+  -- A zero or negative amount is not an invoice.
+  perform t_login('00000000-0000-0000-0000-0000000000e1');
+  perform t_denied(
+    format($q$select issue_invoice(%L, '2026-07-01', '2026-07-31', 0, 0, 0, 'test', 30)$q$, site_a),
+    'Sifir tutarli fatura reddediliyor');
+
+  -- The period must make sense.
+  perform t_denied(
+    format($q$select issue_invoice(%L, '2026-07-31', '2026-07-01', 4000, 700, 300, 'test', 30)$q$, site_a),
+    'Ters donem reddediliyor');
+
+  -- The admin can, and the server assigns the code and the customer.
+  first_inv := issue_invoice(site_a, '2026-07-01', '2026-07-31', 4000, 700, 300, 'Temmuz', 30);
+  perform t_admin_reset();
+  perform t_ok(first_inv.code = 'FTR-2026-0001',
+    'Fatura numarasi sunucu tarafindan atandi (FTR-2026-0001)');
+  perform t_ok(first_inv.customer_id = '00000000-0000-0000-0000-0000000000c1',
+    'Musteri sahadan okundu, cagirandan alinmadi');
+  perform t_ok(first_inv.status = 'draft',
+    'Yeni fatura taslak olarak aciliyor');
+
+  -- The same period again must be refused, not silently duplicated.
+  perform t_login('00000000-0000-0000-0000-0000000000e1');
+  perform t_denied(
+    format($q$select issue_invoice(%L, '2026-07-01', '2026-07-31', 4000, 700, 300, 'tekrar', 30)$q$, site_a),
+    'Ayni donem ikinci kez faturalanamiyor');
+
+  -- A different period gets the next number in the series.
+  second_inv := issue_invoice(site_a, '2026-08-01', '2026-08-31', 4200, 750, 320, 'Agustos', 30);
+  perform t_admin_reset();
+  perform t_ok(second_inv.code = 'FTR-2026-0002',
+    'Sonraki fatura seride bir sonraki numarayi aliyor');
+
+  -- A draft is internal: the customer must not see it.
+  perform t_login('00000000-0000-0000-0000-0000000000e4');
+  perform t_ok((select count(*) from invoices) = 0,
+    'Musteri taslak faturalari goremiyor');
+
+  -- Lifecycle. Draft cannot jump straight to paid.
+  perform t_login('00000000-0000-0000-0000-0000000000e1');
+  perform t_denied(
+    format($q$select set_invoice_status(%L, 'paid')$q$, first_inv.id),
+    'Taslak dogrudan odendi yapilamiyor');
+
+  perform set_invoice_status(first_inv.id, 'sent');
+  perform t_admin_reset();
+  perform t_ok((select status from invoices where id = first_inv.id) = 'sent',
+    'Yonetici faturayi gonderildi yapabiliyor');
+
+  -- Once issued the customer can see it.
+  perform t_login('00000000-0000-0000-0000-0000000000e4');
+  perform t_ok((select count(*) from invoices) = 1,
+    'Musteri yalnizca kesilmis kendi faturasini goruyor');
+  perform t_denied(
+    format($q$select set_invoice_status(%L, 'paid')$q$, first_inv.id),
+    'Musteri faturayi odendi isaretleyemiyor');
+
+  perform t_login('00000000-0000-0000-0000-0000000000e1');
+  perform set_invoice_status(first_inv.id, 'paid');
+  perform t_admin_reset();
+  perform t_ok((select paid_at from invoices where id = first_inv.id) is not null,
+    'Odeme zamani kaydediliyor');
+
+  -- Paid is the end of the line; nothing walks it back to be re-edited.
+  perform t_login('00000000-0000-0000-0000-0000000000e1');
+  perform t_denied(
+    format($q$select set_invoice_status(%L, 'draft')$q$, first_inv.id),
+    'Odenmis fatura taslaga geri alinamiyor');
+  perform t_denied(
+    format($q$select set_invoice_status(%L, 'paid')$q$, first_inv.id),
+    'Ayni duruma tekrar gecilemiyor');
+
+  -- A cancelled period frees the slot, so a mistake can be re-issued.
+  perform set_invoice_status(second_inv.id, 'cancelled');
+  perform issue_invoice(site_a, '2026-08-01', '2026-08-31', 4200, 750, 320, 'Agustos duzeltme', 30);
+  perform t_admin_reset();
+  perform t_ok((select count(*) from invoices
+                where site_id = site_a and period_start = '2026-08-01'
+                  and status <> 'cancelled') = 1,
+    'Iptal edilen donem yeniden faturalanabiliyor');
+
+  perform t_admin_reset();
+end $$;
+
+
 do $$ begin perform t_admin_reset(); end $$;
 
 rollback;

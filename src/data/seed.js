@@ -13,16 +13,13 @@ export const initial = {
   // warehouse — which is exactly the failure mode worth removing at source.
   inventory: [],
   inventoryTransactions: [],
-  invoices: [
-    { id: 'INV-1001', siteId: 's1', company: 'Acme Foods', name: 'Gebze Üretim Tesisi', date: '01 Tem 2026', amount: 4000, laborCost: 720, chemicalCost: 380, margin: 72.5, duration: '240 dk', status: 'paid', description: 'Temmuz 2026 Periyodik Hizmet Bedeli' },
-    { id: 'INV-1002', siteId: 's2', company: 'Kuzey Lojistik', name: 'Hadımköy Dağıtım Merkezi', date: '05 Tem 2026', amount: 4800, laborCost: 900, chemicalCost: 550, margin: 69.8, duration: '360 dk', status: 'sent', description: 'Sözleşme Kapsamı Rutin Ziyaret' }
-  ],
-  techRates: {
-    "Ayşe Demir": 180,
-    "Mert Kaya": 150,
-    "Ece Yılmaz": 160,
-    "Can Öztürk": 140
-  },
+  // Invoices come from the invoices table (repo/billing.js) and technician
+  // hourly rates from technician_rates. Two invented invoices and four demo
+  // technicians' ₺/hour rates used to sit here; a rate that is not this
+  // company's produces a labour cost that is not this company's, and that cost
+  // is what the profit margin is computed from.
+  invoices: [],
+  techRates: {},
   sites: [
     { 
       id:"s1", company:"Acme Foods", name:"Gebze Üretim Tesisi", city:"Kocaeli", score:62, state:"risk", issues:3, last:"12 Tem · Ayşe Demir", next:"Bugün, 14:30", color:"#e8d8c7",

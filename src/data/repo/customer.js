@@ -102,7 +102,7 @@ export async function fetchContracts() {
   const rows = await run(
     supabase
       .from('contracts')
-      .select('id, site_id, period_start, period_end, monthly_price, annual_price, extra_visit_price, emergency_call_price')
+      .select('id, site_id, period_start, period_end, monthly_price, annual_price, extra_visit_price, emergency_call_price, tax_office, tax_no')
       .order('period_start', { ascending: false })
   );
   const bySite = {};
@@ -117,7 +117,11 @@ export async function fetchContracts() {
       monthlyPrice: row.monthly_price === null ? null : Number(row.monthly_price),
       annualPrice: row.annual_price === null ? null : Number(row.annual_price),
       extraVisitPrice: row.extra_visit_price === null ? null : Number(row.extra_visit_price),
-      emergencyCallPrice: row.emergency_call_price === null ? null : Number(row.emergency_call_price)
+      emergencyCallPrice: row.emergency_call_price === null ? null : Number(row.emergency_call_price),
+      // Printed on the delivery note. Blank is a real answer; the tax number
+      // used to be generated from a hash of the site id when it was missing.
+      taxOffice: row.tax_office || '',
+      taxNo: row.tax_no || ''
     };
   }
   return bySite;

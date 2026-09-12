@@ -15,7 +15,8 @@
 import { supabase, run, errorMessage, isConfigured } from './supabase.js';
 import {
   state, replaceSites, replaceWork, replaceTechnicians, replaceActivity,
-  replaceInventory, replaceChemicals, replaceStockTransactions
+  replaceInventory, replaceChemicals, replaceStockTransactions,
+  replaceInvoices, setOrganization, setTechRates
 } from './state.js';
 import { toast } from './dom.js';
 import { checkSession } from './roles.js';
@@ -25,7 +26,8 @@ import { fetchWorkOrders, fetchRecentEvents } from '../data/repo/work.js';
 import { fetchTechnicians } from '../data/repo/technicians.js';
 import { fetchVisitHistory } from '../data/repo/visits.js';
 import { fetchInventory, fetchChemicals, fetchStockTransactions } from '../data/repo/inventory.js';
-import { fetchRecommendations } from '../data/repo/customer.js';
+import { fetchRecommendations, fetchContracts } from '../data/repo/customer.js';
+import { fetchInvoices, fetchOrganization, fetchTechnicianRates } from '../data/repo/billing.js';
 import { setVisitHistory } from '../data/history.js';
 
 const USER_CACHE_KEY = 'repellent-user';
@@ -112,7 +114,8 @@ function applyUser(user) {
 async function loadRealData() {
   const [
     sites, work, technicians, activity, visitHistory, findings, inventory, chemicals,
-    stockTransactions
+    stockTransactions, contracts, invoices, organization,
+    techRates
   ] = await Promise.allSettled([
     fetchSites(),
     fetchWorkOrders(),
@@ -122,13 +125,31 @@ async function loadRealData() {
     fetchRecommendations(),
     fetchInventory(),
     fetchChemicals(),
-    fetchStockTransactions()
+    fetchStockTransactions(),
+    fetchContracts(),
+    fetchInvoices(),
+    fetchOrganization(),
+    fetchTechnicianRates()
   ]);
 
   const apply = (result, label, fn) => {
     if (result.status === 'fulfilled') fn(result.value);
     else console.error(`[repellent] ${label} yuklenemedi`, result.reason);
   };
+
+  // Contracts carry the price everything downstream is billed from, so they are
+  // attached to their site before the sites list is installed. A site whose
+  // contract is missing keeps `contract: null`, and billing.js refuses to
+  // invoice it rather than inventing a monthly fee for it.
+  if (sites.status === 'fulfilled') {
+    const byId = contracts.status === 'fulfilled' ? contracts.value : {};
+    for (const site of sites.value) {
+      if (site.id && byId[site.id]) site.contract = byId[site.id];
+    }
+  }
+  if (contracts.status === 'rejected') {
+    console.error('[repellent] sozlesmeler yuklenemedi', contracts.reason);
+  }
 
   apply(sites, 'sahalar', replaceSites);
   apply(work, 'is emirleri', replaceWork);
@@ -137,6 +158,9 @@ async function loadRealData() {
   apply(inventory, 'stok', replaceInventory);
   apply(chemicals, 'kimyasallar', replaceChemicals);
   apply(stockTransactions, 'stok hareketleri', replaceStockTransactions);
+  apply(invoices, 'faturalar', replaceInvoices);
+  apply(organization, 'kurum bilgisi', setOrganization);
+  apply(techRates, 'teknisyen ucretleri', setTechRates);
 
   // The reporting layer (reports, insights, finance, the printable bodies)
   // all derive from this one store, so it is installed before the paint.

@@ -1,25 +1,34 @@
-// Deterministic billing: turns completed visits into delivery notes (irsaliye)
-// and consolidated invoices (Phase 4-1 / 4-3).
+// Turning completed visits into billable periods and printable documents.
 //
-// Pure computation only — no DOM, no state mutation. Every number is derived
-// from the seeded history and the seed contracts, so a demo re-run produces
-// the same document numbers, totals and margins every time. finance.js renders
-// what this module computes.
+// Pure computation — no DOM, no writes. finance.js renders what this returns
+// and repo/billing.js is what actually issues an invoice.
+//
+// Three inventions used to live here and are gone:
+//
+//   contractFor()      gave any site without a contract a made-up monthly price
+//                      (2500 + stations * 350) "so every location is billable".
+//                      Invented revenue produces an invented margin, and the
+//                      margin is what a pricing decision gets made on.
+//   syntheticTaxNo()   generated a ten-digit VKN from a hash of the site id, so
+//                      a site with no contract would still print a tax number on
+//                      its delivery note. A sevk irsaliyesi is a document under
+//                      VUK 213.
+//   invoiceNo()        assigned the invoice number client-side. Two admins
+//                      issuing at once would have produced the same number for
+//                      different documents; issue_invoice() assigns it now.
+//
+// What replaces them is the refusal. A site with no contract is not billable
+// and says so; a visit whose technician has no rate on file makes the period's
+// cost incomplete, and an incomplete cost shows no margin rather than a
+// flattering one. Understating cost overstates margin, which is the direction
+// that actually loses money.
 
 import { getVisits } from './history.js';
-import { initial } from './seed.js';
+import { state } from '../core/state.js';
 import { visitTypes } from './catalog.js';
 
-// Technician hourly rates (₺/saat). Falls back to a portfolio average for any
-// name not in the table so a rename never zeroes out a labour cost.
-const TECH_RATES = initial.techRates || {};
-const AVG_RATE = Object.values(TECH_RATES).length
-  ? Math.round(Object.values(TECH_RATES).reduce((a, b) => a + b, 0) / Object.values(TECH_RATES).length)
-  : 160;
-const rate = (tech) => TECH_RATES[tech] || AVG_RATE;
-
 // Visit types the monthly contract already covers. Emergency call-outs (AC) and
-// extra services (ES) are billed on top at their own fixed price.
+// extra services (ES) are billed on top at their own contracted price.
 const COVERED = new Set(['RZ', 'IZ', 'TZ', '3G', 'DZ', 'ILK']);
 const visitTypeName = (code) => (visitTypes.find((v) => v.code === code) || {}).name || code;
 
@@ -29,81 +38,74 @@ const monthLabel = (key) => {
   return `${MONTH_SHORT[Number(m) - 1]} ${y}`;
 };
 
-/* ---------------------------------------------------------- deterministic ids */
+const pad = (n) => String(n).padStart(2, '0');
 
-function hash(str) {
-  let h = 2166136261 >>> 0;
-  for (let i = 0; i < str.length; i++) {
-    h ^= str.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
+/** First and last calendar day of a `YYYY-MM` key, as ISO dates. */
+export function monthBounds(monthKey) {
+  const [y, m] = monthKey.split('-').map(Number);
+  const last = new Date(y, m, 0).getDate();
+  return { start: `${y}-${pad(m)}-01`, end: `${y}-${pad(m)}-${pad(last)}` };
 }
 
-const siteSeq = (siteId) => String(siteId).replace(/\D/g, '').padStart(2, '0');
-const visitSeq = (visitId) => String(visitId).replace(/\D/g, '');
-
-// Delivery note number, one per visit: IRS-2026-000046. Stable because visit
-// ids are generated deterministically by the history engine.
-export const irsaliyeNo = (visit) => `IRS-${visit.year}-${visitSeq(visit.id).padStart(6, '0')}`;
-
-// Consolidated invoice number, one per site per month: FTR-202607-01. The two
-// hand-seeded invoices use the legacy INV-1001 series, so this prefix cannot
-// collide with them.
-export const invoiceNo = (siteId, monthKey) => `FTR-${monthKey.replace('-', '')}-${siteSeq(siteId)}`;
-
-// A 10-digit tax number for demo sites that lack a real contract — deterministic
-// so it prints the same every time, and never a real number.
-const syntheticTaxNo = (siteId) => String(1000000000 + (hash('vkn' + siteId) % 8999999999));
-
-/* ------------------------------------------------------------------ pricing */
-
-// Sites without a seeded contract get a synthetic one scaled by station count,
-// so every location in the demo is billable. Flagged so the UI can label it.
+/**
+ * The site's current contract, or null.
+ *
+ * Null is a real answer and the caller must handle it: without a contracted
+ * price there is no revenue figure that is not made up.
+ */
 export function contractFor(site) {
-  if (site.contract) return site.contract;
-  const stations = (site.stations || []).length || 6;
-  const monthlyPrice = 2500 + stations * 350;
-  return {
-    synthetic: true,
-    taxOffice: `${site.city} VD`,
-    taxNo: syntheticTaxNo(site.id),
-    annualPrice: monthlyPrice * 12,
-    monthlyPrice,
-    extraVisitPrice: Math.round(monthlyPrice * 0.19),
-    emergencyCallPrice: Math.round(monthlyPrice * 0.38),
-    period: '01.01.2026 - 31.12.2026'
-  };
+  return (site && site.contract) || null;
 }
 
-const siteById = (id) => initial.sites.find((s) => s.id === id);
+const siteById = (id) => (state.sites || []).find((s) => s.id === id);
+
+// Technician hourly rates come from technician_rates (repo/billing.js). A name
+// with no rate returns null, not an average — see the header.
+const rateFor = (tech) => {
+  const rates = state.techRates || {};
+  const r = rates[tech];
+  return typeof r === 'number' && r > 0 ? r : null;
+};
 
 /**
  * Cost, revenue and margin for a single completed visit.
  *
  * `share` is the visit's slice of the monthly contract fee, so a month of
- * routine visits sums back to roughly one monthly contract price; emergency
- * and extra visits bill their own fixed fee on top.
+ * routine visits sums back to one monthly contract price; emergency and extra
+ * visits bill their own contracted fee on top.
+ *
+ * Returns `laborCost: null` when the technician has no rate on file, and the
+ * caller propagates that as an incomplete cost.
  */
-export function visitBilling(visit, share) {
+export function visitBilling(visit, share, contract) {
   const chemicalCost = visit.chemicals.reduce((s, c) => s + (c.cost || 0), 0);
-  // Labour = on-site time at full rate + travel at 60% (windshield time is real
-  // cost but not fully billable productivity).
-  const laborCost = Math.round(((visit.onSiteMin + visit.travelMin * 0.6) / 60) * rate(visit.tech));
-  const cost = laborCost + chemicalCost;
+  const rate = rateFor(visit.tech);
+  // Labour = on-site time at full rate + travel at 60%. Windshield time is real
+  // cost but not fully billable productivity.
+  const laborCost = rate === null
+    ? null
+    : Math.round(((visit.onSiteMin + visit.travelMin * 0.6) / 60) * rate);
+  const cost = laborCost === null ? null : laborCost + chemicalCost;
 
-  const contract = contractFor(siteById(visit.siteId));
-  let revenue, billType;
+  let revenue;
+  let billType;
   if (visit.visitType === 'AC') {
-    revenue = contract.emergencyCallPrice; billType = 'Acil Çağrı';
+    revenue = contract ? contract.emergencyCallPrice : null;
+    billType = 'Acil Çağrı';
   } else if (visit.visitType === 'ES') {
-    revenue = contract.extraVisitPrice; billType = 'Ek Servis';
+    revenue = contract ? contract.extraVisitPrice : null;
+    billType = 'Ek Servis';
   } else {
-    revenue = Math.round(share); billType = 'Sözleşme Kapsamı';
+    revenue = share === null ? null : Math.round(share);
+    billType = 'Sözleşme Kapsamı';
   }
+  if (typeof revenue !== 'number') revenue = null;
 
-  const margin = revenue > 0 ? Math.round(((revenue - cost) / revenue) * 1000) / 10 : 0;
-  return { chemicalCost, laborCost, cost, revenue, margin, billType };
+  const margin = revenue !== null && revenue > 0 && cost !== null
+    ? Math.round(((revenue - cost) / revenue) * 1000) / 10
+    : null;
+
+  return { chemicalCost, laborCost, cost, revenue, margin, billType, rateMissing: rate === null };
 }
 
 /* ------------------------------------------------------------------ grouping */
@@ -114,39 +116,65 @@ export function billableGroups() {
   for (const visit of getVisits()) {
     const gkey = `${visit.siteId}|${visit.monthKey}`;
     if (!groups.has(gkey)) {
-      groups.set(gkey, { siteId: visit.siteId, company: visit.company, siteName: visit.siteName,
-        city: visit.city, monthKey: visit.monthKey, monthLabel: monthLabel(visit.monthKey), visits: [] });
+      groups.set(gkey, {
+        siteId: visit.siteId, company: visit.company, siteName: visit.siteName,
+        city: visit.city, monthKey: visit.monthKey,
+        monthLabel: monthLabel(visit.monthKey), visits: []
+      });
     }
     groups.get(gkey).visits.push(visit);
   }
   return [...groups.values()].map(summariseGroup)
-    .sort((a, b) => (b.monthKey.localeCompare(a.monthKey)) || a.siteId.localeCompare(b.siteId));
+    .sort((a, b) => (b.monthKey.localeCompare(a.monthKey)) || String(a.siteId).localeCompare(String(b.siteId)));
 }
 
 function summariseGroup(group) {
+  const site = siteById(group.siteId);
+  const contract = contractFor(site);
   const covered = group.visits.filter((v) => COVERED.has(v.visitType)).length;
-  const contract = contractFor(siteById(group.siteId));
-  const share = contract.monthlyPrice / Math.max(1, covered);
+  const share = contract && typeof contract.monthlyPrice === 'number'
+    ? contract.monthlyPrice / Math.max(1, covered)
+    : null;
 
-  const lines = group.visits.map((visit) => {
-    const b = visitBilling(visit, share);
-    return { visit, ...b };
-  });
+  const lines = group.visits.map((visit) => ({ visit, ...visitBilling(visit, share, contract) }));
 
-  const revenue = lines.reduce((s, l) => s + l.revenue, 0);
-  const cost = lines.reduce((s, l) => s + l.cost, 0);
+  // A single missing part makes the whole sum unknown; adding up what is
+  // present would silently report a smaller number as if it were the total.
+  const sumOrNull = (pick) => lines.reduce(
+    (acc, l) => (acc === null || pick(l) === null ? null : acc + pick(l)), 0
+  );
+
+  const revenue = sumOrNull((l) => l.revenue);
+  const laborCost = sumOrNull((l) => l.laborCost);
   const chemicalCost = lines.reduce((s, l) => s + l.chemicalCost, 0);
-  const laborCost = lines.reduce((s, l) => s + l.laborCost, 0);
+  const cost = laborCost === null ? null : laborCost + chemicalCost;
   const chemApps = group.visits.reduce((s, v) => s + v.chemicals.length, 0);
+
+  // Why a period cannot be invoiced, in the order the operator should fix it.
+  const blockers = [];
+  if (!contract) blockers.push('Sözleşme tanımlı değil');
+  else if (typeof contract.monthlyPrice !== 'number') blockers.push('Sözleşmede aylık bedel yok');
+  if (revenue === null && contract) blockers.push('Ziyaret tipi için sözleşme bedeli tanımlı değil');
+
+  const costMissingFor = [...new Set(lines.filter((l) => l.rateMissing).map((l) => l.visit.tech))];
+  const bounds = monthBounds(group.monthKey);
 
   return {
     ...group, lines, contract,
-    invoiceNo: invoiceNo(group.siteId, group.monthKey),
+    periodStart: bounds.start,
+    periodEnd: bounds.end,
     visitCount: group.visits.length,
     chemApps,
     revenue, cost, chemicalCost, laborCost,
-    margin: revenue > 0 ? Math.round(((revenue - cost) / revenue) * 1000) / 10 : 0,
-    // Last visit of the month is the invoice/delivery date.
+    margin: revenue !== null && revenue > 0 && cost !== null
+      ? Math.round(((revenue - cost) / revenue) * 1000) / 10
+      : null,
+    billable: blockers.length === 0 && revenue !== null && revenue > 0,
+    blockers,
+    // An incomplete cost is shown as incomplete. The margin is suppressed
+    // rather than computed against a labour cost that is missing a technician.
+    costComplete: cost !== null,
+    costMissingFor,
     date: group.visits[group.visits.length - 1].date
   };
 }
@@ -155,21 +183,20 @@ export function groupFor(siteId, monthKey) {
   return billableGroups().find((g) => g.siteId === siteId && g.monthKey === monthKey) || null;
 }
 
-/* -------------------------------------------------------- invoice assembly */
+/* -------------------------------------------------------- document assembly */
+
+const KDV_RATE = 0.20;
 
 /**
- * Build a full invoice object from a site+month group. Shape is a superset of
- * the hand-seeded invoices in seed.js, so renderFinance() and the profitability
- * bars accept it unchanged; the extra fields drive the printable document.
+ * The printable view-model for an invoice that has been issued.
+ *
+ * Takes the stored invoice (repo/billing.js) and the group it was cut from, so
+ * the totals on the document are the ones the database holds and the line items
+ * are the visits behind them. Where the two could disagree the stored figure
+ * wins: it is what the customer was actually billed.
  */
-export function invoiceFromGroup(group) {
-  const site = siteById(group.siteId);
-  const contract = group.contract;
-  const kdvRate = 0.20; // KDV (Turkish VAT)
-  const subtotal = group.revenue;
-  const kdv = Math.round(subtotal * kdvRate);
-
-  const lineItems = group.lines.map((l) => ({
+export function invoiceDocument(invoice, group, organization) {
+  const lineItems = (group ? group.lines : []).map((l) => ({
     visitId: l.visit.id,
     date: l.visit.date,
     visitType: l.visit.visitType,
@@ -177,7 +204,7 @@ export function invoiceFromGroup(group) {
     tech: l.visit.tech,
     billType: l.billType,
     chemicals: l.visit.chemicals.length,
-    irsaliyeNo: l.visit.chemicals.length ? irsaliyeNo(l.visit) : null,
+    deliveryRef: l.visit.chemicals.length ? l.visit.id : null,
     laborCost: l.laborCost,
     chemicalCost: l.chemicalCost,
     cost: l.cost,
@@ -185,52 +212,46 @@ export function invoiceFromGroup(group) {
     margin: l.margin
   }));
 
+  const subtotal = invoice.amount;
+  const rate = invoice.taxRate ? invoice.taxRate / 100 : KDV_RATE;
+  const kdv = Math.round(subtotal * rate);
+
   return {
-    id: group.invoiceNo,
-    siteId: group.siteId,
-    company: group.company,
-    name: group.siteName,
-    city: group.city,
-    monthKey: group.monthKey,
-    monthLabel: group.monthLabel,
-    date: group.date,
-    // renderFinance fields:
-    amount: subtotal,
-    laborCost: group.laborCost,
-    chemicalCost: group.chemicalCost,
-    margin: group.margin,
-    duration: `${group.visits.reduce((s, v) => s + v.onSiteMin, 0)} dk`,
-    status: 'draft',
-    description: `${group.monthLabel} · ${group.visitCount} ziyaret konsolide faturası`,
-    // extra billing detail:
-    generated: true,
-    synthetic: !!contract.synthetic,
-    contract,
+    ...invoice,
+    organization,
+    monthLabel: group ? group.monthLabel : '',
+    lineItems,
     subtotal,
-    kdvRate,
+    kdvRate: rate,
     kdv,
     total: subtotal + kdv,
-    visitIds: group.visits.map((v) => v.id),
-    irsaliyeRefs: lineItems.filter((l) => l.irsaliyeNo).map((l) => l.irsaliyeNo),
-    lineItems
+    deliveryRefs: lineItems.filter((l) => l.deliveryRef).map((l) => l.deliveryRef)
   };
 }
 
-/** Delivery-note (irsaliye) view-model for a single visit's chemical usage. */
-export function irsaliyeFromVisit(visit) {
-  const site = siteById(visit.siteId);
+/**
+ * Delivery-note view-model for a single visit's chemical usage.
+ *
+ * The serial used to be generated here as `IRS-2026-000046`, from the digits of
+ * the visit id. A sevk irsaliyesi serial comes from a registered series, not
+ * from the client — so the document is referenced by the work order code, which
+ * is a real org-unique identifier, and the GİB serial is left to the e-İrsaliye
+ * integrator in the same way invoices already leave `einvoice_no` to it.
+ */
+export function deliveryNoteFor(visit, site, organization) {
   const contract = contractFor(site);
   return {
-    no: irsaliyeNo(visit),
+    ref: visit.id,
     date: visit.date,
     visitId: visit.id,
     tech: visit.tech,
     company: visit.company,
     siteName: visit.siteName,
     city: visit.city,
-    taxOffice: contract.taxOffice,
-    taxNo: contract.taxNo,
-    synthetic: !!contract.synthetic,
+    organization,
+    // Straight off the contract; blank when the operator has not filled it in.
+    taxOffice: (contract && contract.taxOffice) || '',
+    taxNo: (contract && contract.taxNo) || '',
     lines: visit.chemicals.map((c, i) => ({
       no: i + 1,
       name: c.name,

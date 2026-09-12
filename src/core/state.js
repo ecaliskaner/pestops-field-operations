@@ -58,6 +58,11 @@ export function load(){
     // warehouse is either the database's answer or visibly empty.
     merged.inventory = [];
     merged.inventoryTransactions = [];
+    // Same reasoning for the ledger: a session saved while the old seed
+    // shipped INV-1001/INV-1002 would keep showing two invented invoices,
+    // and rates saved under the demo names would price real technicians.
+    merged.invoices = [];
+    merged.techRates = {};
     return merged;
   } catch { return structuredClone(initial); }
 }
@@ -172,6 +177,29 @@ export function replaceChemicals(chemicals) {
  * record_chemical_usage() and restock_inventory(); this installs what the
  * database actually holds.
  */
+// The invoice ledger, the issuing organization and technician hourly rates —
+// all three previously seeded. `organization` is the issuing party printed on
+// every invoice and delivery note; it was a hardcoded string in finance.js.
+if (!state.invoices) state.invoices = [];
+if (!state.organization) state.organization = null;
+if (!state.techRates) state.techRates = {};
+
+/** Replace the invoice ledger in place — same pattern as replaceSites(). */
+export function replaceInvoices(invoices) {
+  if (!state.invoices) state.invoices = [];
+  state.invoices.splice(0, state.invoices.length, ...invoices);
+}
+
+/** The issuing organization, for the document header and party block. */
+export function setOrganization(org) {
+  state.organization = org;
+}
+
+/** Technician hourly rates by name, from technician_rates. */
+export function setTechRates(rates) {
+  state.techRates = rates || {};
+}
+
 export function replaceStockTransactions(txs) {
   if (!state.inventoryTransactions) state.inventoryTransactions = [];
   state.inventoryTransactions.splice(0, state.inventoryTransactions.length, ...txs);
