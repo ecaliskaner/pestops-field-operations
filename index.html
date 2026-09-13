@@ -16,7 +16,18 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <div class="app-shell">
+    <!-- Visible from the very first paint, before any script runs. The markup
+         below carries placeholder values (scores, names, counts) that the
+         renderers overwrite once real data arrives; this covers the gap so
+         none of them is ever read as fact. core/dom.js:hideBootSplash() takes
+         it down when there is something real behind it. -->
+    <div id="bootSplash" class="boot-splash">
+      <img src="./assets/repellent-logo.png" alt="Repellent" class="boot-splash-logo">
+      <div class="boot-splash-bar"><i></i></div>
+      <p>Operasyon verileri yükleniyor…</p>
+    </div>
+
+    <div class="app-shell hidden">
       <aside class="sidebar">
         <a class="brand" href="#dashboard" aria-label="Repellent ana sayfa">
           <img class="brand-symbol" aria-hidden="true" src="./icon.svg" alt="" width="28" height="28" style="border-radius:8px; display:block;">

@@ -214,7 +214,10 @@ export function modal(type, siteId = null) {
 
       <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:16px;">
         <button class="secondary-btn" data-dismiss-modal style="margin:0;">Vazgeç</button>
-        <button class="primary-btn" id="confirmDeleteSite" data-site-id="${esc(s.id)}" style="margin:0; background:var(--red); border-color:var(--red);">Kaldır</button>
+        <!-- data-delete-site, not data-site-id: siteCardClicks delegates on
+             [data-site-id] for the whole app and would swallow this click to
+             open the facility page instead of confirming the removal. -->
+        <button class="primary-btn" id="confirmDeleteSite" data-delete-site="${esc(s.id)}" style="margin:0; background:var(--red); border-color:var(--red);">Kaldır</button>
       </div>
     `;
   } else if (type === 'editSite') {

@@ -18,7 +18,7 @@ import {
   replaceInventory, replaceChemicals, replaceStockTransactions,
   replaceInvoices, setOrganization, setTechRates
 } from './state.js';
-import { toast } from './dom.js';
+import { toast, hideBootSplash } from './dom.js';
 import { checkSession } from './roles.js';
 import { render } from './router.js';
 import { fetchSites, fetchArchivedSites } from '../data/repo/sites.js';
@@ -183,13 +183,24 @@ async function loadRealData() {
     console.error('[repellent] ziyaret gecmisi yuklenemedi', visitHistory.reason);
   }
 
-  render();
+  // Real data is on screen once render() returns, so the placeholders it
+  // painted over can no longer be read as fact. The finally matters: this
+  // runs even when some queries rejected (the views show an empty state for a
+  // missing store) and even if render() itself throws, because the one
+  // outcome worse than a wrong number is a splash screen that never lifts.
+  try {
+    render();
+  } finally {
+    hideBootSplash();
+  }
 }
 
 function clearUser() {
   state.currentUser = null;
   localStorage.removeItem(USER_CACHE_KEY);
   checkSession();
+  // Signed out — the login screen is the real answer, nothing to wait for.
+  hideBootSplash();
 }
 
 /**

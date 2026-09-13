@@ -72,3 +72,24 @@ function interpolate(value) {
 }
 
 export function toast(message){const el=$("#toast");el.textContent=message;el.classList.remove("hidden");clearTimeout(toast.t);toast.t=setTimeout(()=>el.classList.add("hidden"),3000)}
+
+/**
+ * Take down the boot screen once there is something real to show.
+ *
+ * index.html ships the dashboard markup with placeholder values baked into it
+ * — a health score, a contact name, an open-findings count. They are only
+ * scaffolding for the renderers that overwrite them, but until the first real
+ * paint they are on screen, and an operator who reads "3 açık kritik bulgu"
+ * for a facility that has none has been shown a number that is not true. The
+ * boot screen covers exactly that window.
+ *
+ * Safe to call repeatedly: whichever path resolves first wins and the rest are
+ * no-ops.
+ */
+export function hideBootSplash() {
+  const el = $('#bootSplash');
+  if (!el || el.classList.contains('is-gone')) return;
+  el.classList.add('is-gone');
+  // Let the fade finish before the node stops taking hit-tests.
+  setTimeout(() => el.classList.add('hidden'), 220);
+}

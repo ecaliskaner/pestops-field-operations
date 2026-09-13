@@ -197,7 +197,7 @@ export function siteDeleteClicks(e) {
   const btn = e.target.closest('#confirmDeleteSite');
   if (!btn) return false;
 
-  const siteId = btn.dataset.siteId;
+  const siteId = btn.dataset.deleteSite;
   btn.disabled = true;
   btn.textContent = 'Kaldırılıyor…';
 
