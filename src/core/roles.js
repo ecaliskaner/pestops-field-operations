@@ -114,12 +114,13 @@ export function applyRoleAccess() {
 }
 
 export function checkSession() {
-  const savedUser = localStorage.getItem("repellent-user");
   const appShell = $('.app-shell');
   const viewLogin = $('#viewLogin');
-  
-  if (savedUser) {
-    state.currentUser = JSON.parse(savedUser);
+
+  // The Supabase session is the authority. A browser profile cache can be
+  // stale or tampered with and must never reopen the employee shell or grant
+  // role-based UI access before auth.js has verified the current JWT.
+  if (state.currentUser) {
     if (appShell) appShell.classList.remove('hidden');
     if (viewLogin) viewLogin.classList.add('hidden');
     applyRoleAccess();

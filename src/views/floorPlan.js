@@ -8,15 +8,16 @@
 // every facility rendered the same built-in five-room SVG, and stations only
 // ever came from the seed.
 //
-// Everything here writes to `site.floorPlan` / `site.stations` and persists via
-// the normal save(), so a placed point is immediately real to the rest of the
-// product: it appears on the plan, in the placement list, in the QR sheet and in
-// the reports.
+// Everything here writes through the Supabase repositories, so a placed point
+// is immediately real to every employee and appears on the plan, placement
+// list, QR sheet and reports after refresh.
 
 import { $, $$, toast, esc } from '../core/dom.js';
-import { state, save, recalculateSiteStats } from '../core/state.js';
+import { state, recalculateSiteStats } from '../core/state.js';
 import { ui } from '../core/session.js';
 import { equipmentTypes, getPlacementSchema } from '../data/catalog.js';
+import { uploadFloorPlan, removeFloorPlan } from '../data/repo/sites.js';
+import { createStation, updateStationPosition, deleteStation } from '../data/repo/stations.js';
 
 const activeSite = () => state.sites.find((s) => s.id === ui.activeSiteId);
 const isAdmin = () => state.currentUser && state.currentUser.role === 'admin';
@@ -27,10 +28,9 @@ const mode = { placing: false, drag: null, movedDuringDrag: false };
 
 /* ------------------------------------------------------------ plan image */
 
-// Uploaded plans are downscaled before they are stored. State is persisted to
-// localStorage *and* PUT to the server on every save(), so a 6 MB phone photo
-// would blow the quota and stall each write. 1400 px is plenty to place points
-// against and keeps a typical plan under ~300 KB.
+// Uploaded plans are downscaled for reliable browser preview. The original
+// file is stored in the private Supabase bucket; only its path and dimensions
+// are persisted in the database.
 const MAX_PLAN_WIDTH = 1400;
 const PLAN_QUALITY = 0.72;
 
@@ -112,21 +112,24 @@ export function bindFloorPlanInputs() {
 
     try {
       const { dataUrl, width, height } = await downscale(file);
-      site.floorPlan = {
-        dataUrl,
+      const stored = await uploadFloorPlan({
+        orgId: state.currentUser?.orgId,
+        siteId: site.id,
+        file,
         name: file.name,
         width,
-        height,
-        uploadedAt: new Date().toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' })
-      };
-      save();
+        height
+      });
+      Object.assign(site, stored);
+      site.floorPlan = { ...stored.floorPlan, dataUrl: stored.floorPlan?.dataUrl || dataUrl };
       renderFloorPlan(site);
       // The zone column is plan-dependent: with a custom plan the built-in room
       // names no longer apply, so the tables have to be rebuilt too.
       refreshPlanViews(site);
       toast(`Kat planı yüklendi — ${file.name}. Artık istasyonları plan üzerine yerleştirebilirsiniz.`);
-    } catch {
-      toast('Kat planı okunamadı. Farklı bir dosya deneyin.');
+    } catch (error) {
+      console.error('[repellent] kat plani yuklenemedi', error);
+      toast(error?.message || 'Kat planı kaydedilemedi.');
     }
   });
 }
@@ -206,6 +209,7 @@ export function newStationSubmit(e) {
 
   const site = activeSite();
   if (!site) return true;
+  if (!state.currentUser?.orgId) { toast('Kuruma bağlı bir hesapla giriş yapmalısınız.'); return true; }
 
   const f = new FormData(e.target);
   const code = String(f.get('code') || '').trim();
@@ -218,35 +222,36 @@ export function newStationSubmit(e) {
     return true;
   }
 
-  if (!site.stations) site.stations = [];
-  site.stations.push({
+  const x = Math.round(Number(f.get('x')) * 10) / 10;
+  const y = Math.round(Number(f.get('y')) * 10) / 10;
+  const typeMap = {
+    rodent_bait: 'rodent', insect_detector: 'crawler', flying_insect_trap: 'flying',
+    sp_insect_trap: 'crawler', insect_light_trap: 'insect_light_trap',
+    catch_alive_trap: 'rodent'
+  };
+  const button = e.target.querySelector('button[type="submit"]');
+  if (button) button.disabled = true;
+  createStation({
+    orgId: state.currentUser?.orgId,
+    siteId: site.id,
     code,
-    type,
-    // Rounded to 0.1% like a drag does — raw pointer maths yields 16 decimals,
-    // which then leaks into state, the CSV exports and the placement sheet.
-    x: Math.round(Number(f.get('x')) * 10) / 10,
-    y: Math.round(Number(f.get('y')) * 10) / 10,
-    checked: false,
-    status: 'unchecked',
-    baitStatus: 'intact',
-    pestType: 'none',
-    pestCount: 0,
-    notes: '',
-    placement: areaName ? { areaName, pointNo: code.replace(/^\D+-?/, '') } : undefined,
-    plantedDate: new Date().toLocaleDateString('tr-TR')
-  });
-
-  recalculateSiteStats(site);
-  save();
-  $('#modal').classList.add('hidden');
-  mode.placing = false;
-  $('#blueprintWrapper')?.classList.remove('placing');
-  $('#btnAddStation')?.classList.remove('active');
-
-  refreshPlanViews(site);
-  // No barcode is announced: it is the label on the physical box, recorded
-  // when the device is actually installed, not derived from the point code.
-  toast(`${code} noktası eklendi. Cihaz barkodunu nokta detayından kaydedin.`);
+    type: typeMap[type] || type,
+    x,
+    y,
+    placement: areaName ? { areaName, pointNo: code.replace(/^\D+-?/, '') } : {}
+  }).then((station) => {
+    if (!site.stations) site.stations = [];
+    site.stations.push(station);
+    recalculateSiteStats(site);
+    $('#modal').classList.add('hidden');
+    mode.placing = false;
+    $('#blueprintWrapper')?.classList.remove('placing');
+    $('#btnAddStation')?.classList.remove('active');
+    refreshPlanViews(site);
+    toast(`${code} noktası eklendi. Cihaz barkodunu nokta detayından kaydedin.`);
+  }).catch((error) => {
+    toast(error?.message || 'İstasyon eklenemedi.');
+  }).finally(() => { if (button) button.disabled = false; });
   return true;
 }
 
@@ -329,11 +334,15 @@ export function planPointerUp(e) {
   const site = activeSite();
   const station = site && (site.stations || []).find((s) => s.code === d.code);
   if (station) {
+    if (!station.dbId) { toast('Bu istasyon veritabanında kayıtlı değil.'); return; }
     const p = pointPercent(e, d.wrapper);
-    station.x = Math.round(p.x * 10) / 10;
-    station.y = Math.round(p.y * 10) / 10;
-    save();
-    toast(`${station.code} yeni konuma taşındı.`);
+    const x = Math.round(p.x * 10) / 10;
+    const y = Math.round(p.y * 10) / 10;
+    updateStationPosition(station.dbId, x, y).then(() => {
+      station.x = x;
+      station.y = y;
+      toast(`${station.code} yeni konuma taşındı.`);
+    }).catch((error) => toast(error?.message || 'İstasyon konumu kaydedilemedi.'));
   }
 }
 
@@ -367,11 +376,15 @@ export function floorPlanClicks(e) {
   if (e.target.closest('#btnRemovePlan')) {
     const site = activeSite();
     if (!site || !site.floorPlan) return true;
-    delete site.floorPlan;
-    save();
-    renderFloorPlan(site);
-    refreshPlanViews(site);
-    toast('Yüklenen plan kaldırıldı, şablon plana dönüldü. İstasyon konumları korundu.');
+    const button = e.target.closest('#btnRemovePlan');
+    if (button) button.disabled = true;
+    removeFloorPlan(site.id, site.floorPlan.path).then(() => {
+      delete site.floorPlan;
+      renderFloorPlan(site);
+      refreshPlanViews(site);
+      toast('Yüklenen plan kaldırıldı, şablon plana dönüldü. İstasyon konumları korundu.');
+    }).catch((error) => toast(error?.message || 'Kat planı kaldırılamadı.'))
+      .finally(() => { if (button) button.disabled = false; });
     return true;
   }
 
@@ -381,14 +394,17 @@ export function floorPlanClicks(e) {
     if (!site || !code) { toast('Önce plan üzerinden bir istasyon seçin.'); return true; }
     const idx = (site.stations || []).findIndex((s) => s.code === code);
     if (idx < 0) return true;
-    site.stations.splice(idx, 1);
-    ui.activeStationCode = null;
-    recalculateSiteStats(site);
-    save();
-    refreshPlanViews(site);
-    $('#stationDetailsEmpty')?.classList.remove('hidden');
-    $('#stationDetailsContent')?.classList.add('hidden');
-    toast(`${code} silindi. Geçmiş okuma kayıtları raporlarda korunur.`);
+    const station = site.stations[idx];
+    if (!station.dbId) { toast('Bu istasyon veritabanında kayıtlı değil.'); return true; }
+    deleteStation(station.dbId).then(() => {
+      site.stations.splice(idx, 1);
+      ui.activeStationCode = null;
+      recalculateSiteStats(site);
+      refreshPlanViews(site);
+      $('#stationDetailsEmpty')?.classList.remove('hidden');
+      $('#stationDetailsContent')?.classList.add('hidden');
+      toast(`${code} arşivlendi. Geçmiş okuma kayıtları raporlarda korunur.`);
+    }).catch((error) => toast(error?.message || 'İstasyon kaldırılamadı.'));
     return true;
   }
 

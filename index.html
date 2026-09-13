@@ -1503,13 +1503,7 @@
          from the network; the library itself is local so it never fails on
          venue wifi during a demo. -->
     <script src="./vendor/leaflet.js"></script>
-    <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('./service-worker.js').catch(() => {});
-        });
-      }
-    </script>
+    <script src="./src/register-sw.js"></script>
     <!-- Runtime config from the server's environment, then the Supabase SDK.
          Both must load before any module that talks to the backend. -->
     <script src="./env.js"></script>

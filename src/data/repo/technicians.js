@@ -10,7 +10,7 @@
 // column (src/views/work.js), so a real admin assigns a real technician
 // instead of one of four hardcoded demo names.
 
-import { supabase, run } from '../../core/supabase.js';
+import { supabase, run, isConfigured } from '../../core/supabase.js';
 
 const TECHNICIAN_SELECT = 'id, full_name, initials, phone, email, color, is_active';
 
@@ -52,6 +52,7 @@ export async function fetchTechnicians() {
  * @returns {Promise<object[]>}
  */
 export async function fetchLivePositions() {
+  if (!isConfigured) return [];
   const rows = await run(supabase.rpc('live_positions'));
   return (rows || []).map((row) => ({
     technicianId: row.technician_id,

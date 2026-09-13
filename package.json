@@ -5,6 +5,9 @@
   "description": "Static deploy scaffold for Repellent Operations.",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "check:js": "node scripts/check-js.mjs",
+    "check:imports": "python scripts/checkimports.py",
+    "test": "npm run check:js && npm run check:imports"
   }
 }

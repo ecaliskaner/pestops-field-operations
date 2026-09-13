@@ -22,8 +22,9 @@ const SITE_SELECT = `
   id, name, city, address, sector, color,
   lat, lng, geofence_radius_m,
   contact_name, contact_phone, contact_email, service_scope,
+  floor_plan_path, floor_plan_name, floor_plan_width, floor_plan_height,
   customer:customers(id, name),
-  stations(id, code, type, pos_x, pos_y, last_status, last_bait_status, notes, device_barcode)
+  stations(id, code, type, pos_x, pos_y, last_status, last_bait_status, notes, device_barcode, placement, is_active)
 `;
 
 function mapStation(row) {
@@ -46,7 +47,8 @@ function mapStation(row) {
     // itself, so these render as clean until a real inspection sets them.
     pestType: 'none',
     pestCount: 0,
-    notes: row.notes || ''
+    notes: row.notes || '',
+    placement: row.placement && Object.keys(row.placement).length ? row.placement : null
   };
 }
 
@@ -88,12 +90,18 @@ export function mapSiteRow(row) {
       email: row.contact_email || ''
     },
     serviceScope: row.service_scope && Object.keys(row.service_scope).length ? row.service_scope : null,
+    floorPlan: row.floor_plan_path ? {
+      path: row.floor_plan_path,
+      name: row.floor_plan_name || 'Kat planı',
+      width: row.floor_plan_width || null,
+      height: row.floor_plan_height || null
+    } : null,
     contract: null,
     chemicalsUsed: [],
     methods: [],
     files: [],
     recommendations: [],
-    stations: (row.stations || []).map(mapStation)
+    stations: (row.stations || []).filter((station) => station.is_active !== false).map(mapStation)
   };
 }
 
@@ -108,7 +116,7 @@ export async function fetchSites() {
   const rows = await run(
     supabase.from('sites').select(SITE_SELECT).eq('is_active', true).order('name')
   );
-  return rows.map(mapSiteRow);
+  return hydrateFloorPlans(rows.map(mapSiteRow));
 }
 
 /**
@@ -123,7 +131,104 @@ export async function fetchArchivedSites() {
   const rows = await run(
     supabase.from('sites').select(SITE_SELECT).eq('is_active', false).order('name')
   );
-  return rows.map(mapSiteRow);
+  return hydrateFloorPlans(rows.map(mapSiteRow));
+}
+
+async function hydrateFloorPlans(sites) {
+  return Promise.all(sites.map(async (site) => {
+    if (!site.floorPlan?.path) return site;
+    const { data, error } = await supabase.storage
+      .from('floor-plans')
+      .createSignedUrl(site.floorPlan.path, 3600);
+    if (!error && data?.signedUrl) site.floorPlan.dataUrl = data.signedUrl;
+    return site;
+  }));
+}
+
+function safeFileName(name) {
+  return String(name || 'file').replace(/[^a-zA-Z0-9._-]+/g, '-').slice(-120);
+}
+
+function objectId() {
+  return globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+/** Upload a private facility plan and persist only its Storage path. */
+export async function uploadFloorPlan(input) {
+  const ext = String(input.file.name || '').split('.').pop()?.toLowerCase() || 'jpg';
+  const path = `${input.orgId}/${input.siteId}/${objectId()}-${safeFileName(input.file.name)}.${ext}`;
+  const { error: uploadError } = await supabase.storage.from('floor-plans').upload(path, input.file, {
+    contentType: input.file.type || 'image/jpeg',
+    upsert: false
+  });
+  if (uploadError) throw new Error(uploadError.message);
+
+  try {
+    const row = await run(supabase.from('sites').update({
+      floor_plan_path: path,
+      floor_plan_name: input.name || input.file.name,
+      floor_plan_width: input.width || null,
+      floor_plan_height: input.height || null
+    }).eq('id', input.siteId).select(SITE_SELECT).single());
+    const site = mapSiteRow(row);
+    if (site.floorPlan?.path) {
+      const { data } = await supabase.storage.from('floor-plans').createSignedUrl(site.floorPlan.path, 3600);
+      if (data?.signedUrl) site.floorPlan.dataUrl = data.signedUrl;
+    }
+    return site;
+  } catch (error) {
+    await supabase.storage.from('floor-plans').remove([path]).catch(() => {});
+    throw error;
+  }
+}
+
+export async function removeFloorPlan(siteId, path) {
+  const row = await run(supabase.from('sites').update({
+    floor_plan_path: null,
+    floor_plan_name: null,
+    floor_plan_width: null,
+    floor_plan_height: null
+  }).eq('id', siteId).select('id').single());
+  if (!row) throw new Error('Kat planı kaldırılamadı.');
+  if (path) await supabase.storage.from('floor-plans').remove([path]);
+}
+
+/** Upload a private site document and create its RLS-protected metadata row. */
+export async function uploadSiteFile(input) {
+  const path = `${input.orgId}/${input.siteId}/${objectId()}-${safeFileName(input.file.name)}`;
+  const { error: uploadError } = await supabase.storage.from('site-files').upload(path, input.file, {
+    contentType: input.file.type || 'application/octet-stream',
+    upsert: false
+  });
+  if (uploadError) throw new Error(uploadError.message);
+  try {
+    return await run(supabase.from('site_files').insert({
+      org_id: input.orgId,
+      site_id: input.siteId,
+      name: input.name || input.file.name,
+      storage_path: path,
+      mime_type: input.file.type || null,
+      size_bytes: input.file.size || null,
+      visible_to_client: input.visibleToClient === true,
+      uploaded_by: input.uploadedBy || null
+    }).select('id, name, storage_path, mime_type, size_bytes, visible_to_client, created_at').single());
+  } catch (error) {
+    await supabase.storage.from('site-files').remove([path]).catch(() => {});
+    throw error;
+  }
+}
+
+export async function fetchSiteFiles(siteId) {
+  return run(supabase.from('site_files')
+    .select('id, name, storage_path, mime_type, size_bytes, visible_to_client, created_at')
+    .eq('site_id', siteId).order('created_at', { ascending: false }));
+}
+
+export async function signedSiteFileUrl(path, expiresIn = 3600) {
+  if (!path) return null;
+  const { data, error } = await supabase.storage.from('site-files').createSignedUrl(path, expiresIn);
+  if (error) return null;
+  return data?.signedUrl || null;
 }
 
 /**

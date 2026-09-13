@@ -84,6 +84,24 @@ export async function fetchRecommendations() {
   return rows.map(mapRecommendation);
 }
 
+/** Create an operator finding in the real recommendations table. */
+export async function createRecommendation(input) {
+  const row = await run(
+    supabase.from('recommendations').insert({
+      org_id: input.orgId,
+      site_id: input.siteId,
+      description: input.description,
+      category: input.category || null,
+      assignee: input.assignee || null,
+      due_on: input.dueOn || null,
+      station_code: input.stationCode || null,
+      technician_id: input.technicianId || null,
+      work_order_id: input.workOrderId || null
+    }).select(RECOMMENDATION_SELECT).single()
+  );
+  return mapRecommendation(row);
+}
+
 /** Findings the customer still owes an action on. */
 export const customerOwes = (recs) => recs.filter((r) => CUSTOMER_OWES.has(r.status));
 

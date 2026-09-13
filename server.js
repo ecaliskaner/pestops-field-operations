@@ -22,16 +22,6 @@ function loadEnvFile() {
 loadEnvFile();
 
 const port = Number(process.env.PORT || 4173);
-const dataDir = path.join(rootDir, 'data');
-const stateJsonPath = path.join(dataDir, 'state.json');
-const stateJsPath = path.join(rootDir, 'state.js');
-
-// The legacy whole-state PUT has no authentication and overwrites every
-// customer's data in one request. It stays only because the views have not been
-// migrated to Supabase yet (docs/PRODUCTION.md §5). It is OFF unless explicitly
-// enabled, so no deployment can expose it by forgetting to remove it — the
-// failure mode is a broken save in dev, not a wide-open database in production.
-const allowLegacyStateWrite = process.env.ALLOW_LEGACY_STATE_WRITE === '1';
 
 // Only these reach the browser. SUPABASE_SERVICE_ROLE_KEY bypasses every RLS
 // policy and must never appear in a response body.
@@ -45,7 +35,7 @@ function isForbiddenPath(relPath) {
   const segments = relPath.split(/[\\/]+/).filter(Boolean);
   return segments.some((seg) => seg.startsWith('.')) ||
     segments[0] === 'node_modules' ||
-    (segments[0] === 'data' && segments[1] === 'state.json') ||
+    segments[0] === 'data' ||
     segments.includes('supabase');
 }
 
@@ -68,11 +58,8 @@ const mimeTypes = {
 // database to an attacker's host, because only this origin and the project's
 // own Supabase endpoint are reachable.
 //
-// script-src still carries 'unsafe-inline' because index.html has inline
-// <script> blocks and the generated markup uses inline onclick handlers
-// (see the Object.assign(window, ...) at the end of src/app.js). That weakens
-// the anti-XSS value of the policy and is the next thing to fix — once those
-// handlers move to delegated listeners, drop 'unsafe-inline' from script-src.
+// All application scripts are external and generated markup uses delegated
+// listeners, so inline JavaScript is not permitted by the policy.
 function buildCsp() {
   const connect = new Set(["'self'"]);
   const url = process.env.SUPABASE_URL;
@@ -85,7 +72,7 @@ function buildCsp() {
   }
   return [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline'",
+    "script-src 'self'",
     "style-src 'self' 'unsafe-inline'",
     // Leaflet fetches map tiles over https, and floor plans render as data: URIs.
     "img-src 'self' data: blob: https:",
@@ -126,24 +113,6 @@ function resolveFile(urlPath) {
   return filePath;
 }
 
-function ensureDataDir() {
-  fs.mkdirSync(dataDir, { recursive: true });
-}
-
-function writePersistedState(body) {
-  ensureDataDir();
-  fs.writeFileSync(stateJsonPath, body, 'utf8');
-  fs.writeFileSync(stateJsPath, `window.__REPELLENT_STATE__ = ${body};\n`, 'utf8');
-}
-
-function readPersistedStateScript() {
-  try {
-    return fs.readFileSync(stateJsPath, 'utf8');
-  } catch {
-    return 'window.__REPELLENT_STATE__ = null;\n';
-  }
-}
-
 http.createServer((req, res) => {
   const requestPath = (req.url || '/').split('?')[0];
 
@@ -159,45 +128,10 @@ http.createServer((req, res) => {
     return;
   }
 
-  if (req.method === 'GET' && requestPath === '/state.js') {
-    send(res, 200, readPersistedStateScript(), { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'no-cache' });
-    return;
-  }
-
-  if (requestPath === '/api/state') {
-    if (req.method === 'GET') {
-      fs.readFile(stateJsonPath, 'utf8', (err, data) => {
-        if (err) {
-          send(res, 200, JSON.stringify(null), { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-cache' });
-          return;
-        }
-        send(res, 200, data, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-cache' });
-      });
-      return;
-    }
-
-    if (req.method === 'PUT') {
-      if (!allowLegacyStateWrite) {
-        send(res, 403, 'Bu uc devre disi. Gelistirme icin ALLOW_LEGACY_STATE_WRITE=1 ayarlayin.');
-        return;
-      }
-      let body = '';
-      req.on('data', chunk => {
-        body += chunk;
-      });
-      req.on('end', () => {
-        try {
-          JSON.parse(body);
-          writePersistedState(body);
-          send(res, 204, '');
-        } catch {
-          send(res, 400, 'Invalid JSON');
-        }
-      });
-      return;
-    }
-
-    send(res, 405, 'Method Not Allowed');
+  // There is no legacy state API anymore. Do not let the SPA fallback turn an
+  // accidental /api/* request into a misleading 200 HTML response.
+  if (requestPath.startsWith('/api/')) {
+    send(res, 404, 'Not Found');
     return;
   }
 
@@ -236,8 +170,5 @@ http.createServer((req, res) => {
   console.log(`Repellent Operations static server running at http://localhost:${port}`);
   if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
     console.warn('[uyari] SUPABASE_URL / SUPABASE_ANON_KEY tanimli degil — .env.example dosyasina bakin.');
-  }
-  if (allowLegacyStateWrite) {
-    console.warn('[uyari] ALLOW_LEGACY_STATE_WRITE=1 — PUT /api/state kimlik dogrulamasiz ve tum veriyi ezer. Yalnizca yerel gelistirme icin.');
   }
 });

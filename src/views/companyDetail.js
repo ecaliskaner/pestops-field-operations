@@ -13,14 +13,21 @@ import { modal, printQrCodeSticker } from '../ui/modal.js';
 import { renderSites } from '../views/sites.js';
 import { technicianStats } from '../data/history.js';
 import { fetchUsageForSite } from '../data/repo/inventory.js';
-import { parseContractPeriod, updateSite, fetchSites } from '../data/repo/sites.js';
+import {
+  parseContractPeriod, updateSite, fetchSites, fetchSiteFiles, uploadSiteFile,
+  signedSiteFileUrl
+} from '../data/repo/sites.js';
 import { recordInspection } from '../data/repo/work.js';
-import { fetchPointHistory, fetchPointSummary, replaceStationDevice } from '../data/repo/stations.js';
+import {
+  fetchPointHistory, fetchPointSummary, replaceStationDevice,
+  updateStationPlacement
+} from '../data/repo/stations.js';
 import { fetchTechnicianCredentials } from '../data/repo/technicians.js';
 import { saveContract } from '../data/repo/customer.js';
 import {
   fetchRecommendations, respondToRecommendation, approveRecommendation,
-  rejectRecommendation, uploadRecommendationPhoto, signedPhotoUrl
+  rejectRecommendation, uploadRecommendationPhoto, signedPhotoUrl,
+  createRecommendation
 } from '../data/repo/customer.js';
 import { renderFloorPlan } from './floorPlan.js';
 import { visitsPerMonth } from '../data/schedule.js';
@@ -132,6 +139,7 @@ export function showCompanyDetail(siteId) {
   
   // Render files table
   renderCompanyFiles(site);
+  loadSiteFiles(site);
 
   // Render stations tracking table
   renderCompanyStationsTable(site);
@@ -156,6 +164,32 @@ export function showCompanyDetail(siteId) {
   
   switchCompanyTab('overview');
   setView('companyDetail');
+}
+
+async function loadSiteFiles(site) {
+  try {
+    const rows = await fetchSiteFiles(site.id);
+    site.files = rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      storagePath: row.storage_path,
+      type: row.mime_type || '',
+      size: row.size_bytes ? formatFileSize(row.size_bytes) : '—',
+      date: new Date(row.created_at).toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' }),
+      category: row.name.toLocaleLowerCase('tr').includes('sds') ? 'SDS' : 'Belge',
+      visibleToClient: row.visible_to_client
+    }));
+    renderCompanyFiles(site);
+  } catch (error) {
+    console.error('[repellent] site files yuklenemedi', error);
+  }
+}
+
+function formatFileSize(bytes) {
+  const value = Number(bytes);
+  if (!Number.isFinite(value)) return '—';
+  if (value >= 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+  return `${Math.max(1, Math.round(value / 1024))} KB`;
 }
 
 export function switchCompanyTab(tabId) {
@@ -291,10 +325,10 @@ export function renderCompanyFiles(site) {
     
     return `
       <tr>
-        <td><b>${f.name}</b></td>
-        <td><span class="status-chip ${badgeClass}" style="font-size:9px; font-weight:700;">${category}</span></td>
-        <td>${f.size}</td>
-        <td>${f.date}</td>
+        <td><b>${esc(f.name)}</b></td>
+        <td><span class="status-chip ${esc(badgeClass)}" style="font-size:9px; font-weight:700;">${esc(category)}</span></td>
+        <td>${esc(f.size)}</td>
+        <td>${esc(f.date)}</td>
         <td>
           <button class="text-btn download-file-btn" data-file-index="${index}" style="padding:0; font-size:11px;">İndir ↓</button>
         </td>
@@ -634,16 +668,16 @@ export function renderCompanyStationsTable(site) {
     const baitText = s.checked ? (baitLabels[s.baitStatus] || s.baitStatus) : '—';
     
     return `
-      <tr onclick="showStationDetail('${s.code}'); switchCompanyTab('map');" style="cursor:pointer;">
-        <td><strong>${s.code}</strong></td>
-        <td>${typeLabel}${specs ? `<br><small class="text-muted">${specs}</small>` : ''}</td>
-        <td><span style="color:#55616b; font-size:11px; font-weight:600;">📍 ${area}</span></td>
-        <td><small class="text-muted">${planted}</small></td>
-        <td><small>${lastCheck}</small></td>
-        <td><b>${inspector}</b></td>
-        <td><small>${baitText}</small></td>
-        <td><span class="${hasPests ? 'attention' : ''}">${findings}</span></td>
-        <td><span class="status-chip ${statusClass}">${statusText}</span></td>
+      <tr data-station-row="${esc(s.code)}" style="cursor:pointer;">
+        <td><strong>${esc(s.code)}</strong></td>
+        <td>${esc(typeLabel)}${specs ? `<br><small class="text-muted">${esc(specs)}</small>` : ''}</td>
+        <td><span style="color:#55616b; font-size:11px; font-weight:600;">📍 ${esc(area)}</span></td>
+        <td><small class="text-muted">${esc(planted)}</small></td>
+        <td><small>${esc(lastCheck)}</small></td>
+        <td><b>${esc(inspector)}</b></td>
+        <td><small>${esc(baitText)}</small></td>
+        <td><span class="${hasPests ? 'attention' : ''}">${esc(findings)}</span></td>
+        <td><span class="status-chip ${esc(statusClass)}">${esc(statusText)}</span></td>
       </tr>
     `;
   }).join('');
@@ -1352,6 +1386,13 @@ export function companyTabClicks(e) {
       return true;
     }
 
+    const stationRow = e.target.closest('[data-station-row]');
+    if (stationRow) {
+      showStationDetail(stationRow.dataset.stationRow);
+      switchCompanyTab('map');
+      return true;
+    }
+
     // Download Client Analytics Chart
   return false;
 }
@@ -1362,7 +1403,15 @@ export function fileDownloadClicks(e) {
       const idx = parseInt(downloadBtn.dataset.fileIndex);
       const site = state.sites.find(s => s.id === ui.activeSiteId);
       if (site && site.files && site.files[idx]) {
-        toast(`${site.files[idx].name} indirmesi başlatıldı...`);
+        const file = site.files[idx];
+        if (!file.storagePath) {
+          toast('Bu belge için indirme bağlantısı bulunmuyor.');
+          return true;
+        }
+        signedSiteFileUrl(file.storagePath).then((url) => {
+          if (!url) throw new Error('Belge bağlantısı oluşturulamadı.');
+          window.open(url, '_blank', 'noopener,noreferrer');
+        }).catch((err) => toast(err.message || 'Belge indirilemedi.'));
       }
       return true;
     }
@@ -1545,9 +1594,12 @@ export function placementSubmit(e) {
       s.placement.recordedBy = state.currentUser ? state.currentUser.name : 'Operatör';
       s.placement.recordedAt = new Date().toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' });
 
-      save();
-      renderCompanyStationsTable(site);
-      toast(`${s.code} yerleşim kaydı güncellendi (${schema.title}).`);
+      updateStationPlacement(s.dbId, s.placement)
+        .then(() => {
+          renderCompanyStationsTable(site);
+          toast(`${s.code} yerleşim kaydı güncellendi (${schema.title}).`);
+        })
+        .catch((err) => toast(err.message || 'Yerleşim kaydedilemedi.'));
       return true;
     }
   return false;
@@ -1655,30 +1707,30 @@ export function fileUploadSubmit(e) {
       const inpCat = $('#inpUploadFileCategory');
       if (!inpName || !inpFile) return true;
       
+      const file = inpFile.files?.[0];
       const fileName = inpName.value.trim();
-      if (!fileName) return true;
-      
-      const ext = inpFile.files[0] ? inpFile.files[0].name.split('.').pop() : 'pdf';
-      const rawSize = inpFile.files[0] ? inpFile.files[0].size : 1250000;
-      const sizeStr = rawSize > 1024*1024 ? `${(rawSize/(1024*1024)).toFixed(1)} MB` : `${Math.round(rawSize/1024)} KB`;
-      const dateStr = new Date().toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' });
-      const category = inpCat ? inpCat.value : 'SDS';
-      
-      if (!site.files) site.files = [];
-      site.files.unshift({
-        name: `${fileName}.${ext}`,
-        type: ext,
-        size: sizeStr,
-        date: dateStr,
-        category: category
-      });
-      
-      save();
-      renderCompanyFiles(site);
-      
-      inpName.value = '';
-      inpFile.value = '';
-      toast('Belge başarıyla yüklendi ve site profiline eklendi.');
+      if (!fileName || !file) { toast('Belge adı ve dosya seçilmelidir.'); return true; }
+      const button = e.target.querySelector('button[type="submit"]');
+      if (button) button.disabled = true;
+      uploadSiteFile({
+        orgId: state.currentUser?.orgId,
+        siteId: site.id,
+        file,
+        name: fileName,
+        visibleToClient: false,
+        uploadedBy: state.currentUser?.id
+      }).then((row) => {
+        site.files.unshift({
+          id: row.id, name: row.name, storagePath: row.storage_path,
+          type: row.mime_type || '', size: formatFileSize(row.size_bytes),
+          date: new Date(row.created_at).toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' }),
+          category: inpCat?.value || 'Belge'
+        });
+        renderCompanyFiles(site);
+        e.target.reset();
+        toast('Belge güvenli depolamaya yüklendi.');
+      }).catch((err) => toast(err.message || 'Belge yüklenemedi.'))
+        .finally(() => { if (button) button.disabled = false; });
     }
 
     // Company profile recommendation form submit
@@ -1705,28 +1757,22 @@ export function recommendationSubmit(e) {
       
       if (!desc || !assignee || !dueDateVal) return true;
       
-      const dMatch = dueDateVal.split('-');
-      const formattedDue = dMatch.length === 3 ? `${dMatch[2]} Tem 2026` : '20 Tem 2026';
-      
-      const newRec = {
-        id: `r${Date.now()}`,
-        desc: desc,
-        category: category,
-        assignee: assignee,
-        date: "Bugün",
-        due: formattedDue,
-        status: 'open'
-      };
-      
-      if (!site.recommendations) site.recommendations = [];
-      site.recommendations.unshift(newRec);
-      save();
-      renderCompanyRecommendations(site);
-      
-      inpDesc.value = '';
-      inpAss.value = '';
-      inpDue.value = '';
-      toast('Standart Önleme Önerisi başarıyla kaydedildi.');
+      const button = e.target.querySelector('button[type="submit"]');
+      if (button) button.disabled = true;
+      createRecommendation({
+        orgId: state.currentUser?.orgId,
+        siteId: site.id,
+        description: desc,
+        category,
+        assignee,
+        dueOn: dueDateVal
+      }).then(() => loadRecommendations(true))
+        .then(() => {
+          e.target.reset();
+          toast('Önleme önerisi güvenli olarak kaydedildi.');
+        })
+        .catch((err) => toast(err.message || 'Öneri kaydedilemedi.'))
+        .finally(() => { if (button) button.disabled = false; });
     }
 
     // Company profile chemical form submit

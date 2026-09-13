@@ -45,9 +45,10 @@ import {
 } from './views/floorPlan.js';
 
 // Clean stale data from previous versions
-localStorage.removeItem("repellent-product-demo"); localStorage.removeItem("ladybug-product-demo"); localStorage.removeItem("insectram-product-demo"); localStorage.removeItem("ladybug-ops"); localStorage.removeItem("ladybug-user"); localStorage.removeItem("insectram-ops");
+localStorage.removeItem("repellent-product-demo"); localStorage.removeItem("ladybug-product-demo"); localStorage.removeItem("insectram-product-demo"); localStorage.removeItem("ladybug-ops"); localStorage.removeItem("ladybug-user"); localStorage.removeItem("insectram-ops"); localStorage.removeItem("repellent-ops");
 
 export function shellClicks(e) {
+    if (e.target.closest('[data-action="print"]')) { window.print(); return true; }
     if (e.target.id === 'btnLogOut') {
       // signOut() rather than the old roles.js:logout(): clearing the local
       // profile cache without ending the Supabase session would leave a live,
@@ -386,9 +387,6 @@ function bind() {
   });
 }
 
-// Inline onclick handlers in generated markup need global scope.
-Object.assign(window, { showStationDetail, switchCompanyTab });
-
 // Lets the siteFilters modal branch (ui/modal.js) prefill and apply real
 // city/sector filters without modal.js importing views/sites.js, which
 // already imports `modal` from there — a reverse import would be circular.
@@ -396,12 +394,8 @@ registerSiteFilters({ get: activeSiteFilters, apply: setSiteFilters, clear: clea
 
 bind();
 
-// Boot. checkSession() paints the shell or the login screen from the cached
-// profile immediately, so the page is never blank while the network is slow;
-// restoreSession() then confirms the cached identity against a real Supabase
-// session and clears it if the token is gone. Order matters: without the
-// optimistic first paint a refresh flashes the login screen at a signed-in
-// user, and without the confirmation an expired token still renders a shell.
+// Boot starts on the login view until Supabase verifies a live session. A
+// local profile cache is intentionally not trusted for identity or role access.
 checkSession();
 render();
 updateNotifBadge();

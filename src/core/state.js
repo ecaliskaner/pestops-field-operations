@@ -67,7 +67,27 @@ export function load(){
   } catch { return structuredClone(initial); }
 }
 
-export const state = load();
+// Never bootstrap an authenticated session from the old seed/local state.
+// Remote records are installed by auth.loadRealData() after Supabase confirms
+// the session. Until then every collection is intentionally empty.
+function emptyState() {
+  const ui = (() => {
+    try { return JSON.parse(localStorage.getItem('repellent-ui') || '{}'); }
+    catch { return {}; }
+  })();
+  return {
+    view: typeof ui.view === 'string' ? ui.view : 'dashboard',
+    selectedWork: typeof ui.selectedWork === 'string' ? ui.selectedWork : '',
+    selectedTech: typeof ui.selectedTech === 'string' ? ui.selectedTech : '',
+    workSortAsc: ui.workSortAsc === true,
+    techNotifications: [], currentUser: null,
+    sites: [], archivedSites: [], work: [], technicians: [], activity: [],
+    inventory: [], inventoryTransactions: [], chemicals: [], invoices: [],
+    techRates: {}, organization: null
+  };
+}
+
+export const state = emptyState();
 
 /**
  * Every site in the live portfolio.
@@ -206,25 +226,14 @@ export function replaceStockTransactions(txs) {
 }
 
 export function save(){
-  localStorage.setItem("repellent-ops",JSON.stringify(state));
-  const persistableState = structuredClone(state);
-  delete persistableState.currentUser;
-  // fetch only rejects on a network failure, so a 403 from the server lands in
-  // the success branch. Checking res.ok is what stops a rejected write from
-  // looking identical to a successful one — the browser copy above still holds
-  // the data, but nothing reached the server.
-  fetch("./api/state", {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(persistableState)
-  }).then((res) => {
-    if (!res.ok) {
-      console.warn(
-        `[repellent] Sunucuya kayit reddedildi (HTTP ${res.status}). ` +
-        'Veri yalnizca bu tarayicida tutuluyor. Gelistirme icin ALLOW_LEGACY_STATE_WRITE=1 gerekir.'
-      );
-    }
-  }).catch(() => { /* offline — localStorage copy above is the fallback */ });
+  // Only harmless UI preferences are persisted. Customer, employee, schedule,
+  // inventory, and billing records are written through Supabase repositories.
+  localStorage.setItem('repellent-ui', JSON.stringify({
+    view: state.view,
+    selectedWork: state.selectedWork,
+    selectedTech: state.selectedTech,
+    workSortAsc: state.workSortAsc === true
+  }));
 }
 
 export function recalculateSiteStats(site) {

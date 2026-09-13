@@ -7,7 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// (the server dedups on this id — see api/mobileApi.js).
 class OutboxEvent {
   final String mobileEventId;
-  final String type; // 'inspection' | 'qr_scan' | 'arrive'
+  final String type; // 'inspection' | 'qr_scan' | 'arrive' | 'depart' | 'complete'
   final String label; // human-readable, shown on the sync screen
   final String capturedAt; // ISO — the original capture time, preserved on sync
   final Map<String, dynamic> payload;

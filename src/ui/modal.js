@@ -2,12 +2,13 @@
 // Extracted from app.js (Phase 0a-3).
 
 import { $, toast, esc } from '../core/dom.js';
-import { save, state } from '../core/state.js';
+import { state } from '../core/state.js';
 import { ui } from '../core/session.js';
 import { renderDashboard } from '../views/dashboard.js';
 import { renderWork } from '../views/work.js';
 import { renderCalendarGrid } from '../ui/calendar.js';
 import { supabase } from '../core/supabase.js';
+import { createWorkOrder } from '../data/repo/work.js';
 
 // Click-to-place location picker for the create/edit site forms.
 //
@@ -579,10 +580,13 @@ export function openQuickScheduleModal(day) {
   if (!content || !modal) return;
   
   const sitesOptions = state.sites.map(s => `<option value="${esc(s.id)}">${esc(s.company)} - ${esc(s.name)}</option>`).join('');
+  const techOptions = state.technicians.map((tech) =>
+    `<option value="${esc(tech.id)}">${esc(tech.name)}</option>`
+  ).join('');
   
   content.innerHTML = `
     <h2>Yeni İş Emri Planla</h2>
-    <p class="text-muted">Seçilen Tarih: <b>${esc(day)} Temmuz 2026</b></p>
+    <p class="text-muted">Seçilen Tarih: <b>${esc(day)} gün</b></p>
     <form class="form-grid" id="quickScheduleForm">
       <label class="form-label">
         Tesis & Müşteri Seçin
@@ -609,10 +613,7 @@ export function openQuickScheduleModal(day) {
       <label class="form-label">
         Görevlendirilecek Teknisyen
         <select name="tech" id="inpSchedTech" class="form-select" style="height:37px; padding:0 8px; font-size:12px; border:1px solid var(--line); border-radius:7px;">
-          <option value="Ayşe Demir">Ayşe Demir (Baş Teknisyen)</option>
-          <option value="Mert Kaya">Mert Kaya (Teknisyen)</option>
-          <option value="Ece Yılmaz">Ece Yılmaz (Dezenfeksiyon Uzmanı)</option>
-          <option value="Can Öztürk">Can Öztürk (Saha Ekibi)</option>
+          ${techOptions || '<option value="">Önce aktif bir teknisyen ekleyin</option>'}
         </select>
       </label>
       <button type="submit" class="primary-btn" style="width:100%; justify-content:center; margin-top:10px;">📅 Randevu Oluştur</button>
@@ -622,33 +623,46 @@ export function openQuickScheduleModal(day) {
   modal.classList.remove('hidden');
   
   const form = $('#quickScheduleForm');
-  form.addEventListener('submit', (e) => {
+  form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const selectedSite = state.sites.find(s => s.id === $('#inpSchedSiteId').value);
     const title = $('#inpSchedTitle').value;
     const priority = $('#inpSchedPriority').value;
     const dueTime = $('#inpSchedTime').value;
-    const assignedTech = $('#inpSchedTech').value;
-    
-    const newWo = {
-      id: `WO-${Math.floor(2000 + Math.random() * 1000)}`,
-      siteId: selectedSite.id,
-      title: title,
-      site: `${selectedSite.company} · ${selectedSite.name}`,
-      priority: priority,
-      type: 'Planlı servis',
-      due: `${day} Tem, ${dueTime}`,
-      tech: assignedTech,
-      description: 'Sözleşme kapsamında periyodik saha denetimi.'
-    };
-    
-    state.work.push(newWo);
-    save();
-    modal.classList.add('hidden');
-    renderWork();
-    renderCalendarGrid();
-    renderDashboard();
-    toast(`İş emri ${day} Temmuz için başarıyla oluşturuldu ve ${assignedTech} personeline atandı.`);
+    const technicianId = $('#inpSchedTech').value;
+    const orgId = state.currentUser?.orgId;
+    if (!selectedSite || !technicianId || !orgId) {
+      toast('Tesis, teknisyen ve kurum bilgisi zorunludur.');
+      return;
+    }
+    const now = new Date();
+    const [hour, minute] = dueTime.split(':').map(Number);
+    const due = new Date(now.getFullYear(), now.getMonth(), Number(day), hour || 9, minute || 0);
+    const button = form.querySelector('button[type="submit"]');
+    if (button) button.disabled = true;
+    try {
+      const newWo = await createWorkOrder({
+        orgId,
+        siteId: selectedSite.id,
+        technicianId,
+        title,
+        description: 'Sözleşme kapsamında periyodik saha denetimi.',
+        priority,
+        visitType: 'RZ',
+        dueAt: due.toISOString(),
+        createdBy: state.currentUser.id
+      });
+      state.work.push(newWo);
+      modal.classList.add('hidden');
+      renderWork();
+      renderCalendarGrid();
+      renderDashboard();
+      toast(`İş emri ${newWo.id} başarıyla oluşturuldu.`);
+    } catch (error) {
+      toast(error.message || 'İş emri oluşturulamadı.');
+    } finally {
+      if (button) button.disabled = false;
+    }
   });
 }
 
@@ -691,8 +705,8 @@ export function printQrCodeSticker(code) {
       </div>
       
       <div style="margin-top:24px; display:flex; gap:10px; justify-content:center;">
-        <button class="secondary-btn" onclick="document.querySelector('#modal').classList.add('hidden')">Kapat</button>
-        <button class="primary-btn" onclick="window.print()">🖨 Yazdır</button>
+        <button class="secondary-btn" data-dismiss-modal>Kapat</button>
+        <button class="primary-btn" data-action="print">🖨 Yazdır</button>
       </div>
     </div>
   `;

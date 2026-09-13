@@ -31,8 +31,6 @@ import { fetchInvoices, fetchOrganization, fetchTechnicianRates } from '../data/
 import { setVisitHistory, setStationReplacements } from '../data/history.js';
 import { fetchAllReplacements } from '../data/repo/stations.js';
 
-const USER_CACHE_KEY = 'repellent-user';
-
 // The columns every screen needs to render the signed-in identity. The joined
 // customer name is what the customer portal shows as the company header.
 const PROFILE_SELECT =
@@ -91,10 +89,6 @@ function profileProblem(profile) {
 
 function applyUser(user) {
   state.currentUser = user;
-  // roles.js:checkSession reads this key to decide whether to show the shell.
-  // It stays the cache of "who is signed in"; the Supabase session remains the
-  // actual credential, so editing this in devtools grants nothing.
-  localStorage.setItem(USER_CACHE_KEY, JSON.stringify(user));
   checkSession();
   loadRealData();
 }
@@ -197,7 +191,6 @@ async function loadRealData() {
 
 function clearUser() {
   state.currentUser = null;
-  localStorage.removeItem(USER_CACHE_KEY);
   checkSession();
   // Signed out — the login screen is the real answer, nothing to wait for.
   hideBootSplash();

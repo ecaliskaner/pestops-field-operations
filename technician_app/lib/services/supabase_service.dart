@@ -77,8 +77,12 @@ class SupabaseService {
     return WorkOrder.fromJson(row);
   }
 
-  Future<void> depart(String workOrderId) async {
-    await _client.rpc('wo_depart', params: {'p_wo': workOrderId});
+  Future<void> depart(String workOrderId, {String? mobileEventId, String? capturedAt}) async {
+    await _client.rpc('wo_depart', params: {
+      'p_wo': workOrderId,
+      'p_mobile_event_id': mobileEventId,
+      'p_captured_at': capturedAt,
+    });
   }
 
   /// Returns the RPC's jsonb result (insideGeofence, distanceM, ...) so the
@@ -142,8 +146,12 @@ class SupabaseService {
     });
   }
 
-  Future<void> complete(String workOrderId) async {
-    await _client.rpc('wo_complete', params: {'p_wo': workOrderId});
+  Future<void> complete(String workOrderId, {String? mobileEventId, String? capturedAt}) async {
+    await _client.rpc('wo_complete', params: {
+      'p_wo': workOrderId,
+      'p_mobile_event_id': mobileEventId,
+      'p_captured_at': capturedAt,
+    });
   }
 }
 

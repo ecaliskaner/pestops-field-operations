@@ -150,17 +150,34 @@ class AppState extends ChangeNotifier {
   // ---- field actions ----
 
   Future<void> depart(WorkOrder w) async {
+    final mobileEventId = Outbox.newEventId();
+    final capturedAt = _nowIso();
     if (offlineMode) {
       w.status = 'on_the_way';
+      await outbox.add(
+        type: 'depart',
+        label: '${w.site.company} — yola çıkıldı',
+        payload: {'workOrderId': w.id},
+        mobileEventId: mobileEventId,
+        capturedAt: capturedAt,
+      );
       notifyListeners();
       return;
     }
     try {
-      await _service.depart(w.id);
+      await _service.depart(w.id, mobileEventId: mobileEventId, capturedAt: capturedAt);
       await _refreshJob(w.id);
-    } on Object {
+    } on Object catch (e) {
+      if (!isNetworkFailure(e)) rethrow;
       offlineMode = true;
       w.status = 'on_the_way';
+      await outbox.add(
+        type: 'depart',
+        label: '${w.site.company} — yola çıkıldı',
+        payload: {'workOrderId': w.id},
+        mobileEventId: mobileEventId,
+        capturedAt: capturedAt,
+      );
       notifyListeners();
     }
   }
@@ -314,20 +331,39 @@ class AppState extends ChangeNotifier {
 
   Future<String> complete(WorkOrder w) async {
     if (!w.started) return 'İş tamamlanamaz — önce ilk QR okutulmalı.';
+    final mobileEventId = Outbox.newEventId();
+    final capturedAt = _nowIso();
     if (offlineMode) {
       w.status = 'completed';
       w.completedAt = _nowIso();
+      await outbox.add(
+        type: 'complete',
+        label: '${w.site.company} — ziyaret tamamlandı',
+        payload: {'workOrderId': w.id},
+        mobileEventId: mobileEventId,
+        capturedAt: capturedAt,
+      );
       notifyListeners();
       return 'Ziyaret çevrimdışı tamamlandı.';
     }
     try {
-      await _service.complete(w.id);
+      await _service.complete(w.id, mobileEventId: mobileEventId, capturedAt: capturedAt);
       await _refreshJob(w.id);
       return 'Ziyaret tamamlandı ✓';
     } on Object catch (e) {
       if (!isNetworkFailure(e)) return _friendlyMessage(e);
       offlineMode = true;
-      return complete(w);
+      w.status = 'completed';
+      w.completedAt = capturedAt;
+      await outbox.add(
+        type: 'complete',
+        label: '${w.site.company} — ziyaret tamamlandı',
+        payload: {'workOrderId': w.id},
+        mobileEventId: mobileEventId,
+        capturedAt: capturedAt,
+      );
+      notifyListeners();
+      return 'Ziyaret çevrimdışı tamamlandı; sync kuyruğunda.';
     }
   }
 
@@ -370,6 +406,13 @@ class AppState extends ChangeNotifier {
   Future<void> _replay(OutboxEvent ev) async {
     final p = ev.payload;
     switch (ev.type) {
+      case 'depart':
+        await _service.depart(
+          p['workOrderId'] as String,
+          mobileEventId: ev.mobileEventId,
+          capturedAt: ev.capturedAt,
+        );
+        return;
       case 'arrive':
         await _service.arrive(
           p['workOrderId'] as String,
@@ -396,6 +439,13 @@ class AppState extends ChangeNotifier {
           activityCount: (p['activityCount'] as num?)?.toInt() ?? 0,
           notes: (p['notes'] as String?) ?? '',
           photoCount: (p['photoCount'] as num?)?.toInt() ?? 0,
+          mobileEventId: ev.mobileEventId,
+          capturedAt: ev.capturedAt,
+        );
+        return;
+      case 'complete':
+        await _service.complete(
+          p['workOrderId'] as String,
           mobileEventId: ev.mobileEventId,
           capturedAt: ev.capturedAt,
         );

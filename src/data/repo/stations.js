@@ -15,6 +15,53 @@
 
 import { supabase, run } from '../../core/supabase.js';
 
+function mapStationRow(row) {
+  return {
+    dbId: row.id,
+    code: row.code,
+    type: row.type,
+    deviceBarcode: row.device_barcode || '',
+    x: row.pos_x === null ? 0 : Number(row.pos_x),
+    y: row.pos_y === null ? 0 : Number(row.pos_y),
+    checked: row.last_status !== 'unchecked',
+    status: row.last_status,
+    baitStatus: row.last_bait_status,
+    pestType: 'none', pestCount: 0, notes: row.notes || '',
+    placement: row.placement && Object.keys(row.placement).length ? row.placement : null
+  };
+}
+
+export async function createStation(input) {
+  const row = await run(supabase.from('stations').insert({
+    org_id: input.orgId,
+    site_id: input.siteId,
+    code: input.code,
+    type: input.type,
+    pos_x: input.x,
+    pos_y: input.y,
+    placement: input.placement || {}
+  }).select('id, code, type, pos_x, pos_y, last_status, last_bait_status, notes, device_barcode, placement').single());
+  return mapStationRow(row);
+}
+
+export async function updateStationPosition(stationId, x, y) {
+  const rows = await run(supabase.from('stations').update({ pos_x: x, pos_y: y })
+    .eq('id', stationId).select('id'));
+  if (!rows.length) throw new Error('İstasyon konumu kaydedilemedi.');
+}
+
+export async function updateStationPlacement(stationId, placement) {
+  const rows = await run(supabase.from('stations').update({ placement })
+    .eq('id', stationId).select('id'));
+  if (!rows.length) throw new Error('İstasyon yerleşimi kaydedilemedi.');
+}
+
+export async function deleteStation(stationId) {
+  const rows = await run(supabase.from('stations').update({ is_active: false })
+    .eq('id', stationId).select('id'));
+  if (!rows.length) throw new Error('İstasyon kaldırılamadı.');
+}
+
 const REASON_LABEL = {
   lost: 'Kayıp',
   broken: 'Kırık',

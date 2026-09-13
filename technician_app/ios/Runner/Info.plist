@@ -51,11 +51,7 @@
 	<true/>
 	<key>NSAppTransportSecurity</key>
 	<dict>
-		<!-- Dev backend is plain HTTP on the LAN/simulator; local dev only. -->
-		<key>NSAllowsArbitraryLoads</key>
-		<true/>
-		<key>NSAllowsLocalNetworking</key>
-		<true/>
+		<!-- Supabase is HTTPS. Arbitrary HTTP is intentionally disabled. -->
 	</dict>
 </dict>
 </plist>
