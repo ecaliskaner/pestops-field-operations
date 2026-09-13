@@ -36,6 +36,7 @@ function isForbiddenPath(relPath) {
   return segments.some((seg) => seg.startsWith('.')) ||
     segments[0] === 'node_modules' ||
     segments[0] === 'data' ||
+    (segments.length === 1 && segments[0] === 'state.js') ||
     segments.includes('supabase');
 }
 
