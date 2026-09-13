@@ -207,21 +207,24 @@ function ensureMap() {
 
   map = L.map('fieldMap', {
     zoomControl: true,
-    attributionControl: true,
+    attributionControl: false,
     scrollWheelZoom: true,
     zoomSnap: 0.25
   });
-  // CARTO's anonymous basemap CDN (basemaps.cartocdn.com) started failing to
-  // load tiles in production — every tile request errored client-side with no
-  // HTTP status to diagnose from, consistent with CARTO's own account/rate
-  // restrictions on unregistered usage. Switched to OpenStreetMap's own tile
-  // server: no account, no key, the reference default every Leaflet app falls
-  // back to.
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© OpenStreetMap katkıda bulunanları',
-    subdomains: 'abc',
-    maxZoom: 19
-  }).addTo(map);
+  // No raster tile layer. First CARTO's anonymous basemaps.cartocdn.com, then
+  // OpenStreetMap's own tile.openstreetmap.org, both failed to load in the
+  // same way for the same users — every tile <img> errored client-side with
+  // no HTTP status to diagnose, on two providers on two different CDNs. That
+  // rules out "this one CDN is having a bad day" and points at something
+  // between this app and third-party tile hosts generally (a network
+  // condition on the viewer's end, not a fact about either provider). A real
+  // map that depends on reaching an external host is one outage away from
+  // being exactly this gray box for every customer; the markers, circles,
+  // zoom and click-to-place below are what actually carry the information —
+  // real technician positions and real facility locations — so they no
+  // longer sit on top of a dependency that can silently fail under them. The
+  // .field-map CSS backdrop is what stands in for the tile layer.
+  map.getContainer().classList.add('field-map--no-tiles');
 
   // A neutral Türkiye-wide opening frame for an org with no geocoded sites
   // yet; plotSites() fits to the real ones as soon as there are any.
