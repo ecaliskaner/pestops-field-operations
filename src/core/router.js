@@ -5,7 +5,7 @@ import { $, $$ } from '../core/dom.js';
 import { save, state } from '../core/state.js';
 import { names } from '../data/catalog.js';
 import { applyRoleAccess } from '../core/roles.js';
-import { renderDashboard } from '../views/dashboard.js';
+import { renderDashboard, renderWorkspaceChrome } from '../views/dashboard.js';
 import { renderSites } from '../views/sites.js';
 import { renderWork } from '../views/work.js';
 import { renderTeam, startFieldTracking, stopFieldTracking } from '../views/team.js';
@@ -24,9 +24,24 @@ export function setView(view){
   $$('.view').forEach(x=>x.classList.toggle('active',x.id===view));
   $$('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.view===view));
   $('#pageCrumb').textContent=names[view] || "Genel bakış";
+  // The sidebar summary counts the portfolio but is painted by the dashboard,
+  // so leaving any other view used to carry a stale count away with it.
+  renderWorkspaceChrome();
   window.scrollTo({top:0,behavior:'smooth'});
   
-  if (view === 'sites') {
+  // Leaving Ekip stops the live_positions() poll. Without this it keeps
+  // querying every 15 seconds for the rest of the session while nobody is
+  // looking at the map. Kept separate from the dispatch below so adding a
+  // branch there cannot silently leak the poll.
+  if (view !== 'team') stopFieldTracking();
+
+  // Arriving at a view repaints it. A view painted at boot — or before the
+  // portfolio last changed — otherwise keeps showing what it had: 'dashboard'
+  // had no branch at all, so removing a facility left its metrics and the
+  // sidebar count stale until the page was reloaded.
+  if (view === 'dashboard') {
+    renderDashboard();
+  } else if (view === 'sites') {
     renderSites();
   } else if (view === 'work') {
     renderWork();
@@ -39,6 +54,10 @@ export function setView(view){
     renderVisitReports();
   } else if (view === 'customerHome') {
     renderCustomerHome();
+  } else if (view === 'reports') {
+    renderReports();
+  } else if (view === 'settings') {
+    renderSettings();
   } else if (view === 'insights') {
     // Re-render on entry so the charts mount into the now-visible container and
     // re-scope to the current user (a customer sees only their own locations).
@@ -49,11 +68,6 @@ export function setView(view){
     // the wrong pixel offsets. startFieldTracking() is idempotent and calls
     // invalidateSize().
     startFieldTracking();
-  } else {
-    // Leaving Ekip stops the live_positions() poll. Without this it keeps
-    // querying every 15 seconds for the rest of the session while nobody is
-    // looking at the map.
-    stopFieldTracking();
   }
 }
 

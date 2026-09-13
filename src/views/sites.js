@@ -6,6 +6,7 @@ import { stateLabel } from '../data/catalog.js';
 import { toast } from '../core/dom.js';
 import { modal } from '../ui/modal.js';
 import { createSite, restoreSite } from '../data/repo/sites.js';
+import { renderWorkspaceChrome } from './dashboard.js';
 
 // City / sector filters. The "⚙ Filtreler" button used to pop a toast that
 // claimed "Şehir, Sektör ve Risk seviyesi filtreleri uygulandı" while applying
@@ -85,6 +86,10 @@ export function renderSites(){
   `).join('')||'<tr><td colspan="7">Aramanızla eşleşen tesis bulunamadı.</td></tr>';
 
   renderArchivedSites();
+  // Adding or removing a facility repaints this list but not the dashboard,
+  // and the sidebar's "N müşteri · M tesis" is painted by the dashboard — so
+  // without this the summary kept last render's count until a page reload.
+  renderWorkspaceChrome();
 }
 
 // Facilities an admin removed that had history behind them. They are archived
