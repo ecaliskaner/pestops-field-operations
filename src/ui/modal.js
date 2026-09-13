@@ -23,14 +23,14 @@ function mountSiteLocationPicker(containerId, initialLat, initialLng) {
   const host = document.getElementById(containerId);
   if (!host || typeof L === 'undefined') return;
 
-  // No raster tile layer — see team.js's ensureMap() for why: two different
-  // third-party tile CDNs failed the same way for the same users, which rules
-  // out either provider specifically and points at reachability in general.
-  // The pin the admin places is real data either way; the backdrop behind it
-  // is the CSS pattern in .field-map--no-tiles, not a dependency that can go
-  // down under it.
-  const map = L.map(containerId, { zoomControl: true, attributionControl: false });
-  map.getContainer().classList.add('field-map--no-tiles');
+  // Same basemap as the field map — an admin placing a pin needs to recognise
+  // the streets around their own facility, which is the whole point of asking
+  // them to click rather than type a coordinate.
+  const map = L.map(containerId, { zoomControl: true, attributionControl: true });
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap'
+  }).addTo(map);
 
   const hasInitial = Number.isFinite(initialLat) && Number.isFinite(initialLng);
   map.setView(hasInitial ? [initialLat, initialLng] : [39.5, 33.5], hasInitial ? 14 : 5.5);

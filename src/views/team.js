@@ -207,24 +207,24 @@ function ensureMap() {
 
   map = L.map('fieldMap', {
     zoomControl: true,
-    attributionControl: false,
+    attributionControl: true,
     scrollWheelZoom: true,
     zoomSnap: 0.25
   });
-  // No raster tile layer. First CARTO's anonymous basemaps.cartocdn.com, then
-  // OpenStreetMap's own tile.openstreetmap.org, both failed to load in the
-  // same way for the same users — every tile <img> errored client-side with
-  // no HTTP status to diagnose, on two providers on two different CDNs. That
-  // rules out "this one CDN is having a bad day" and points at something
-  // between this app and third-party tile hosts generally (a network
-  // condition on the viewer's end, not a fact about either provider). A real
-  // map that depends on reaching an external host is one outage away from
-  // being exactly this gray box for every customer; the markers, circles,
-  // zoom and click-to-place below are what actually carry the information —
-  // real technician positions and real facility locations — so they no
-  // longer sit on top of a dependency that can silently fail under them. The
-  // .field-map CSS backdrop is what stands in for the tile layer.
-  map.getContainer().classList.add('field-map--no-tiles');
+  // Tiles were blank for weeks and no provider was ever at fault:
+  // service-worker.js intercepted the cross-origin request and, refused by its
+  // own connect-src, answered the tile <img> with index.html. If tiles go blank
+  // again, check the worker before blaming the provider.
+  //
+  // OSM's own tile server because it is the only one of these that needs no
+  // account — CARTO's free basemaps now stamp "API KEY REQUIRED" across every
+  // tile. That makes this the right tile server for today and the wrong one at
+  // scale: the OSMF tile usage policy does not cover a commercial product's
+  // traffic, so a keyed provider is the upgrade path once this has real users.
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> katkıda bulunanlar'
+  }).addTo(map);
 
   // A neutral Türkiye-wide opening frame for an org with no geocoded sites
   // yet; plotSites() fits to the real ones as soon as there are any.
