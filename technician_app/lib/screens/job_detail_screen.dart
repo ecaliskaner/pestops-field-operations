@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/models.dart';
 import '../services/app_state.dart';
@@ -96,7 +97,7 @@ class JobDetailScreen extends StatelessWidget {
                 child: OutlinedButton.icon(
                   icon: const Icon(Icons.navigation_outlined, size: 18),
                   label: const Text('Haritada aç'),
-                  onPressed: () => showSnack(context, 'Navigasyon: ${w.site.lat.toStringAsFixed(4)}, ${w.site.lng.toStringAsFixed(4)}'),
+                  onPressed: () => _openInMaps(context, w),
                 ),
               ),
             ]),
@@ -303,6 +304,42 @@ class JobDetailScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  // "Haritada aç" used to showSnack the raw coordinate — a technician sitting
+  // in a van was handed "40.8005, 29.4400" and no way to drive to it. This
+  // hands the coordinate to the phone's own navigation app instead, which is
+  // what the button always claimed to do.
+  //
+  // `geo:` is the Android intent every maps app registers for; iOS has no
+  // handler for it, so the https form is the fallback there and anywhere the
+  // geo: scheme finds nothing installed.
+  Future<void> _openInMaps(BuildContext context, WorkOrder w) async {
+    final lat = w.site.lat;
+    final lng = w.site.lng;
+
+    // A site whose coordinate was never recorded would otherwise send the
+    // technician to the middle of the Gulf of Guinea.
+    if (lat == 0 && lng == 0) {
+      showSnack(context, 'Bu tesisin konumu kayıtlı değil. Ofisten tesise koordinat eklenmesini isteyin.');
+      return;
+    }
+
+    final label = Uri.encodeComponent(w.site.name);
+    final candidates = [
+      Uri.parse('geo:$lat,$lng?q=$lat,$lng($label)'),
+      Uri.parse('https://www.google.com/maps/search/?api=1&query=$lat,$lng'),
+    ];
+
+    for (final uri in candidates) {
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+        return;
+      }
+    }
+    if (context.mounted) {
+      showSnack(context, 'Cihazda harita uygulaması bulunamadı.');
+    }
   }
 
   void _showFloorPlan(BuildContext context, WorkOrder w) {

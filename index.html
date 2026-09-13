@@ -96,6 +96,7 @@
           <div class="page-heading compact"><div><p class="overline">TESİS YÖNETİMİ</p><h1>Portföy ve tesisler</h1><p>Birden fazla müşteri ve lokasyon için risk, servis ve istasyon takibi.</p></div><button class="primary-btn" id="addSite">＋ Tesis ekle</button></div>
           <div class="filterbar"><div class="search-field">⌕ <input id="siteSearch" placeholder="Müşteri veya tesis ara" /></div><button class="filter-btn active" data-site-filter="all">Tümü <b>0</b></button><button class="filter-btn" data-site-filter="risk">Riskli <b>0</b></button><button class="filter-btn" data-site-filter="watch">İzlenmeli <b>0</b></button><button class="filter-btn" data-site-filter="healthy">Sağlıklı <b>0</b></button><button class="filter-btn right" data-action="filters">⚙ Filtreler</button></div>
           <article class="panel table-panel"><table><thead><tr><th>Tesis</th><th>Durum</th><th>Sağlık skoru</th><th>Son servis</th><th>Açık bulgu</th><th>Sonraki servis</th><th></th></tr></thead><tbody id="siteTable"></tbody></table></article>
+          <article class="panel hidden" id="archivedSites" style="margin-top:16px;"></article>
         </section>
 
         <section id="work" class="view">
@@ -892,7 +893,10 @@
 
                   <div style="display:flex; justify-content:space-between; align-items:center; margin-top:20px;">
                     <p class="overline" style="margin:0;">MÜŞTERİ HİZMET SÖZLEŞME BİLGİLERİ</p>
-                    <button class="secondary-btn" id="btnEditSiteContract" style="font-size:11px; height:28px; padding:0 12px; margin:0;">✍️ Bilgileri Düzenle</button>
+                    <span style="display:flex; gap:8px;">
+                      <button class="secondary-btn" id="btnEditSiteContract" style="font-size:11px; height:28px; padding:0 12px; margin:0;">✍️ Bilgileri Düzenle</button>
+                      <button class="secondary-btn" id="btnDeleteSite" style="font-size:11px; height:28px; padding:0 12px; margin:0; color:var(--red); border-color:var(--red);">Tesisi kaldır</button>
+                    </span>
                   </div>
 
                   <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:6px;">

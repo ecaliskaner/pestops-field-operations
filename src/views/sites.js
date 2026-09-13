@@ -5,7 +5,7 @@ import { recalculateSiteStats, state, visibleSites } from '../core/state.js';
 import { stateLabel } from '../data/catalog.js';
 import { toast } from '../core/dom.js';
 import { modal } from '../ui/modal.js';
-import { createSite } from '../data/repo/sites.js';
+import { createSite, restoreSite } from '../data/repo/sites.js';
 
 // City / sector filters. The "⚙ Filtreler" button used to pop a toast that
 // claimed "Şehir, Sektör ve Risk seviyesi filtreleri uygulandı" while applying
@@ -83,6 +83,75 @@ export function renderSites(){
       <td><button class="row-action" data-site-id="${s.id}">•••</button></td>
     </tr>
   `).join('')||'<tr><td colspan="7">Aramanızla eşleşen tesis bulunamadı.</td></tr>';
+
+  renderArchivedSites();
+}
+
+// Facilities an admin removed that had history behind them. They are archived
+// rather than deleted (see supabase/migrations/*_site_removal.sql), so this
+// panel is the way back — without it, archiving would be as final as the
+// delete it exists to avoid. Hidden entirely when the archive is empty, which
+// is the normal state for most orgs.
+function renderArchivedSites() {
+  const host = $('#archivedSites');
+  if (!host) return;
+
+  const rows = state.archivedSites || [];
+  // Clients never archive anything and must not see the portfolio's archive.
+  const isAdmin = state.currentUser?.role === 'admin';
+  if (!rows.length || !isAdmin) {
+    host.classList.add('hidden');
+    host.innerHTML = '';
+    return;
+  }
+
+  host.classList.remove('hidden');
+  host.innerHTML = `
+    <p class="overline" style="margin:0 0 4px;">ARŞİV · ${rows.length} TESİS</p>
+    <p class="text-muted" style="font-size:11px; margin:0 0 10px;">
+      Bu tesisler portföyden çıkarıldı. Ziyaret geçmişleri, raporları ve faturaları silinmedi — geri alındığında olduğu gibi döner.
+    </p>
+    <div style="display:grid; gap:8px;">
+      ${rows.map((s) => `
+        <div style="display:flex; align-items:center; gap:10px; padding:8px 10px; background:var(--soft); border:1px solid var(--line); border-radius:8px;">
+          <span class="site-logo" style="background:${s.color}; opacity:.55;">${(s.company || s.name).slice(0, 2).toLocaleUpperCase('tr')}</span>
+          <span style="flex:1; min-width:0;">
+            <b style="font-size:12px;">${s.name}</b>
+            <span class="text-muted" style="display:block; font-size:11px;">${s.company}${s.city ? ` · ${s.city}` : ''}</span>
+          </span>
+          <button class="secondary-btn" data-restore-site="${s.id}" style="font-size:11px; height:28px; padding:0 12px; margin:0;">Geri al</button>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+/**
+ * Click handler for the archive panel's "Geri al" buttons. Registered in the
+ * app.js delegator alongside the other site actions.
+ */
+export function archiveRestoreClicks(e) {
+  const btn = e.target.closest('[data-restore-site]');
+  if (!btn) return false;
+
+  const siteId = btn.dataset.restoreSite;
+  btn.disabled = true;
+  btn.textContent = 'Geri alınıyor…';
+
+  restoreSite(siteId)
+    .then((site) => {
+      state.archivedSites = (state.archivedSites || []).filter((s) => s.id !== siteId);
+      state.sites.push(site);
+      renderSites();
+      toast(`${site.name} portföye geri alındı.`);
+    })
+    .catch((err) => {
+      btn.disabled = false;
+      btn.textContent = 'Geri al';
+      toast(err?.message || 'Tesis geri alınamadı.');
+    });
+
+  return true;
 }
 
 

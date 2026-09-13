@@ -105,8 +105,58 @@ export function mapSiteRow(row) {
  * @returns {Promise<object[]>}
  */
 export async function fetchSites() {
-  const rows = await run(supabase.from('sites').select(SITE_SELECT).order('name'));
+  const rows = await run(
+    supabase.from('sites').select(SITE_SELECT).eq('is_active', true).order('name')
+  );
   return rows.map(mapSiteRow);
+}
+
+/**
+ * The facilities an admin has archived. Kept out of `state.sites` on purpose:
+ * an archived site must not reach the portfolio counts, the Ekip map or the
+ * visit planner, so the only place it appears is the archive list that offers
+ * it back.
+ *
+ * @returns {Promise<object[]>}
+ */
+export async function fetchArchivedSites() {
+  const rows = await run(
+    supabase.from('sites').select(SITE_SELECT).eq('is_active', false).order('name')
+  );
+  return rows.map(mapSiteRow);
+}
+
+/**
+ * Remove a facility — deleting it outright only when that destroys nothing.
+ *
+ * delete_site() makes that call server-side, because the answer depends on
+ * rows the browser cannot be trusted to have counted: every site_id foreign
+ * key in this schema cascades, so a facility with visits behind it would take
+ * its inspections, visit reports and chemical usage records with it. Those are
+ * the audit trail. A site with no history at all is deleted for real; anything
+ * else is archived and stays intact.
+ *
+ * @param {string} siteId
+ * @returns {Promise<{action: 'deleted'|'archived', name: string,
+ *   workOrders?: number, inspections?: number, chemicalUsages?: number,
+ *   visitReports?: number, invoices?: number}>}
+ */
+export async function deleteSite(siteId) {
+  return run(supabase.rpc('delete_site', { p_site: siteId }));
+}
+
+/**
+ * Bring an archived facility back into the active portfolio.
+ *
+ * @param {string} siteId
+ * @returns {Promise<object>} the restored site, in the seed shape
+ */
+export async function restoreSite(siteId) {
+  await run(supabase.rpc('restore_site', { p_site: siteId }));
+  const row = await run(
+    supabase.from('sites').select(SITE_SELECT).eq('id', siteId).single()
+  );
+  return mapSiteRow(row);
 }
 
 // "01.01.2026 - 31.12.2026" -> [start, end] as ISO dates, or null if the text
