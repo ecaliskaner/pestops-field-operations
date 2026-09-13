@@ -38,12 +38,24 @@ function mountSiteLocationPicker(containerId, initialLat, initialLng) {
   const form = host.closest('form');
   const latInput = form?.querySelector('input[name="lat"]');
   const lngInput = form?.querySelector('input[name="lng"]');
-  let marker = hasInitial ? L.marker([initialLat, initialLng]).addTo(map) : null;
+  // A CSS pin rather than L.marker()'s default icon. The default is a PNG
+  // Leaflet resolves relative to its own stylesheet, and this app vendors
+  // leaflet.css without the images/ folder beside it — so the icon 404s and
+  // the browser paints its alt text ("Marker") where the pin should be. It is
+  // also the same pin the admin sees on the field map afterwards, since
+  // team.js marks real sites this way.
+  const pinIcon = L.divIcon({
+    className: 'site-marker-wrap',
+    iconSize: [20, 28],
+    iconAnchor: [10, 28],
+    html: '<div class="site-pin ok"><i></i></div>'
+  });
+  let marker = hasInitial ? L.marker([initialLat, initialLng], { icon: pinIcon }).addTo(map) : null;
 
   map.on('click', (e) => {
     const { lat, lng } = e.latlng;
     if (marker) marker.setLatLng(e.latlng);
-    else marker = L.marker(e.latlng).addTo(map);
+    else marker = L.marker(e.latlng, { icon: pinIcon }).addTo(map);
     if (latInput) latInput.value = lat.toFixed(6);
     if (lngInput) lngInput.value = lng.toFixed(6);
   });
@@ -176,6 +188,35 @@ export function modal(type, siteId = null) {
     // itself; classList.remove('hidden') below runs synchronously right after
     // this branch, so a deferred callback is enough — no need to move it.
     setTimeout(() => mountSiteLocationPicker('createSiteMap', null, null), 30);
+  } else if (type === 'deleteSite') {
+    const s = state.sites.find(site => site.id === siteId);
+    if (!s) return;
+
+    // Which of the two outcomes applies is decided server-side by
+    // delete_site(), because it depends on rows this browser has not loaded
+    // (inspections, chemical usages, issued invoices). So the dialog states
+    // both honestly instead of promising one, and the result says which
+    // happened. Nothing here can hard-delete a facility that has history.
+    content.innerHTML = `
+      <h2>Tesisi kaldır</h2>
+      <p class="text-muted" style="margin-bottom:14px;">${esc(s.company)} — ${esc(s.name)}</p>
+
+      <div style="background:var(--soft); border:1px solid var(--line); border-radius:10px; padding:12px; display:grid; gap:10px; font-size:12px;">
+        <div style="display:flex; gap:10px;">
+          <b style="color:var(--red); flex:0 0 auto;">Geçmişi yoksa</b>
+          <span>Tesis tamamen silinir. Hiç ziyaret, denetim, rapor veya fatura kaydı yoksa kaybolacak bir şey yoktur.</span>
+        </div>
+        <div style="display:flex; gap:10px;">
+          <b style="flex:0 0 auto;">Geçmişi varsa</b>
+          <span>Tesis <b>arşivlenir</b>: portföyden, haritadan ve ziyaret planından çıkar. Ziyaret geçmişi, denetim kayıtları, kimyasal uygulama kayıtları, raporlar ve faturalar <b>silinmez</b> — bunlar denetim kanıtıdır. Tesisler sayfasının altındaki arşivden geri alabilirsiniz.</span>
+        </div>
+      </div>
+
+      <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:16px;">
+        <button class="secondary-btn" data-dismiss-modal style="margin:0;">Vazgeç</button>
+        <button class="primary-btn" id="confirmDeleteSite" data-site-id="${esc(s.id)}" style="margin:0; background:var(--red); border-color:var(--red);">Kaldır</button>
+      </div>
+    `;
   } else if (type === 'editSite') {
     const s = state.sites.find(site => site.id === siteId);
     if (!s) return;

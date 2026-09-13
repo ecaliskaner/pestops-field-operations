@@ -40,6 +40,11 @@ dependencies:
   mobile_scanner: ^7.4.0
   shared_preferences: ^2.5.3
   intl: ^0.20.2
+  # Hands the facility's coordinate to whichever navigation app the technician
+  # already uses. This app deliberately does not embed a map: a driver needs
+  # turn-by-turn from their own phone, not a pannable rectangle inside a work
+  # order screen.
+  url_launcher: ^6.3.1
 
 dev_dependencies:
   flutter_test:

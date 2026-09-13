@@ -12,7 +12,8 @@ import { checkSession } from './core/roles.js';
 import { render, setView } from './core/router.js';
 import { modal, registerSiteFilters } from './ui/modal.js';
 import { dashboardRangeClicks } from './views/dashboard.js';
-import { renderSites, activeSiteFilters, setSiteFilters, clearSiteFilters } from './views/sites.js';
+import { renderSites, activeSiteFilters, setSiteFilters, clearSiteFilters, archiveRestoreClicks } from './views/sites.js';
+import { deleteSite } from './data/repo/sites.js';
 import { renderInsights } from './views/insights.js';
 import {
   workListClicks, workCardClicks, completeWorkClicks, calendarToggleClicks,
@@ -187,6 +188,48 @@ export function shellClicks(e) {
   return false;
 }
 
+// Confirming the removal of a facility. Which outcome the admin gets is
+// delete_site()'s call, not this handler's — the toast reports what actually
+// happened rather than what was intended, because "arşivlendi" and "silindi"
+// are materially different answers and the operator has to know which one
+// their facility got.
+export function siteDeleteClicks(e) {
+  const btn = e.target.closest('#confirmDeleteSite');
+  if (!btn) return false;
+
+  const siteId = btn.dataset.siteId;
+  btn.disabled = true;
+  btn.textContent = 'Kaldırılıyor…';
+
+  deleteSite(siteId)
+    .then((res) => {
+      const removed = state.sites.find((s) => s.id === siteId);
+      state.sites = state.sites.filter((s) => s.id !== siteId);
+      $('#modal').classList.add('hidden');
+
+      if (res.action === 'deleted') {
+        toast(`${res.name} silindi.`);
+      } else {
+        if (removed) state.archivedSites = [...(state.archivedSites || []), removed];
+        const kept = [
+          res.inspections ? `${res.inspections} denetim` : '',
+          res.visitReports ? `${res.visitReports} rapor` : '',
+          res.invoices ? `${res.invoices} fatura` : ''
+        ].filter(Boolean).join(', ');
+        toast(`${res.name} arşivlendi${kept ? ` — ${kept} korundu` : ''}.`);
+      }
+
+      setView('sites');
+    })
+    .catch((err) => {
+      btn.disabled = false;
+      btn.textContent = 'Kaldır';
+      toast(err?.message || 'Tesis kaldırılamadı.');
+    });
+
+  return true;
+}
+
 export function modalOpenerClicks(e) {
     if(e.target.closest('#newWorkOrder')||e.target.closest('#newWorkOrderSecondary')) modal('work');
     if(e.target.closest('#addSite')) modal('site');
@@ -197,10 +240,20 @@ export function modalOpenerClicks(e) {
         toast("Hata: Aktif seçili tesis bulunamadı.");
       }
     }
+    if(e.target.closest('#btnDeleteSite')) {
+      if (ui.activeSiteId) {
+        modal('deleteSite', ui.activeSiteId);
+      } else {
+        toast("Hata: Aktif seçili tesis bulunamadı.");
+      }
+    }
     if(e.target.closest('#createReport')) modal('report');
     if(e.target.closest('#btnInviteTechnician')) modal('inviteTechnician');
 
-    if(e.target.closest('.modal-close')||e.target.id==='modal') $('#modal').classList.add('hidden');
+    // .modal-close is also the corner X's positioning hook, so an in-flow
+    // cancel button uses data-dismiss-modal to get the behaviour without
+    // being pinned to the modal's top-right corner.
+    if(e.target.closest('.modal-close')||e.target.closest('[data-dismiss-modal]')||e.target.id==='modal') $('#modal').classList.add('hidden');
     
     if(e.target.closest('#optionalDownload')){
       toast('Tesis planı offline kullanım için indirildi.');
@@ -279,7 +332,9 @@ const CLICK_CHAIN = [
   invoiceActionClicks,
   billingClicks,
   invoiceFilterClicks,
-  fileDownloadClicks
+  fileDownloadClicks,
+  siteDeleteClicks,
+  archiveRestoreClicks
 ];
 
 const SUBMIT_CHAIN = [

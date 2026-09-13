@@ -21,7 +21,7 @@ import {
 import { toast } from './dom.js';
 import { checkSession } from './roles.js';
 import { render } from './router.js';
-import { fetchSites } from '../data/repo/sites.js';
+import { fetchSites, fetchArchivedSites } from '../data/repo/sites.js';
 import { fetchWorkOrders, fetchRecentEvents } from '../data/repo/work.js';
 import { fetchTechnicians } from '../data/repo/technicians.js';
 import { fetchVisitHistory } from '../data/repo/visits.js';
@@ -116,7 +116,7 @@ async function loadRealData() {
   const [
     sites, work, technicians, activity, visitHistory, findings, inventory, chemicals,
     stockTransactions, contracts, invoices, organization,
-    techRates, replacements
+    techRates, replacements, archivedSites
   ] = await Promise.allSettled([
     fetchSites(),
     fetchWorkOrders(),
@@ -131,7 +131,8 @@ async function loadRealData() {
     fetchInvoices(),
     fetchOrganization(),
     fetchTechnicianRates(),
-    fetchAllReplacements()
+    fetchAllReplacements(),
+    fetchArchivedSites()
   ]);
 
   const apply = (result, label, fn) => {
@@ -164,6 +165,10 @@ async function loadRealData() {
   apply(organization, 'kurum bilgisi', setOrganization);
   apply(techRates, 'teknisyen ucretleri', setTechRates);
   apply(replacements, 'cihaz degisimleri', setStationReplacements);
+  // Deliberately not merged into state.sites: an archived facility must stay
+  // out of the portfolio counts, the Ekip map and the visit planner. The only
+  // screen that reads this is the archive list that offers it back.
+  apply(archivedSites, 'arsivlenmis tesisler', (rows) => { state.archivedSites = rows; });
 
   // The reporting layer (reports, insights, finance, the printable bodies)
   // all derive from this one store, so it is installed before the paint.
