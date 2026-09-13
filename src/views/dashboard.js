@@ -44,17 +44,21 @@ function completedInRange(days) {
   });
 }
 
-export function renderDashboard(range){
-  if (range) currentRange = range;
-  $$('.range-control button[data-range]').forEach(b => b.classList.toggle('active', b.dataset.range === currentRange));
-
-  // Recalculate all sites stats to ensure dashboard represents fresh data
-  state.sites.forEach(recalculateSiteStats);
-
-  // Identity + headline counters. These lived as literals in index.html
-  // ("Apex Operations", "12 müşteri · 34 tesis", "Aktif tesis 34",
-  // "Sahadaki teknisyen 11/14", "13 TEMMUZ 2026") — numbers no real account
-  // could reconcile. They now read the signed-in org's own data.
+/**
+ * The sidebar identity block and the topbar's org crumb.
+ *
+ * Split out of renderDashboard() because it lives outside every view: it sits
+ * in the shell, but its numbers come from state.sites. That meant anything
+ * which changed the portfolio without also repainting the dashboard — removing
+ * a facility, adding one — left "2 müşteri · 2 tesis" on screen until the page
+ * was reloaded. The router now calls this on every navigation and renderSites()
+ * calls it whenever the list is repainted, so the summary cannot disagree with
+ * the list it summarises.
+ *
+ * These values lived as literals in index.html ("Apex Operations",
+ * "12 müşteri · 34 tesis") — numbers no real account could reconcile.
+ */
+export function renderWorkspaceChrome() {
   const orgName = state.currentUser?.orgName || state.currentUser?.company || 'Repellent';
   const customerCount = new Set(state.sites.map(s => s.company).filter(Boolean)).size;
   const setText = (sel, value) => { const el = $(sel); if (el) el.textContent = value; };
@@ -67,6 +71,18 @@ export function renderDashboard(range){
   setText('#workspaceAvatar', orgName.trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase() || '—');
   setText('#orgCrumb', orgName);
   setText('#workspaceMeta', `${customerCount} müşteri · ${state.sites.length} tesis`);
+}
+
+export function renderDashboard(range){
+  if (range) currentRange = range;
+  $$('.range-control button[data-range]').forEach(b => b.classList.toggle('active', b.dataset.range === currentRange));
+
+  // Recalculate all sites stats to ensure dashboard represents fresh data
+  state.sites.forEach(recalculateSiteStats);
+
+  const setText = (sel, value) => { const el = $(sel); if (el) el.textContent = value; };
+
+  renderWorkspaceChrome();
   setText('#activeSitesMetric', state.sites.length);
   setText('#fieldTechMetric', state.technicians.length);
   setText('#dashDate', `${new Date().toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }).toLocaleUpperCase('tr')} · OPERASYON ÖZETİ`);
