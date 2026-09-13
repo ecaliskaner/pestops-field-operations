@@ -16,19 +16,21 @@ import { supabase } from '../core/supabase.js';
 // in — something nobody actually does. An address is what a real admin has on
 // hand (the form already asks for it); a point on a map they can click is the
 // only other input that costs them nothing to give. This mirrors team.js's
-// ensureMap() pattern (same tiles, same "container must be visible first"
-// caveat) but stays local to this file rather than being extracted, since nothing
-// else needs a single-pin picker.
+// ensureMap() pattern (same "container must be visible first" caveat, same
+// tile-free CSS backdrop) but stays local to this file rather than being
+// extracted, since nothing else needs a single-pin picker.
 function mountSiteLocationPicker(containerId, initialLat, initialLng) {
   const host = document.getElementById(containerId);
   if (!host || typeof L === 'undefined') return;
 
-  // Same provider as team.js's ensureMap() — see that comment for why CARTO's
-  // anonymous basemap CDN was dropped in favour of OpenStreetMap's own tiles.
+  // No raster tile layer — see team.js's ensureMap() for why: two different
+  // third-party tile CDNs failed the same way for the same users, which rules
+  // out either provider specifically and points at reachability in general.
+  // The pin the admin places is real data either way; the backdrop behind it
+  // is the CSS pattern in .field-map--no-tiles, not a dependency that can go
+  // down under it.
   const map = L.map(containerId, { zoomControl: true, attributionControl: false });
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    subdomains: 'abc', maxZoom: 19
-  }).addTo(map);
+  map.getContainer().classList.add('field-map--no-tiles');
 
   const hasInitial = Number.isFinite(initialLat) && Number.isFinite(initialLng);
   map.setView(hasInitial ? [initialLat, initialLng] : [39.5, 33.5], hasInitial ? 14 : 5.5);
@@ -51,10 +53,6 @@ function mountSiteLocationPicker(containerId, initialLat, initialLng) {
   setTimeout(() => map.invalidateSize(), 80);
 }
 
-// Set by app.js at boot to views/sites.js's activeSiteFilters(), so the
-// siteFilters branch below can prefill the form without modal.js importing
-// from sites.js — sites.js already imports `modal` from here, and the reverse
-// import would be circular.
 // { get, apply, clear } supplied by app.js at boot, wired to views/sites.js's
 // activeSiteFilters()/setSiteFilters()/clearSiteFilters(). Avoids modal.js
 // importing sites.js directly — sites.js already imports `modal` from here,

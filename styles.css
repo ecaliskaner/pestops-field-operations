@@ -2479,6 +2479,23 @@ tr.rec-row-selected > td { background: #eef4ff !important; }
   z-index: 0; /* keep tiles/controls under app overlays and modals */
 }
 .field-map .leaflet-container { font: inherit; background: #e8edf0; }
+/* Stands in for the raster tile layer, which this app no longer loads from
+   any third-party CDN (see team.js's ensureMap() for why: two different
+   providers failed to load tiles the same way for the same users). A soft
+   graticule reads as "this is a map" without pretending to be real street
+   imagery it isn't — the markers, geofence circles and click-to-place pin on
+   top of it are the real data. Applied to the Leaflet container itself so it
+   sits under every Leaflet pane automatically, with no z-index juggling. */
+.field-map--no-tiles {
+  background-color: #eef2f4;
+  background-image:
+    linear-gradient(rgba(90, 120, 135, .08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(90, 120, 135, .08) 1px, transparent 1px),
+    linear-gradient(rgba(90, 120, 135, .16) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(90, 120, 135, .16) 1px, transparent 1px);
+  background-size: 20px 20px, 20px 20px, 100px 100px, 100px 100px;
+  background-position: -1px -1px;
+}
 .field-map .leaflet-tooltip {
   font: 600 11px/1.35 "DM Sans", sans-serif;
   border: 1px solid var(--line);

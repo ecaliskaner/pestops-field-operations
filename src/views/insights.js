@@ -279,31 +279,13 @@ export function renderInsights() {
   renderRecommendations();
 }
 
-export function renderAiPredictions() {
-  const grid = $('#aiRiskEngineGrid');
-  if (!grid) return;
-
-  const predictions = [
-    { area: "Hammadde Deposu", risk: "84%", trend: "Yüksek Artış", badge: "critical", desc: "Mevsimsel sıcaklık artışı ve nem oranına bağlı olarak kemirgen geçiş riski yüksek." },
-    { area: "Ana Üretim Hattı", risk: "12%", trend: "Kararlı Düşüş", badge: "healthy", desc: "Periyodik temizlik ve kalıcı jel bariyerleri sayesinde risk düzeyi minimal seviyede." },
-    { area: "Ambalaj & Sevkiyat", risk: "48%", trend: "Yükselme Eğilimi", badge: "warning", desc: "Rampa kapılarının açık kalma süresinin uzaması uçan haşere riskini artırıyor." },
-    { area: "Sosyal Tesisler & Ofisler", risk: "28%", trend: "Kararlı", badge: "secondary", desc: "Mutfak drenaj kanalları çevresinde yürüyen haşere aktivite riski izleniyor." }
-  ];
-
-  grid.innerHTML = predictions.map(p => `
-    <div class="panel" style="padding:15px; border:1px solid var(--line); box-shadow:none; background:var(--soft);">
-      <div style="display:flex; justify-content:space-between; align-items:start; margin-bottom:8px;">
-        <h3 style="margin:0; font-size:13px; font-weight:700;">📍 ${p.area}</h3>
-        <span class="status-chip ${p.badge}" style="font-size:9px; font-weight:700; padding:2px 6px;">${p.trend}</span>
-      </div>
-      <div style="display:flex; align-items:baseline; gap:6px; margin:10px 0;">
-        <strong style="font-size:24px; font-weight:800; color:${p.badge === 'critical' ? 'var(--red)' : p.badge === 'warning' ? 'var(--amber)' : p.badge === 'healthy' ? 'var(--green)' : 'var(--muted)'};">${p.risk}</strong>
-        <span style="font-size:10px; color:var(--muted)">Risk Oranı</span>
-      </div>
-      <p style="margin:0; font-size:11px; line-height:1.45; color:var(--muted);">${p.desc}</p>
-    </div>
-  `).join('');
-}
+// renderAiPredictions() used to live here: four hardcoded "risk
+// predictions" (fixed percentages, fixed trend labels, fixed area names —
+// "Hammadde Deposu", "84%", "Yüksek Artış" — identical for every org, every
+// time, forever) rendered under a card literally labelled "AI AKTİF". No
+// real risk model backed it; it was four numbers that never changed.
+// Removed rather than reworked — a predictive model belongs behind a real
+// forecast, not a claim on the label.
 
 export function renderClientAnalytics() {
   const canvas = $('#analyticsCanvas');
