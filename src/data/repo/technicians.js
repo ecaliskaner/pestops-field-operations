@@ -39,6 +39,53 @@ export async function fetchTechnicians() {
 }
 
 /**
+ * Technicians an admin has archived. Kept out of `state.technicians` on
+ * purpose, mirroring repo/sites.js's fetchArchivedSites(): an archived
+ * technician must not reach the roster, the assignment picker or the Ekip
+ * map, so the only place one appears is the archive list that offers them
+ * back.
+ *
+ * @returns {Promise<object[]>}
+ */
+export async function fetchArchivedTechnicians() {
+  const rows = await run(
+    supabase.from('technicians').select(TECHNICIAN_SELECT).eq('is_active', false).order('full_name')
+  );
+  return rows.map(mapTechnicianRow);
+}
+
+/**
+ * Remove a technician — deleting them outright only when that destroys
+ * nothing. See supabase/migrations/*_technician_removal.sql: delete_technician()
+ * counts their work orders, chemical usages and planned visits server-side,
+ * because the browser cannot be trusted to have loaded them. No history at
+ * all is deleted for real; anything else is archived (is_active = false),
+ * which also revokes their operational access on its own — every
+ * technician-scoped RLS policy requires is_active.
+ *
+ * @param {string} technicianId
+ * @returns {Promise<{action: 'deleted'|'archived', name: string,
+ *   workOrders?: number, chemicalUsages?: number, plannedVisits?: number}>}
+ */
+export async function deleteTechnician(technicianId) {
+  return run(supabase.rpc('delete_technician', { p_technician: technicianId }));
+}
+
+/**
+ * Bring an archived technician back onto the active roster.
+ *
+ * @param {string} technicianId
+ * @returns {Promise<object>} the restored technician, in the roster shape
+ */
+export async function restoreTechnician(technicianId) {
+  await run(supabase.rpc('restore_technician', { p_technician: technicianId }));
+  const row = await run(
+    supabase.from('technicians').select(TECHNICIAN_SELECT).eq('id', technicianId).single()
+  );
+  return mapTechnicianRow(row);
+}
+
+/**
  * Live technician positions, straight from the `live_positions()` RPC
  * (supabase/migrations/20260905000003_rpc_and_storage.sql).
  *

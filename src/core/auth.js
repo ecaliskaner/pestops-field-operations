@@ -23,7 +23,7 @@ import { checkSession } from './roles.js';
 import { render } from './router.js';
 import { fetchSites, fetchArchivedSites } from '../data/repo/sites.js';
 import { fetchWorkOrders, fetchRecentEvents } from '../data/repo/work.js';
-import { fetchTechnicians } from '../data/repo/technicians.js';
+import { fetchTechnicians, fetchArchivedTechnicians } from '../data/repo/technicians.js';
 import { fetchVisitHistory } from '../data/repo/visits.js';
 import { fetchInventory, fetchChemicals, fetchStockTransactions } from '../data/repo/inventory.js';
 import { fetchRecommendations, fetchContracts } from '../data/repo/customer.js';
@@ -116,7 +116,7 @@ async function loadRealData() {
   const [
     sites, work, technicians, activity, visitHistory, findings, inventory, chemicals,
     stockTransactions, contracts, invoices, organization,
-    techRates, replacements, archivedSites
+    techRates, replacements, archivedSites, archivedTechnicians
   ] = await Promise.allSettled([
     fetchSites(),
     fetchWorkOrders(),
@@ -132,7 +132,8 @@ async function loadRealData() {
     fetchOrganization(),
     fetchTechnicianRates(),
     fetchAllReplacements(),
-    fetchArchivedSites()
+    fetchArchivedSites(),
+    fetchArchivedTechnicians()
   ]);
 
   const apply = (result, label, fn) => {
@@ -169,6 +170,10 @@ async function loadRealData() {
   // out of the portfolio counts, the Ekip map and the visit planner. The only
   // screen that reads this is the archive list that offers it back.
   apply(archivedSites, 'arsivlenmis tesisler', (rows) => { state.archivedSites = rows; });
+  // Same reasoning as archivedSites: kept out of state.technicians so an
+  // archived technician cannot leak back into the roster, the assignment
+  // picker or the Ekip map. Only the archive list on Ekip reads this.
+  apply(archivedTechnicians, 'arsivlenmis teknisyenler', (rows) => { state.archivedTechnicians = rows; });
 
   // The reporting layer (reports, insights, finance, the printable bodies)
   // all derive from this one store, so it is installed before the paint.
