@@ -137,7 +137,12 @@ Deno.serve(async (req: Request) => {
 
   const { error: profileUpdateErr } = await adminClient
     .from('profiles')
-    .update({ org_id: callerProfile.org_id, role: 'tech', full_name: fullName, phone })
+    // must_set_password: true — inviteUserByEmail() never gives this account
+    // a password, and Supabase signs the link's holder straight into a live
+    // session under the plain SIGNED_IN event (not PASSWORD_RECOVERY, as
+    // first assumed), so the client-side auth event stream cannot be trusted
+    // to surface that on its own. See supabase/migrations/*_must_set_password.sql.
+    .update({ org_id: callerProfile.org_id, role: 'tech', full_name: fullName, phone, must_set_password: true })
     .eq('id', newUserId);
 
   if (profileUpdateErr) {
