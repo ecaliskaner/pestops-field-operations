@@ -266,17 +266,37 @@ function showSetPasswordScreen() {
  */
 export async function completePasswordSetup(password) {
   const { data, error } = await supabase.auth.updateUser({ password: String(password || '') });
-  if (error) return { ok: false, message: errorMessage(error) };
 
-  // Best-effort: the password is already set at this point (the call above
-  // succeeded), so a failure here should not lock the person out — it would
-  // just mean this screen shows again next sign-in, which is a nuisance, not
-  // a broken account.
+  // "New password should be different from the old password" means this
+  // exact password is already set on the account — verified against a real
+  // account stuck on this screen: their first submit had actually succeeded
+  // (200 on PUT /user), but the browser never reached clear_must_set_password()
+  // afterwards (a reload, a lost connection, the tab closing mid-flow), so
+  // must_set_password stayed true and this screen kept showing. Retyping the
+  // same password then failed here forever — indistinguishable, from the
+  // button, from nothing happening at all. Treat it as the success it
+  // actually represents rather than an error.
+  const alreadySet = error?.code === 'same_password'
+    || /different from the old password/i.test(error?.message || '');
+  if (error && !alreadySet) return { ok: false, message: errorMessage(error) };
+
+  // updateUser()'s own response has no user on the same_password branch, but
+  // the session is still live (that failure doesn't sign anyone out).
+  let authUser = data?.user;
+  if (!authUser) {
+    const { data: current } = await supabase.auth.getUser();
+    authUser = current?.user;
+  }
+  if (!authUser) return { ok: false, message: errorMessage(error) };
+
+  // Best-effort: the password is already set at this point, so a failure
+  // here should not lock the person out — it would just mean this screen
+  // shows again next sign-in, which is a nuisance, not a broken account.
   await supabase.rpc('clear_must_set_password').catch(() => {});
 
   let profile;
   try {
-    profile = await fetchProfile(data.user.id);
+    profile = await fetchProfile(authUser.id);
   } catch (err) {
     await supabase.auth.signOut();
     return { ok: false, message: err.message };
@@ -289,7 +309,7 @@ export async function completePasswordSetup(password) {
   }
 
   $('#viewSetPassword')?.classList.add('hidden');
-  applyUser(profileToUser(profile, data.user));
+  applyUser(profileToUser(profile, authUser));
   return { ok: true };
 }
 
