@@ -192,10 +192,12 @@ class JobDetailScreen extends StatelessWidget {
             ),
             icon: const Icon(Icons.qr_code_scanner),
             label: const Text('Doğrudan QR Kod Tara / Başlat', style: TextStyle(fontWeight: FontWeight.bold)),
-            onPressed: () async {
-              await st.arrive(w, w.site.lat, w.site.lng);
-              if (context.mounted) _scan(context, w);
-            },
+            // Same GPS arrival as the button above — this was never a
+            // different flow, just a shortcut into it, but it used to skip
+            // the coordinate entirely and hand the site's own lat/lng to
+            // st.arrive(). _arrive() already opens the scanner once the real
+            // fix lands.
+            onPressed: () => _arrive(context, st, w),
           ),
         ],
       );
@@ -224,8 +226,11 @@ class JobDetailScreen extends StatelessWidget {
 
   Future<void> _arrive(BuildContext context, AppState st, WorkOrder w) async {
     showDialog(context: context, barrierDismissible: false, builder: (_) => const Center(child: CircularProgressIndicator()));
-    final pos = await _currentPosition(w);
+    final pos = await _currentPosition(context);
     if (context.mounted) Navigator.pop(context);
+    // _currentPosition() already told the technician why, if it failed —
+    // nothing to record, since there is no real fix to record.
+    if (pos == null) return;
     final msg = await st.arrive(w, pos.$1, pos.$2);
     if (context.mounted) {
       showSnack(context, msg);
@@ -234,14 +239,49 @@ class JobDetailScreen extends StatelessWidget {
     }
   }
 
-  // Real GPS where available; on denial/error we fall back to the facility's
-  // own coordinates so the demo still records a plausible arrival.
-  Future<(double, double)> _currentPosition(WorkOrder w) async {
+  // Real GPS, or nothing. This coordinate feeds the server's geofence check —
+  // the actual audit claim that the technician was physically on site — so a
+  // failure here must read as a failure, never as the facility's own
+  // coordinate standing in for a fix that was never taken. That substitution
+  // used to live here ("so the demo still records a plausible arrival"), and
+  // it made the check pass unconditionally: a site compared against itself is
+  // always zero metres away. It was also never reachable in the first place
+  // on a real device — nothing in this app ever calls requestPermission(), so
+  // getCurrentPosition() throws immediately on a fresh install and this path
+  // was silently the *only* path a first-time technician ever took.
+  Future<(double, double)?> _currentPosition(BuildContext context) async {
+    if (!await Geolocator.isLocationServiceEnabled()) {
+      if (context.mounted) {
+        showSnack(context, 'Konum servisleri kapalı. Telefon ayarlarından açıp tekrar deneyin.', error: true);
+      }
+      return null;
+    }
+
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+    if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+      if (context.mounted) {
+        showSnack(context, 'Konum izni verilmedi — varış GPS ile doğrulanamaz.', error: true);
+      }
+      return null;
+    }
+
     try {
-      final p = await Geolocator.getCurrentPosition().timeout(const Duration(milliseconds: 1500));
+      // A real fix, especially a cold one indoors, routinely takes several
+      // seconds — the previous 1.5s timeout was shorter than a real GPS chip
+      // needs to lock, which is a second, independent reason this path never
+      // succeeded on a real device.
+      final p = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, timeLimit: Duration(seconds: 20)),
+      );
       return (p.latitude, p.longitude);
-    } catch (_) {
-      return (w.site.lat, w.site.lng);
+    } on Object {
+      if (context.mounted) {
+        showSnack(context, 'Konum alınamadı. Açık bir alanda tekrar deneyin.', error: true);
+      }
+      return null;
     }
   }
 
@@ -288,10 +328,17 @@ class JobDetailScreen extends StatelessWidget {
                     FilledButton.icon(
                       icon: const Icon(Icons.qr_code_scanner),
                       label: const Text('Şimdi QR Tara'),
-                      onPressed: () {
+                      onPressed: () async {
                         Navigator.pop(c);
-                        if (!w.arrived) st.arrive(w, w.site.lat, w.site.lng);
-                        _scan(context, w);
+                        if (!w.arrived) {
+                          // _arrive() opens the scanner itself once a real
+                          // fix lands; scanning immediately here would open
+                          // it a second time and, before this fix, ran
+                          // concurrently with a silent fabricated arrival.
+                          await _arrive(context, st, w);
+                        } else {
+                          _scan(context, w);
+                        }
                       },
                     ),
                   ],
