@@ -86,7 +86,7 @@ Deno.serve(async (req: Request) => {
     return json({ error: 'forbidden', message: 'Yalnizca yoneticiler teknisyen davet edebilir.' }, 403);
   }
 
-  let body: { email?: string; full_name?: string; phone?: string };
+  let body: { email?: string; full_name?: string; phone?: string; redirect_to?: string };
   try {
     body = await req.json();
   } catch {
@@ -100,11 +100,30 @@ Deno.serve(async (req: Request) => {
   if (!EMAIL_RE.test(email)) return json({ error: 'invalid_email' }, 400);
   if (!fullName) return json({ error: 'full_name_required' }, 400);
 
+  // Without an explicit redirectTo, GoTrue sends the invite link to the
+  // project's configured Site URL — whatever was last set in the dashboard,
+  // dev localhost included, with no reason to track wherever this function
+  // happens to be called from. The caller (src/ui/modal.js) sends its own
+  // origin, so the link lands back on the same deployment the admin is using
+  // right now — prod, a preview branch, or local dev — with no domain to
+  // hardcode or let go stale here.
+  //
+  // Supabase still only honours a redirectTo that is on the project's Auth
+  // "Additional Redirect URLs" allow-list; anything else is silently dropped
+  // back to the Site URL default. That allow-list is a dashboard setting this
+  // function cannot reach, so it still has to be kept up to date by hand.
+  const redirectTo = typeof body.redirect_to === 'string' && /^https:\/\//.test(body.redirect_to)
+    ? body.redirect_to
+    : undefined;
+
   // inviteUserByEmail creates the auth.users row (firing handle_new_user,
   // which inserts a blank profiles row) and emails the technician a link to
   // set their own password. If the email already has an account, this
   // returns a clear error rather than silently doing nothing.
-  const { data: invited, error: inviteErr } = await adminClient.auth.admin.inviteUserByEmail(email);
+  const { data: invited, error: inviteErr } = await adminClient.auth.admin.inviteUserByEmail(
+    email,
+    redirectTo ? { redirectTo } : undefined,
+  );
   if (inviteErr || !invited.user) {
     const msg = inviteErr?.message || 'davet gonderilemedi';
     const alreadyExists = /already|exists|registered/i.test(msg);

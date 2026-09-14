@@ -6,7 +6,7 @@
 
 import { $, $$, toast } from './core/dom.js';
 import { save, state } from './core/state.js';
-import { signIn, signOut, restoreSession, watchSession } from './core/auth.js';
+import { signIn, signOut, restoreSession, watchSession, completePasswordSetup } from './core/auth.js';
 import { ui } from './core/session.js';
 import { checkSession } from './core/roles.js';
 import { render, setView } from './core/router.js';
@@ -300,6 +300,44 @@ export function loginSubmit(e) {
   return false;
 }
 
+export function setPasswordSubmit(e) {
+    if (e.target.id === 'setPasswordForm') {
+      e.preventDefault();
+      const password = $('#inpNewPassword').value;
+      const confirmPassword = $('#inpNewPasswordConfirm').value;
+      const button = e.target.querySelector('button[type="submit"]');
+
+      if (password.length < 8) {
+        toast('Şifre en az 8 karakter olmalı.');
+        return true;
+      }
+      if (password !== confirmPassword) {
+        toast('Girdiğiniz şifreler eşleşmiyor.');
+        return true;
+      }
+
+      const restore = button ? button.textContent : null;
+      if (button) { button.disabled = true; button.textContent = 'Kaydediliyor…'; }
+
+      completePasswordSetup(password)
+        .then((result) => {
+          if (result.ok) {
+            render();
+            updateNotifBadge();
+            toast(`Hoş geldiniz, ${state.currentUser.name}! Şifreniz kaydedildi.`);
+          } else {
+            toast(result.message);
+          }
+        })
+        .catch(() => toast('Şifre kaydedilemedi. Bağlantınızı kontrol edin.'))
+        .finally(() => {
+          if (button) { button.disabled = false; button.textContent = restore; }
+        });
+      return true;
+    }
+  return false;
+}
+
 // Handler chains. Order is significant: it reproduces the sequence of the
 // original single delegator, including blocks that deliberately fall through
 // to later ones. A handler returns true to stop processing the event.
@@ -342,6 +380,7 @@ const SUBMIT_CHAIN = [
   newStationSubmit,
   serviceRequestSubmit,
   loginSubmit,
+  setPasswordSubmit,
   createWorkSubmit,
   editSiteSubmit,
   createSiteSubmit,

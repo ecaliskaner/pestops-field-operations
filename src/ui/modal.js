@@ -536,7 +536,13 @@ export function modal(type, siteId = null) {
       button.textContent = 'Gönderiliyor…';
       try {
         const { data, error } = await supabase.functions.invoke('admin-invite-technician', {
-          body: { email, full_name: fullName, phone: phone || undefined }
+          // Send this browser's own origin so the invite email links back to
+          // wherever the admin is actually using the app — prod, a preview
+          // branch, or local dev — instead of whatever Site URL happens to be
+          // configured in the Supabase dashboard. See the Edge Function for
+          // the other half: that origin still has to be on Auth's redirect
+          // allow-list or Supabase silently ignores it.
+          body: { email, full_name: fullName, phone: phone || undefined, redirect_to: `${location.origin}/` }
         });
         if (error) throw error;
         if (data?.error) throw new Error(data.message || data.error);
