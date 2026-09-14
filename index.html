@@ -1492,7 +1492,39 @@
           
           <button type="submit" class="primary-btn" style="width:100%; justify-content:center; height:38px; margin-top:12px; font-weight:700;">Giriş Yap</button>
         </form>
-        
+
+      </div>
+    </div>
+
+    <!-- Shown when a davet (invite) or password-reset link lands the browser
+         here with a Supabase recovery session already established — see
+         core/auth.js:watchSession()'s PASSWORD_RECOVERY branch. Supabase signs
+         the link's holder in automatically; without this screen they would be
+         dropped straight into the app having never chosen a password, with no
+         way to sign back in next time. -->
+    <div id="viewSetPassword" class="login-wrapper hidden">
+      <div class="login-card">
+        <div class="login-header">
+          <div style="display:flex; justify-content:center; margin-bottom:12px;">
+            <img src="./assets/repellent-logo.png" alt="Repellent" style="height:56px; width:auto;">
+          </div>
+          <h2>Şifrenizi Belirleyin</h2>
+          <p>Hesabınıza giriş yapabilmek için önce bir şifre belirlemeniz gerekiyor.</p>
+        </div>
+
+        <form id="setPasswordForm" class="form-grid" style="margin-top:20px;">
+          <label class="form-label" style="text-align:left; font-size:11px; font-weight:700;">
+            Yeni Şifre
+            <input required type="password" minlength="8" autocomplete="new-password" id="inpNewPassword" placeholder="En az 8 karakter" class="form-input" style="height:38px; border:1px solid var(--line); border-radius:7px; margin-top:4px;">
+          </label>
+
+          <label class="form-label" style="text-align:left; font-size:11px; font-weight:700;">
+            Yeni Şifre (Tekrar)
+            <input required type="password" minlength="8" autocomplete="new-password" id="inpNewPasswordConfirm" placeholder="Şifrenizi tekrar girin" class="form-input" style="height:38px; border:1px solid var(--line); border-radius:7px; margin-top:4px;">
+          </label>
+
+          <button type="submit" class="primary-btn" style="width:100%; justify-content:center; height:38px; margin-top:12px; font-weight:700;">Şifreyi Kaydet ve Devam Et</button>
+        </form>
       </div>
     </div>
 

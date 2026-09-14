@@ -18,7 +18,7 @@ import {
   replaceInventory, replaceChemicals, replaceStockTransactions,
   replaceInvoices, setOrganization, setTechRates
 } from './state.js';
-import { toast, hideBootSplash } from './dom.js';
+import { $, toast, hideBootSplash } from './dom.js';
 import { checkSession } from './roles.js';
 import { render } from './router.js';
 import { fetchSites, fetchArchivedSites } from '../data/repo/sites.js';
@@ -240,6 +240,48 @@ export async function signIn(email, password) {
   return { ok: true };
 }
 
+// Shown while a PASSWORD_RECOVERY session is open — an invite or a password
+// reset link that Supabase has already turned into a live session, before the
+// person has ever chosen a password of their own.
+function showSetPasswordScreen() {
+  hideBootSplash();
+  $('.app-shell')?.classList.add('hidden');
+  $('#viewLogin')?.classList.add('hidden');
+  $('#viewSetPassword')?.classList.remove('hidden');
+}
+
+/**
+ * Finish an invite or password-reset flow: the browser already holds a live
+ * session (Supabase signs the link's holder in automatically), this just
+ * gives that session a real password and then signs the person into the app
+ * the same way signIn() would.
+ *
+ * @param {string} password
+ * @returns {Promise<{ ok: boolean, message?: string }>}
+ */
+export async function completePasswordSetup(password) {
+  const { data, error } = await supabase.auth.updateUser({ password: String(password || '') });
+  if (error) return { ok: false, message: errorMessage(error) };
+
+  let profile;
+  try {
+    profile = await fetchProfile(data.user.id);
+  } catch (err) {
+    await supabase.auth.signOut();
+    return { ok: false, message: err.message };
+  }
+
+  const problem = profileProblem(profile);
+  if (problem) {
+    await supabase.auth.signOut();
+    return { ok: false, message: problem };
+  }
+
+  $('#viewSetPassword')?.classList.add('hidden');
+  applyUser(profileToUser(profile, data.user));
+  return { ok: true };
+}
+
 /** Sign out and return to the login screen. */
 export async function signOut() {
   await supabase.auth.signOut().catch(() => { /* clear locally regardless */ });
@@ -289,6 +331,14 @@ export function watchSession() {
       clearUser();
       render();
       toast('Oturumunuz sona erdi. Lütfen tekrar giriş yapın.');
+    } else if (event === 'PASSWORD_RECOVERY') {
+      // Supabase fires this for both a password-reset link and an invite
+      // link — either way, the browser now holds a session for someone who
+      // has never chosen a password. detectSessionInUrl already parsed the
+      // link's tokens into that session by the time this fires; without this
+      // branch the person would be silently signed into a populated app,
+      // never asked to set a password, and unable to sign back in next time.
+      showSetPasswordScreen();
     }
   });
 }
