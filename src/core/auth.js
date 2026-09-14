@@ -36,7 +36,7 @@ const USER_CACHE_KEY = 'repellent-user';
 // The columns every screen needs to render the signed-in identity. The joined
 // customer name is what the customer portal shows as the company header.
 const PROFILE_SELECT =
-  'id, role, full_name, title, org_id, customer_id, is_active, customers(name), organizations(name)';
+  'id, role, full_name, title, org_id, customer_id, is_active, must_set_password, customers(name), organizations(name)';
 
 function initials(name) {
   return String(name || '')
@@ -268,6 +268,12 @@ export async function completePasswordSetup(password) {
   const { data, error } = await supabase.auth.updateUser({ password: String(password || '') });
   if (error) return { ok: false, message: errorMessage(error) };
 
+  // Best-effort: the password is already set at this point (the call above
+  // succeeded), so a failure here should not lock the person out — it would
+  // just mean this screen shows again next sign-in, which is a nuisance, not
+  // a broken account.
+  await supabase.rpc('clear_must_set_password').catch(() => {});
+
   let profile;
   try {
     profile = await fetchProfile(data.user.id);
@@ -316,6 +322,16 @@ export async function restoreSession() {
     if (profileProblem(profile)) {
       await supabase.auth.signOut();
       clearUser();
+      return false;
+    }
+    // This is the actual path an invite link takes: Supabase establishes the
+    // session and this function runs at the very next boot, independent of
+    // whichever auth event fired. Verified against a real invite — it fires
+    // SIGNED_IN, not PASSWORD_RECOVERY, so watchSession()'s listener alone
+    // would have let this account straight into the app with no password
+    // ever set. Stop here instead of calling applyUser().
+    if (profile.must_set_password) {
+      showSetPasswordScreen();
       return false;
     }
     applyUser(profileToUser(profile, session.user));
