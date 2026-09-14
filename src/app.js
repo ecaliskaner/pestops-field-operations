@@ -33,7 +33,7 @@ import { invoiceActionClicks, invoiceFilterClicks, billingClicks } from './views
 import { stockRefillSubmit, chemicalDefineSubmit } from './views/inventory.js';
 import { orgSettingsSubmit } from './views/settings.js';
 import { msdsClicks } from './views/inventory.js';
-import { teamAdminClicks, techCredentialSubmit } from './views/team.js';
+import { teamAdminClicks, techCredentialSubmit, technicianDeleteClicks, archiveRestoreTechClicks } from './views/team.js';
 import { createSiteSubmit } from './views/sites.js';
 import { openNotificationCenter, updateNotifBadge } from './ui/notificationCenter.js';
 import { visitReportClicks, bindVisitReportFilters } from './views/visitReports.js';
@@ -373,7 +373,9 @@ const CLICK_CHAIN = [
   invoiceFilterClicks,
   fileDownloadClicks,
   siteDeleteClicks,
-  archiveRestoreClicks
+  archiveRestoreClicks,
+  technicianDeleteClicks,
+  archiveRestoreTechClicks
 ];
 
 const SUBMIT_CHAIN = [

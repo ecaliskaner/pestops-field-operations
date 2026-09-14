@@ -25,11 +25,12 @@ import { $, esc, toast } from '../core/dom.js';
 import { state, save, setTechRates } from '../core/state.js';
 import {
   fetchLivePositions, fetchTechnicianCredentials, fetchRatesByTechnician,
-  setTechnicianRate, saveTechnicianCredential, signedCredentialUrl
+  setTechnicianRate, saveTechnicianCredential, signedCredentialUrl, restoreTechnician, deleteTechnician
 } from '../data/repo/technicians.js';
 import { fetchTechnicianStats, fetchGeofenceEvents } from '../data/repo/work.js';
 import { setGpsAlerts } from '../core/gpsAlerts.js';
 import { updateNotifBadge } from '../ui/notificationCenter.js';
+import { modal } from '../ui/modal.js';
 
 // ---- module-local view state (never persisted) ----
 
@@ -686,6 +687,7 @@ function renderTechDetail() {
          <p class="map-hint">Plan uygulama içinde çevrimiçi görüntülenir; teknisyen isterse offline kullanım için ayrıca indirebilir.</p>`
       : `<button class="secondary-btn map-access" disabled title="Bugün için planlı bir ziyaret yok">⌖ Tesis planını görüntüle</button>
          <p class="map-hint">Bugün için planlı ziyaret olmadığından görüntülenecek bir tesis planı yok.</p>`}
+    <button class="secondary-btn" data-delete-technician-open="${esc(tech.id)}" style="width:100%; justify-content:center; margin-top:8px; color:var(--red); border-color:var(--red);">Teknisyeni kaldır</button>
   `;
 }
 
@@ -707,6 +709,110 @@ function renderRoster() {
   }).join('');
 }
 
+// Technicians an admin removed that had history behind them — same pattern
+// as views/sites.js's renderArchivedSites(). Hidden entirely when the
+// archive is empty, which is the normal state for most orgs.
+function renderArchivedTechnicians() {
+  const host = $('#archivedTechnicians');
+  if (!host) return;
+
+  const rows = state.archivedTechnicians || [];
+  const isAdmin = state.currentUser?.role === 'admin';
+  if (!rows.length || !isAdmin) {
+    host.classList.add('hidden');
+    host.innerHTML = '';
+    return;
+  }
+
+  host.classList.remove('hidden');
+  host.innerHTML = `
+    <p class="overline" style="margin:0 0 4px;">ARŞİV · ${rows.length} TEKNİSYEN</p>
+    <p class="text-muted" style="font-size:11px; margin:0 0 10px;">
+      Bu teknisyenler ekipten çıkarıldı. İş emri, kimyasal uygulama ve ziyaret geçmişleri silinmedi — geri alındığında olduğu gibi döner.
+    </p>
+    <div style="display:grid; gap:8px;">
+      ${rows.map((t) => `
+        <div style="display:flex; align-items:center; gap:10px; padding:8px 10px; background:var(--soft); border:1px solid var(--line); border-radius:8px;">
+          <span class="tech-avatar" style="background:${esc(t.color || '#eee')}; opacity:.55; width:30px; height:30px; border-radius:8px; font-size:10px;">${esc(t.initials || initialsOf(t.name))}</span>
+          <span style="flex:1; min-width:0;">
+            <b style="font-size:12px;">${esc(t.name)}</b>
+            ${t.email ? `<span class="text-muted" style="display:block; font-size:11px;">${esc(t.email)}</span>` : ''}
+          </span>
+          <button class="secondary-btn" data-restore-technician="${esc(t.id)}" style="font-size:11px; height:28px; padding:0 12px; margin:0;">Geri al</button>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+/**
+ * Click handler for the confirm button inside the "Teknisyeni kaldır" modal.
+ */
+export function technicianDeleteClicks(e) {
+  const btn = e.target.closest('#confirmDeleteTechnician');
+  if (!btn) return false;
+
+  const technicianId = btn.dataset.deleteTechnician;
+  btn.disabled = true;
+  btn.textContent = 'Kaldırılıyor…';
+
+  deleteTechnician(technicianId)
+    .then((res) => {
+      const removed = technicianList().find((t) => t.id === technicianId);
+      state.technicians = technicianList().filter((t) => t.id !== technicianId);
+      if (state.selectedTech === removed?.name) state.selectedTech = '';
+      $('#modal').classList.add('hidden');
+
+      if (res.action === 'deleted') {
+        toast(`${res.name} silindi.`);
+      } else {
+        if (removed) state.archivedTechnicians = [...(state.archivedTechnicians || []), removed];
+        const kept = [
+          res.workOrders ? `${res.workOrders} iş emri` : '',
+          res.chemicalUsages ? `${res.chemicalUsages} kimyasal uygulama` : '',
+          res.plannedVisits ? `${res.plannedVisits} planlı ziyaret` : ''
+        ].filter(Boolean).join(', ');
+        toast(`${res.name} arşivlendi${kept ? ` — ${kept} korundu` : ''}.`);
+      }
+
+      renderTeam();
+    })
+    .catch((err) => {
+      btn.disabled = false;
+      btn.textContent = 'Kaldır';
+      toast(err?.message || 'Teknisyen kaldırılamadı.');
+    });
+
+  return true;
+}
+
+/**
+ * Click handler for the archive panel's "Geri al" buttons.
+ */
+export function archiveRestoreTechClicks(e) {
+  const btn = e.target.closest('[data-restore-technician]');
+  if (!btn) return false;
+
+  const technicianId = btn.dataset.restoreTechnician;
+  btn.disabled = true;
+  btn.textContent = 'Geri alınıyor…';
+
+  restoreTechnician(technicianId)
+    .then((tech) => {
+      state.archivedTechnicians = (state.archivedTechnicians || []).filter((t) => t.id !== technicianId);
+      state.technicians = [...technicianList(), tech];
+      renderTeam();
+      toast(`${tech.name} ekibe geri alındı.`);
+    })
+    .catch((err) => {
+      btn.disabled = false;
+      btn.textContent = 'Geri al';
+      toast(err?.message || 'Teknisyen geri alınamadı.');
+    });
+
+  return true;
+}
+
 // ---- main view rendering ------------------------------------------------
 
 export function renderTeam() {
@@ -722,6 +828,7 @@ export function renderTeam() {
   }
 
   renderRoster();
+  renderArchivedTechnicians();
   renderTechDetail();
   renderCredentials(state.selectedTech);
   // The rate table lists every technician, so it belongs on the render path and
@@ -802,6 +909,12 @@ export function teamAdminClicks(e) {
       if (url) window.open(url, '_blank', 'noopener');
       else toast('Belge bağlantısı alınamadı.');
     });
+    return true;
+  }
+
+  const openDelete = e.target.closest('[data-delete-technician-open]');
+  if (openDelete) {
+    modal('deleteTechnician', openDelete.dataset.deleteTechnicianOpen);
     return true;
   }
 

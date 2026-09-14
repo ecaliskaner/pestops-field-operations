@@ -189,6 +189,34 @@ export function modal(type, siteId = null) {
     // itself; classList.remove('hidden') below runs synchronously right after
     // this branch, so a deferred callback is enough — no need to move it.
     setTimeout(() => mountSiteLocationPicker('createSiteMap', null, null), 30);
+  } else if (type === 'deleteTechnician') {
+    const t = (state.technicians || []).find(tech => tech.id === siteId);
+    if (!t) return;
+
+    // Same shape as deleteSite: delete_technician() decides server-side
+    // whether this is a real delete or an archive, because that depends on
+    // rows (work orders, chemical usages, planned visits) this browser has
+    // not loaded. The dialog states both outcomes rather than promising one.
+    content.innerHTML = `
+      <h2>Teknisyeni kaldır</h2>
+      <p class="text-muted" style="margin-bottom:14px;">${esc(t.name)}</p>
+
+      <div style="background:var(--soft); border:1px solid var(--line); border-radius:10px; padding:12px; display:grid; gap:10px; font-size:12px;">
+        <div style="display:flex; gap:10px;">
+          <b style="color:var(--red); flex:0 0 auto;">Geçmişi yoksa</b>
+          <span>Teknisyen tamamen silinir. Hiç iş emri, kimyasal uygulama veya planlı ziyaret kaydı yoksa kaybolacak bir şey yoktur.</span>
+        </div>
+        <div style="display:flex; gap:10px;">
+          <b style="flex:0 0 auto;">Geçmişi varsa</b>
+          <span>Teknisyen <b>arşivlenir</b>: ekipten, atama listesinden ve Ekip haritasından çıkar, girişi kapanır. Geçmiş iş emirleri, kimyasal uygulama kayıtları ve planlı ziyaretler <b>silinmez</b> — bunlar denetim kanıtıdır. Ekip sayfasının altındaki arşivden geri alabilirsiniz.</span>
+        </div>
+      </div>
+
+      <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:16px;">
+        <button class="secondary-btn" data-dismiss-modal style="margin:0;">Vazgeç</button>
+        <button class="primary-btn" id="confirmDeleteTechnician" data-delete-technician="${esc(t.id)}" style="margin:0; background:var(--red); border-color:var(--red);">Kaldır</button>
+      </div>
+    `;
   } else if (type === 'deleteSite') {
     const s = state.sites.find(site => site.id === siteId);
     if (!s) return;
