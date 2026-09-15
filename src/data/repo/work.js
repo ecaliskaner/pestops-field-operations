@@ -251,12 +251,18 @@ export async function fetchGeofenceEvents(limit = 18) {
       .from('work_order_events')
       .select(`
         id, event_type, event_time, distance_m, radius_m,
-        work_order:work_orders(
+        work_order:work_orders!inner(
           code,
-          site:sites(id, name, customer:customers(name)),
-          technician:technicians(full_name)
+          site:sites!inner(id, name, customer:customers(name)),
+          technician:technicians!inner(full_name)
         )
       `)
+      // !inner turns the embedded site/technician filters below into a real
+      // row-excluding join — without it PostgREST only filters the nested
+      // object and still returns the event with a null site/technician, so an
+      // archived technician or site kept showing up in this feed forever.
+      .eq('work_order.site.is_active', true)
+      .eq('work_order.technician.is_active', true)
       .in('event_type', GEOFENCE_EVENT_TYPES)
       .order('event_time', { ascending: false })
       .limit(limit)
